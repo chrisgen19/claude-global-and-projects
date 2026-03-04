@@ -1,0 +1,10 @@
+# ── Claude CLI Multi-Account ─────────────────────────────────────────
+# Add this block to your ~/.zshrc
+
+# Per-command account shortcuts
+function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
+function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
+
+# Launch VS Code with specific Claude account
+function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
+function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }

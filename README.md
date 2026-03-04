@@ -7,6 +7,11 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ```
 .
 ├── CLAUDE.md                              # Global preferences (all projects)
+├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
+├── .claude/skills/                        # Global skills (cross-project)
+│   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
+│   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
+│   └── security-audit/SKILL.md          # Scan for vulnerabilities (PHP + JS/TS)
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
 │   └── .claude/skills/wordpress/
@@ -33,6 +38,12 @@ Shared conventions that apply to all projects:
 - Git workflow (conventional commits, branch naming)
 - Security guidelines and things to avoid
 
+### Global Skills (`.claude/skills/`)
+Cross-project skills that work everywhere — copy to `~/.claude/skills/` for global availability:
+- **`/pr-description`** — Reads branch diff and commits, generates a structured PR description with a ready-to-use `gh pr create` command
+- **`/env-check`** — Audits environment variables: hardcoded secrets, `.gitignore` coverage, `.env.example` completeness, stack-specific misconfigurations
+- **`/security-audit`** — Scans for common vulnerabilities (XSS, SQL injection, missing sanitization, exposed secrets) across PHP/WordPress and JS/TS/Next.js codebases
+
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
 - Project structure (themes + plugins)
@@ -52,15 +63,59 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 
 ## How It Works
 
-### Global config
-The root `CLAUDE.md` contains shared preferences. Copy it to `~/.claude/CLAUDE.md` once finalized:
+### Multi-account setup
+
+I use two separate Claude accounts (personal and work) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
+
 ```bash
-cp CLAUDE.md ~/.claude/CLAUDE.md
+# Claude CLI accounts
+function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
+function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
+
+# Launch VS Code with specific Claude account
+function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
+function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
+```
+
+Or append the file directly:
+
+```bash
+cat .zshrc-claude >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Usage:**
+
+| Command | What it does |
+|---------|-------------|
+| `claude-work` | Opens Claude CLI with `~/.claude-work/` config |
+| `claude-personal` | Opens Claude CLI with `~/.claude-personal/` config |
+| `code-work .` | Opens VS Code with work Claude account |
+| `code-personal .` | Opens VS Code with personal Claude account |
+
+Each account has its own `CLAUDE.md` and `skills/` directory:
+- `~/.claude-work/CLAUDE.md` + `~/.claude-work/skills/*`
+- `~/.claude-personal/CLAUDE.md` + `~/.claude-personal/skills/*`
+
+> **Note:** `code-work` / `code-personal` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
+
+### Global config
+The root `CLAUDE.md` contains shared preferences. Copy it to both account directories:
+```bash
+cp CLAUDE.md ~/.claude-personal/CLAUDE.md
+cp CLAUDE.md ~/.claude-work/CLAUDE.md
+```
+
+### Global skills
+Copy skills to both account directories:
+```bash
+cp -r .claude/skills/* ~/.claude-personal/skills/
+cp -r .claude/skills/* ~/.claude-work/skills/
 ```
 
 ### Project-level config
 Each project directory (`wp-projects/`, `nextjs-projects/`) has its own `CLAUDE.md` and `.claude/skills/`. When running Claude Code from within a project directory, it automatically loads:
-1. `~/.claude/CLAUDE.md` (global preferences)
+1. `~/.claude-{account}/CLAUDE.md` (global preferences)
 2. The project's own `CLAUDE.md` (project-specific standards)
 3. Skills from `.claude/skills/` (auto-discovered)
 
