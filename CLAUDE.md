@@ -17,7 +17,7 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 3. **Notes / Risks** (+ revert steps)
 4. **Verification**
 
-## Code Style
+## Code Style (JS/TS)
 - TypeScript over JS unless project is JS-only
 - Named exports except framework defaults (Next.js pages/layouts)
 - `function` for components, arrows for utilities. Match existing project style.
@@ -26,6 +26,8 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 - Functions ≤ 50 lines, components ≤ 150 lines
 - No `console.log` in commits. Handle loading/error/empty states.
 - JSDoc for non-self-explanatory functions. Prefer backward-compatible, non-breaking changes.
+
+For PHP naming and conventions, see project-level CLAUDE.md.
 
 ## Tooling
 - `pnpm` unless project uses something else. Node 20+.
@@ -38,14 +40,6 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 - State: React state/context for simple cases, Zustand for complex state
 - Icons: Lucide React. Animation: Framer Motion when needed.
 - DB: MySQL (WordPress), PostgreSQL (Next.js). ORM: Prisma (primary), Drizzle as alternative.
-
-## WordPress / PHP
-- Follow WordPress Coding Standards. Modern PHP (8.2+: typed properties, readonly, arrow functions, enums, union types).
-- Always sanitize/escape: `sanitize_text_field()`, `esc_html()`, `wp_nonce_field()`. Use `$wpdb->prepare()` — never raw SQL.
-- Enqueue scripts/styles properly. Prefer hooks over template overrides (especially WooCommerce).
-- ACF Pro for custom fields (register in code when possible). CF7 + `wpcf7_before_send_mail` for form processing.
-- Plugin dev: OOP with namespacing, unique prefix per client (e.g., `ag_`, `mmg_`). Register activation/deactivation/uninstall hooks.
-- Never modify core or third-party plugin files — use hooks and filters only.
 
 ## Deployment
 - **Production:** Vercel (Next.js), cPanel/VPS (WordPress)
