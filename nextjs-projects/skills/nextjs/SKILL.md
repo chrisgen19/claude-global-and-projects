@@ -1,7 +1,12 @@
-# Next.js Development Skill
+---
+name: nextjs
+description: Next.js App Router development skill. Use when building or modifying Next.js features — components, pages, layouts, Server Actions, API routes, Prisma queries, forms with React Hook Form + Zod, Zustand stores, middleware, or project scaffolding. Auto-triggers when the user asks to build, add, fix, or scaffold anything in a Next.js/React/TypeScript project.
+---
 
-Reference patterns for Next.js App Router projects with TypeScript, Tailwind, Prisma, and Zod.
+You are working on a Next.js App Router project with TypeScript, Tailwind CSS, Prisma, and Zod.
 
-## Files
-- `scaffold.md` — Boilerplate: layouts, configs, Prisma setup, middleware, env validation, utilities
-- `patterns.md` — Runtime patterns: data fetching, forms (RHF+Zod), Server Actions, Zustand, auth, Prisma CRUD, error handling
+Before writing any code, read the relevant pattern file:
+- For boilerplate and project setup (layouts, configs, Prisma client, middleware, env validation, utilities) → read `scaffold.md`
+- For runtime patterns (data fetching, Server Actions, forms, Zustand, auth, Prisma CRUD, error handling, search params) → read `patterns.md`
+
+Always follow the conventions in CLAUDE.md. Use patterns from those files as the baseline — adapt to the specific task, don't copy blindly.
