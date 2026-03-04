@@ -40,7 +40,7 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 - DB: MySQL (WordPress), PostgreSQL (Next.js). ORM: Prisma (primary), Drizzle as alternative.
 
 ## WordPress / PHP
-- Follow WordPress Coding Standards. Modern PHP (7.4+: typed properties, arrow functions, null coalescing).
+- Follow WordPress Coding Standards. Modern PHP (8.2+: typed properties, readonly, arrow functions, enums, union types).
 - Always sanitize/escape: `sanitize_text_field()`, `esc_html()`, `wp_nonce_field()`. Use `$wpdb->prepare()` — never raw SQL.
 - Enqueue scripts/styles properly. Prefer hooks over template overrides (especially WooCommerce).
 - ACF Pro for custom fields (register in code when possible). CF7 + `wpcf7_before_send_mail` for form processing.
@@ -62,7 +62,7 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 ## After Code Changes
 - Verify responsive/mobile behavior
 - Suggest tests if logic is complex or critical
-- For TS/React/Next.js: run `pnpm lint` + `pnpm type-check` before done
+- For TS/React/Next.js: run lint + type-check before done (use project's package manager)
 - Summarize changes + remaining follow-ups
 
 ## Don't

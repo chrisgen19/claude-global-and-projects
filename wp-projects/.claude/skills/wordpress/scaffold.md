@@ -105,7 +105,7 @@ class Custom_Post_Types {
 /**
  * Plugin Name: Plugin Name
  * Version: 1.0.0
- * Requires PHP: 8.1
+ * Requires PHP: 8.2
  * Text Domain: plugin-name
  */
 declare( strict_types=1 );
@@ -154,9 +154,9 @@ namespace Plugin_Name;
 
 class Activator {
     public static function activate(): void {
-        if ( version_compare( PHP_VERSION, '8.1', '<' ) ) {
+        if ( version_compare( PHP_VERSION, '8.2', '<' ) ) {
             deactivate_plugins( PLUGIN_NAME_BASENAME );
-            wp_die( 'Requires PHP 8.1+.' );
+            wp_die( 'Requires PHP 8.2+.' );
         }
         self::create_tables();
         add_option( 'plugin_name_version', PLUGIN_NAME_VERSION );
