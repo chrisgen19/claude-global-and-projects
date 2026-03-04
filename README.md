@@ -6,19 +6,19 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 
 ```
 .
-├── CLAUDE.md                          # Global preferences (all projects)
+├── CLAUDE.md                              # Global preferences (all projects)
 ├── wp-projects/
-│   ├── CLAUDE.md                      # WordPress project standards
-│   └── skills/wordpress/
-│       ├── SKILL.md                   # Skill entry point
-│       ├── scaffold.md                # Boilerplate: classes, plugin bootstrap, build configs, SASS
-│       └── patterns.md                # Runtime: REST API, security, queries, WooCommerce, templates
+│   ├── CLAUDE.md                          # WordPress project standards
+│   └── .claude/skills/wordpress/
+│       ├── SKILL.md                       # Skill entry point
+│       ├── scaffold.md                    # Boilerplate: classes, plugin bootstrap, build configs, SASS
+│       └── patterns.md                    # Runtime: REST API, security, queries, WooCommerce, templates
 └── nextjs-projects/
-    ├── CLAUDE.md                      # Next.js project standards
-    └── skills/nextjs/
-        ├── SKILL.md                   # Skill entry point
-        ├── scaffold.md                # Boilerplate: layouts, configs, Prisma, middleware, env validation
-        └── patterns.md                # Runtime: data fetching, forms, Server Actions, Zustand, auth
+    ├── CLAUDE.md                          # Next.js project standards
+    └── .claude/skills/nextjs/
+        ├── SKILL.md                       # Skill entry point
+        ├── scaffold.md                    # Boilerplate: layouts, configs, Prisma, middleware, env validation
+        └── patterns.md                    # Runtime: data fetching, forms, Server Actions, Zustand, auth
 ```
 
 ## What's Inside
@@ -50,33 +50,19 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 - Forms (React Hook Form + Zod, Server Actions)
 - Scaffold and runtime code patterns (layouts, Prisma CRUD, auth, Zustand, middleware)
 
-## How to Use
+## How It Works
 
-### As a global config
-Copy or symlink the root `CLAUDE.md` to `~/.claude/CLAUDE.md`:
+### Global config
+The root `CLAUDE.md` contains shared preferences. Copy it to `~/.claude/CLAUDE.md` once finalized:
 ```bash
 cp CLAUDE.md ~/.claude/CLAUDE.md
 ```
 
-### As project-level config
-Copy the relevant project folder's `CLAUDE.md` into your project root:
-```bash
-# For a WordPress project
-cp wp-projects/CLAUDE.md /path/to/your-wp-project/CLAUDE.md
-
-# For a Next.js project
-cp nextjs-projects/CLAUDE.md /path/to/your-nextjs-project/CLAUDE.md
-```
-
-### Using skills
-Copy the `skills/` folder into your project's `.claude/` directory:
-```bash
-# For a WordPress project
-cp -r wp-projects/skills/ /path/to/your-wp-project/.claude/skills/
-
-# For a Next.js project
-cp -r nextjs-projects/skills/ /path/to/your-nextjs-project/.claude/skills/
-```
+### Project-level config
+Each project directory (`wp-projects/`, `nextjs-projects/`) has its own `CLAUDE.md` and `.claude/skills/`. When running Claude Code from within a project directory, it automatically loads:
+1. `~/.claude/CLAUDE.md` (global preferences)
+2. The project's own `CLAUDE.md` (project-specific standards)
+3. Skills from `.claude/skills/` (auto-discovered)
 
 ## Tech Stack
 
