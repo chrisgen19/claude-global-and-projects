@@ -8,6 +8,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 .
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
+├── statusline.sh                          # Status line template (copy to each account dir)
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -98,6 +99,30 @@ Each account has its own `CLAUDE.md` and `skills/` directory:
 - `~/.claude-personal/CLAUDE.md` + `~/.claude-personal/skills/*`
 
 > **Note:** `code-work` / `code-personal` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
+
+### Status line
+Copy `statusline.sh` to each account directory and edit the config at the top:
+```bash
+# Work account
+cp statusline.sh ~/.claude-work/statusline.sh
+# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR='\033[33m' (yellow)
+
+# Personal account
+cp statusline.sh ~/.claude-personal/statusline.sh
+# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR='\033[36m' (cyan)
+```
+
+Then enable it in each account's `settings.json`:
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude-work/statusline.sh"
+  }
+}
+```
+
+Shows: `WORK  chrisgen19 (cgend.dev)  [Opus 4.6] v2.1.63  project-name | main +1 ~2`
 
 ### Global config
 The root `CLAUDE.md` contains shared preferences. Copy it to both account directories:
