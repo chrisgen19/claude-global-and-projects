@@ -31,7 +31,7 @@ src/
 
 ## Data Fetching
 - Fetch in Server Components — never `useEffect` for initial data.
-- Next.js fetch caching: default `force-cache`, `{ next: { revalidate: N } }` for ISR, `{ cache: 'no-store' }` for dynamic.
+- Next.js 15+ fetch default is `no-store` (dynamic). Use `{ cache: 'force-cache' }` for static, `{ next: { revalidate: N } }` for ISR.
 - Server Actions (`'use server'`) for mutations. Validate with Zod before processing.
 - `revalidateTag()` / `revalidatePath()` for granular cache invalidation.
 - Parallel fetches with `Promise.all()` when data is independent.
@@ -56,7 +56,7 @@ src/
 
 ## Database
 - Prisma + PostgreSQL. Single `PrismaClient` instance via `lib/db.ts`.
-- Migrations only (`pnpm prisma migrate dev`). Never edit prod DB manually.
+- Migrations only (e.g. `prisma migrate dev`). Never edit prod DB manually.
 - Validate external data with Zod at the boundary.
 
 ## Security
@@ -77,7 +77,7 @@ src/
 - Validate env vars with Zod at build time via `lib/env.ts`.
 
 ## Deploy Checklist
-- [ ] `pnpm lint` + `pnpm type-check` pass
-- [ ] `pnpm build` succeeds
+- [ ] Lint + type-check pass
+- [ ] Build succeeds
 - [ ] Env vars set for target environment
 - [ ] DB migrations applied
