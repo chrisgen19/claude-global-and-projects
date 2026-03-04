@@ -7,7 +7,6 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 
 ## Communication
 - Code/commands first, explain after
-- Ambiguous → ask to clarify, or propose 1–2 options with tradeoffs
 - Warn before production-affecting changes
 - Show file path + surrounding context for code changes
 - On failure: show error + fix — never silently retry
@@ -34,49 +33,42 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 
 ## Tech Preferences
 - Framework: Next.js App Router (primary), React + Vite when appropriate
+- Styling: Tailwind CSS utility classes directly — avoid `@apply` unless necessary
+- Forms: React Hook Form + Zod validation
+- State: React state/context for simple cases, Zustand for complex state
 - Icons: Lucide React. Animation: Framer Motion when needed.
 - DB: MySQL (WordPress), PostgreSQL (Next.js). ORM: Prisma (primary), Drizzle as alternative.
+
+## WordPress / PHP
+- Follow WordPress Coding Standards. Modern PHP (7.4+: typed properties, arrow functions, null coalescing).
+- Always sanitize/escape: `sanitize_text_field()`, `esc_html()`, `wp_nonce_field()`. Use `$wpdb->prepare()` — never raw SQL.
+- Enqueue scripts/styles properly. Prefer hooks over template overrides (especially WooCommerce).
+- ACF Pro for custom fields (register in code when possible). CF7 + `wpcf7_before_send_mail` for form processing.
+- Plugin dev: OOP with namespacing, unique prefix per client (e.g., `ag_`, `mmg_`). Register activation/deactivation/uninstall hooks.
+- Never modify core or third-party plugin files — use hooks and filters only.
 
 ## Deployment
 - **Production:** Vercel (Next.js), cPanel/VPS (WordPress)
 - **Staging:** Coolify (self-hosted) or Vercel preview deployments
 - **CI/CD:** GitHub Actions or Coolify auto-deploy via webhooks
 - **Containers:** Docker when using Coolify/Dokploy
-- Always double-check target environment (staging vs production) before deploying
 
 ## Git
-- Conventional commits: `type(scope): description`
+- Conventional commits: `type(scope): description` — e.g. `feat(cart): add discount validation`
 - Branches: `feature/*`, `bugfix/*`, `hotfix/*`
-- Always check current branch before making changes
 - Never commit to `main`/`master`. Lint + type-check first.
-- Run tests before pushing (if project has them)
-- For significant changes, suggest a PR description
 - After code changes → end with ready-to-use commit command.
 
-## Workflow
-- **Before:** Understand requirements, check existing patterns, plan complex features
-- **While:** Follow project patterns, write incrementally, handle edge cases, type as you go
-
 ## After Code Changes
-- Check for hardcoded values that should be env vars
-- Check for security issues (XSS, SQL injection, exposed secrets)
 - Verify responsive/mobile behavior
 - Suggest tests if logic is complex or critical
 - For TS/React/Next.js: run `pnpm lint` + `pnpm type-check` before done
 - Summarize changes + remaining follow-ups
 
-## Security
-- No hardcoded secrets — `.env` locally, env vars in prod
-- Validate/sanitize all input. HTTPS everywhere. Flag issues immediately.
-- CSRF protection: nonces (WordPress), CSRF tokens (Next.js)
-- File uploads: validate types and sizes
-
 ## Don't
 - Add dependencies without asking (verify they exist + link to npm/packagist page)
-- Over-engineer — minimum complexity for the task
 - Create CSS/SCSS when Tailwind handles it
 - Use barrel files unless project does
 - Add tooling/linting without asking
-- Assume project structure — check first
 - Change unrelated files without explaining scope
 - Use `2>/dev/null` or `2>&1` in Bash commands
