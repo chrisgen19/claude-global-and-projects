@@ -64,6 +64,23 @@ Each project directory (`wp-projects/`, `nextjs-projects/`) has its own `CLAUDE.
 2. The project's own `CLAUDE.md` (project-specific standards)
 3. Skills from `.claude/skills/` (auto-discovered)
 
+## Using Skills
+
+Skills provide scaffold and runtime code patterns that Claude loads on-demand.
+
+### Automatic
+Claude reads each skill's `description` field and auto-triggers when your prompt matches. For example, asking "add a contact form" in a Next.js project will automatically load the `nextjs` skill — no action needed.
+
+### Manual
+Type `/nextjs` or `/wordpress` in the chat to invoke a skill directly.
+
+### What loads when
+| Layer | When loaded |
+|-------|-------------|
+| Skill descriptions (YAML frontmatter) | Always in context — used for matching |
+| Skill body (SKILL.md content) | When triggered (auto or manual) |
+| Supporting files (scaffold.md, patterns.md) | On-demand — only when Claude reads them per the SKILL.md instruction |
+
 ## Tech Stack
 
 - **WordPress:** Custom themes, custom plugins, WooCommerce, ACF Pro, Contact Form 7
