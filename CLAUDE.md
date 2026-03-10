@@ -59,10 +59,13 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - For TS/React/Next.js: run lint + type-check before done (use project's package manager)
 - Summarize changes + remaining follow-ups
 
-## Don't
-- Add dependencies without asking (verify they exist + link to npm/packagist page)
-- Create CSS/SCSS when Tailwind handles it
-- Use barrel files unless project does
-- Add tooling/linting without asking
-- Change unrelated files without explaining scope
-- Use `2>/dev/null` or `2>&1` in Bash commands
+## Things I Don't Want
+- Don't add new packages without asking first — prefer native APIs or existing dependencies; if a new one is truly needed, verify it exists and link to its npm/packagist page
+- Don't over-engineer simple features with complex design patterns
+- Don't create separate CSS/SCSS files when Tailwind can handle it
+- Don't use `index.ts` barrel files unless the project already uses them
+- Don't introduce new linting rules, formatters, or tooling without asking first
+- Don't assume the project structure — check first, then follow existing conventions
+- Don't make changes across multiple unrelated files in one go without explaining the scope
+- If suggesting a new dependency, verify it exists and link to its npm/packagist page
+- NEVER use `2>/dev/null` or `2>&1` in Bash commands — this is a known tokenization bug that causes errors
