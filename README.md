@@ -18,7 +18,12 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
-│   └── security-audit/SKILL.md          # Scan for vulnerabilities (PHP + JS/TS)
+│   ├── security-audit/SKILL.md          # Scan for vulnerabilities (PHP + JS/TS)
+│   ├── change-doc/SKILL.md              # File-by-file writeup of a completed change
+│   ├── deep-dive/SKILL.md               # Research a system, output Markdown + PDF
+│   ├── explain-code/SKILL.md            # Explain code with diagrams and analogies
+│   ├── nextjs-conventions/SKILL.md      # Personal Next.js conventions (personal account only)
+│   └── wp-backup/SKILL.md               # Export WordPress DB + zip files
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
 │   └── .claude/skills/wordpress/
@@ -47,9 +52,24 @@ Shared conventions that apply to all projects:
 
 ### Global Skills (`.claude/skills/`)
 Cross-project skills that work everywhere — copy to `~/.claude/skills/` for global availability:
+
+**Git & review**
 - **`/pr-description`** — Reads branch diff and commits, generates a structured PR description with a ready-to-use `gh pr create` command
+- **`/change-doc`** — File-by-file explanation of a completed change, with mermaid diagrams, so you can see what was built and why
+
+**Auditing**
 - **`/env-check`** — Audits environment variables: hardcoded secrets, `.gitignore` coverage, `.env.example` completeness, stack-specific misconfigurations
 - **`/security-audit`** — Scans for common vulnerabilities (XSS, SQL injection, missing sanitization, exposed secrets) across PHP/WordPress and JS/TS/Next.js codebases
+
+**Understanding & documenting**
+- **`/explain-code`** — Explains how code works using diagrams and analogies, with depth scaled to complexity
+- **`/deep-dive`** — Researches a system or integration thoroughly, then writes it up as both Markdown (mermaid) and a print-ready PDF (inline SVG)
+
+**Stack-specific**
+- **`/nextjs-conventions`** — Personal Next.js conventions: App Router, strict TypeScript, Prisma, Better Auth, server actions, file layout
+- **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
+
+> `nextjs-conventions` is installed on the personal account only. The other seven are on both.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
