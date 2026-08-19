@@ -11,8 +11,8 @@
 input=$(cat)
 
 # ── CONFIG (edit per account) ────────────────────────────────────────
-ACCOUNT_NAME="PERSONAL"   # Change to "WORK" for work account
-ACCOUNT_COLOR='\033[36m'  # Cyan for PERSONAL, use '\033[33m' (Yellow) for WORK
+ACCOUNT_NAME="WORK"       # Change to "PERSONAL" for personal account
+ACCOUNT_COLOR='\033[33m'  # Yellow for WORK, use '\033[36m' (Cyan) for PERSONAL
 # ─────────────────────────────────────────────────────────────────────
 
 # -- ANSI colors --

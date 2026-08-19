@@ -9,6 +9,12 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
+├── claude-personal/                       # Deployed copy of ~/.claude-personal
+│   ├── statusline.sh                      #   PERSONAL variant (cyan label)
+│   └── settings.json                      #   sanitized — see note below
+├── claude-work/                           # Deployed copy of ~/.claude-work
+│   ├── statusline.sh                      #   WORK variant (yellow label)
+│   └── settings.json                      #   sanitized — see note below
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -101,15 +107,38 @@ Each account has its own `CLAUDE.md` and `skills/` directory:
 > **Note:** `code-work` / `code-personal` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
 ### Status line
-Copy `statusline.sh` to each account directory and edit the config at the top:
-```bash
-# Work account
-cp statusline.sh ~/.claude-work/statusline.sh
-# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR='\033[33m' (yellow)
 
+A two-line status line covering account identity, model, git state, context usage, subscription rate limits, and session cost.
+
+```
+PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235  ~/projects/my-app | main ~3 ?2  #42
+█░░░░░░░░░░░░░░ 7% | 5h 19% (2h14m) 7d 3% (4d3h) | $1.64 | 26m 57s | +273 -3
+```
+
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
+
+**Line 2** — context usage bar, rate limit windows with reset countdowns, session cost, elapsed wall clock, lines added/removed.
+
+Every segment hides itself when its data is absent, so the line stays short outside a git repo, on API billing, or early in a session.
+
+| Colour | Meaning |
+|--------|---------|
+| Green | under 70% |
+| Yellow | 70% or more |
+| Red | 90% or more |
+
+Applies to both the context bar and each rate limit window.
+
+#### Setup
+
+```bash
 # Personal account
 cp statusline.sh ~/.claude-personal/statusline.sh
 # Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR='\033[36m' (cyan)
+
+# Work account
+cp statusline.sh ~/.claude-work/statusline.sh
+# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR='\033[33m' (yellow)
 ```
 
 Then enable it in each account's `settings.json`:
@@ -117,12 +146,49 @@ Then enable it in each account's `settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude-work/statusline.sh"
+    "command": "bash ~/.claude-work/statusline.sh",
+    "refreshInterval": 60
   }
 }
 ```
 
-Shows: `WORK  chrisgen19 (cgend.dev)  [Opus 4.6] v2.1.63  project-name | main +1 ~2`
+`refreshInterval` re-runs the script every 60 seconds so the rate limit countdowns stay honest while the session sits idle. Without it the status line only redraws when an assistant message arrives, and the countdown freezes. It runs locally and costs no tokens.
+
+#### Keeping the two copies in sync
+
+The two deployed scripts are identical except lines 14-15. Regenerate the work copy from the personal one rather than hand-editing both, or they silently drift:
+
+```bash
+{ head -13 statusline.sh
+  printf '%s\n' 'ACCOUNT_NAME="WORK"       # Change to "PERSONAL" for personal account'
+  printf '%s\n' "ACCOUNT_COLOR='\033[33m'  # Yellow for WORK, use '\033[36m' (Cyan) for PERSONAL"
+  tail -n +16 statusline.sh
+} > ~/.claude-work/statusline.sh
+```
+
+Verify only the config block differs:
+```bash
+diff <(sed '14,15d' ~/.claude-personal/statusline.sh) \
+     <(sed '14,15d' ~/.claude-work/statusline.sh) && echo "in sync"
+```
+
+#### Notes
+
+- **Requires** bash 4+, `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
+- Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
+- All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
+
+### Account settings
+
+`claude-personal/settings.json` and `claude-work/settings.json` are copies of the live files from each account directory.
+
+> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own.
+
+Restore with:
+```bash
+cp claude-personal/settings.json ~/.claude-personal/settings.json
+cp claude-work/settings.json     ~/.claude-work/settings.json
+```
 
 ### Global config
 The root `CLAUDE.md` contains shared preferences. Copy it to both account directories:
