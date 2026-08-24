@@ -4,15 +4,15 @@
 # Line 2: Context bar | Rate limits | Cost | Duration | Lines changed
 #
 # Setup: Copy to each account's config directory and set the account label:
-#   cp statusline.sh ~/.claude-personal/statusline.sh
-#   cp statusline.sh ~/.claude-work/statusline.sh
+#   for a in personal work dev; do cp statusline.sh ~/.claude-$a/statusline.sh; done
+#   Labels: PERSONAL (cyan)  WORK (yellow)  DEV (green)
 # Then edit the ACCOUNT_NAME and ACCOUNT_COLOR variables below per account.
 
 input=$(cat)
 
 # ── CONFIG (edit per account) ────────────────────────────────────────
-ACCOUNT_NAME="WORK"       # Change to "PERSONAL" for personal account
-ACCOUNT_COLOR='\033[33m'  # Yellow for WORK, use '\033[36m' (Cyan) for PERSONAL
+ACCOUNT_NAME="WORK"       # or "PERSONAL" / "DEV"
+ACCOUNT_COLOR='\033[33m'  # Yellow WORK, '\033[36m' Cyan PERSONAL, '\033[32m' Green DEV
 # ─────────────────────────────────────────────────────────────────────
 
 # -- ANSI colors --

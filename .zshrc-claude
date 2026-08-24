@@ -4,7 +4,9 @@
 # Per-command account shortcuts
 function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
+function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
 
 # Launch VS Code with specific Claude account
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
+function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
