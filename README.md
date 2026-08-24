@@ -15,6 +15,9 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── claude-work/                           # Deployed copy of ~/.claude-work
 │   ├── statusline.sh                      #   WORK variant (yellow label)
 │   └── settings.json                      #   sanitized — see note below
+├── claude-dev/                            # Deployed copy of ~/.claude-dev
+│   ├── statusline.sh                      #   DEV variant (green label)
+│   └── settings.json                      #   sanitized — see note below
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -69,7 +72,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/nextjs-conventions`** — Personal Next.js conventions: App Router, strict TypeScript, Prisma, Better Auth, server actions, file layout
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 
-> `nextjs-conventions` is installed on the personal account only. The other seven are on both.
+> `nextjs-conventions` is installed on the personal and dev accounts only. The other seven are on all three.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -92,16 +95,18 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 
 ### Multi-account setup
 
-I use two separate Claude accounts (personal and work) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
+I use three separate Claude accounts (personal, work, and dev) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
 
 ```bash
 # Claude CLI accounts
 function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
+function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
 
 # Launch VS Code with specific Claude account
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
+function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
 ```
 
 Or append the file directly:
@@ -117,14 +122,17 @@ source ~/.zshrc
 |---------|-------------|
 | `claude-work` | Opens Claude CLI with `~/.claude-work/` config |
 | `claude-personal` | Opens Claude CLI with `~/.claude-personal/` config |
+| `claude-dev` | Opens Claude CLI with `~/.claude-dev/` config |
 | `code-work .` | Opens VS Code with work Claude account |
 | `code-personal .` | Opens VS Code with personal Claude account |
+| `code-dev .` | Opens VS Code with dev Claude account |
 
 Each account has its own `CLAUDE.md` and `skills/` directory:
 - `~/.claude-work/CLAUDE.md` + `~/.claude-work/skills/*`
 - `~/.claude-personal/CLAUDE.md` + `~/.claude-personal/skills/*`
+- `~/.claude-dev/CLAUDE.md` + `~/.claude-dev/skills/*`
 
-> **Note:** `code-work` / `code-personal` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
+> **Note:** `code-work` / `code-personal` / `code-dev` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
 ### Status line
 
@@ -159,6 +167,10 @@ cp statusline.sh ~/.claude-personal/statusline.sh
 # Work account
 cp statusline.sh ~/.claude-work/statusline.sh
 # Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR='\033[33m' (yellow)
+
+# Dev account
+cp statusline.sh ~/.claude-dev/statusline.sh
+# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR='\033[32m' (green)
 ```
 
 Then enable it in each account's `settings.json`:
@@ -174,22 +186,31 @@ Then enable it in each account's `settings.json`:
 
 `refreshInterval` re-runs the script every 60 seconds so the rate limit countdowns stay honest while the session sits idle. Without it the status line only redraws when an assistant message arrives, and the countdown freezes. It runs locally and costs no tokens.
 
-#### Keeping the two copies in sync
+#### Keeping the three copies in sync
 
-The two deployed scripts are identical except lines 14-15. Regenerate the work copy from the personal one rather than hand-editing both, or they silently drift:
+All three deployed scripts are identical except lines 14-15. Regenerate them from the root `statusline.sh` rather than hand-editing each, or they silently drift:
 
 ```bash
-{ head -13 statusline.sh
-  printf '%s\n' 'ACCOUNT_NAME="WORK"       # Change to "PERSONAL" for personal account'
-  printf '%s\n' "ACCOUNT_COLOR='\033[33m'  # Yellow for WORK, use '\033[36m' (Cyan) for PERSONAL"
-  tail -n +16 statusline.sh
-} > ~/.claude-work/statusline.sh
+gen() {  # $1=account dir  $2=ACCOUNT_NAME line  $3=ACCOUNT_COLOR line
+  { head -13 statusline.sh; printf '%s\n%s\n' "$2" "$3"; tail -n +16 statusline.sh; } > "$1/statusline.sh"
+}
+
+gen ~/.claude-personal 'ACCOUNT_NAME="PERSONAL"   # or "WORK" / "DEV"' \
+  "ACCOUNT_COLOR='\033[36m'  # Cyan PERSONAL, '\033[33m' Yellow WORK, '\033[32m' Green DEV"
+gen ~/.claude-work 'ACCOUNT_NAME="WORK"       # or "PERSONAL" / "DEV"' \
+  "ACCOUNT_COLOR='\033[33m'  # Yellow WORK, '\033[36m' Cyan PERSONAL, '\033[32m' Green DEV"
+gen ~/.claude-dev 'ACCOUNT_NAME="DEV"        # or "PERSONAL" / "WORK"' \
+  "ACCOUNT_COLOR='\033[32m'  # Green DEV, '\033[36m' Cyan PERSONAL, '\033[33m' Yellow WORK"
 ```
+
+The `head -13` / `tail -n +16` split assumes the config block sits on lines 14-15. Keep it there when editing the template header, or every regenerated copy loses its label.
 
 Verify only the config block differs:
 ```bash
-diff <(sed '14,15d' ~/.claude-personal/statusline.sh) \
-     <(sed '14,15d' ~/.claude-work/statusline.sh) && echo "in sync"
+for a in personal work dev; do
+  diff <(sed '14,15d' statusline.sh) <(sed '14,15d' ~/.claude-$a/statusline.sh) \
+    && echo "$a: in sync"
+done
 ```
 
 #### Notes
@@ -200,7 +221,7 @@ diff <(sed '14,15d' ~/.claude-personal/statusline.sh) \
 
 ### Account settings
 
-`claude-personal/settings.json` and `claude-work/settings.json` are copies of the live files from each account directory.
+`claude-personal/settings.json`, `claude-work/settings.json`, and `claude-dev/settings.json` are copies of the live files from each account directory.
 
 > **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own.
 
@@ -208,20 +229,23 @@ Restore with:
 ```bash
 cp claude-personal/settings.json ~/.claude-personal/settings.json
 cp claude-work/settings.json     ~/.claude-work/settings.json
+cp claude-dev/settings.json      ~/.claude-dev/settings.json
 ```
 
 ### Global config
-The root `CLAUDE.md` contains shared preferences. Copy it to both account directories:
+The root `CLAUDE.md` contains shared preferences. Copy it to every account directory:
 ```bash
 cp CLAUDE.md ~/.claude-personal/CLAUDE.md
 cp CLAUDE.md ~/.claude-work/CLAUDE.md
+cp CLAUDE.md ~/.claude-dev/CLAUDE.md
 ```
 
 ### Global skills
-Copy skills to both account directories:
+Copy skills to every account directory:
 ```bash
 cp -r .claude/skills/* ~/.claude-personal/skills/
 cp -r .claude/skills/* ~/.claude-work/skills/
+cp -r .claude/skills/* ~/.claude-dev/skills/
 ```
 
 ### Project-level config
