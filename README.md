@@ -25,7 +25,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 │   ├── change-doc/SKILL.md              # File-by-file writeup of a completed change
 │   ├── deep-dive/SKILL.md               # Research a system, output Markdown + PDF
 │   ├── explain-code/SKILL.md            # Explain code with diagrams and analogies
-│   ├── nextjs-conventions/SKILL.md      # Personal Next.js conventions (personal account only)
+│   ├── nextjs-conventions/SKILL.md      # Personal Next.js conventions (personal + dev only)
 │   └── wp-backup/SKILL.md               # Export WordPress DB + zip files
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
@@ -244,8 +244,13 @@ cp CLAUDE.md ~/.claude-dev/CLAUDE.md
 Copy skills to every account directory:
 ```bash
 cp -r .claude/skills/* ~/.claude-personal/skills/
-cp -r .claude/skills/* ~/.claude-work/skills/
 cp -r .claude/skills/* ~/.claude-dev/skills/
+
+# Work gets everything except nextjs-conventions, which is personal-stack only
+for s in .claude/skills/*/; do
+  [ "$(basename "$s")" = "nextjs-conventions" ] && continue
+  cp -r "$s" ~/.claude-work/skills/
+done
 ```
 
 ### Project-level config
