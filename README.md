@@ -215,7 +215,7 @@ done
 
 #### Notes
 
-- **Requires** bash 4+, `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
+- **Requires** bash 3.2+ (macOS stock `/bin/bash` works), `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
 - Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
 - All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
 

@@ -28,7 +28,10 @@ RESET='\033[0m'
 # -- Extract every field in one jq pass (one fork instead of ten) --
 # Numeric fields that may be absent use -1 as the sentinel so a real 0
 # stays distinguishable from "not sent".
-mapfile -t F < <(printf '%s' "$input" | jq -r '
+# `mapfile` is bash 4+; macOS ships bash 3.2, so read the lines in a loop.
+# The redirect keeps the loop in the current shell, so F survives it.
+F=()
+while IFS= read -r _f; do F+=("$_f"); done < <(printf '%s' "$input" | jq -r '
   [ .model.display_name                            // "?",
     (.workspace.current_dir // .cwd)               // "",
     (.context_window.used_percentage // 0 | floor),
@@ -105,7 +108,7 @@ CACHE_MAX_AGE=5
 
 cache_is_stale() {
   [ ! -f "$CACHE_FILE" ] || \
-  [ $((now - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0))) -gt $CACHE_MAX_AGE ]
+  [ $((now - $(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0))) -gt $CACHE_MAX_AGE ]
 }
 
 if cache_is_stale && [ -n "$cwd" ]; then
