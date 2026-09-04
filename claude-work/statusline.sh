@@ -114,9 +114,20 @@ safe_cwd="${safe_cwd//[^A-Za-z0-9_.-]/_}"
 CACHE_FILE="/tmp/claude-statusline-git-${UID}-${safe_cwd}"
 CACHE_MAX_AGE=5
 
+# BSD and GNU stat spell "mtime as epoch" differently, and guessing wrong is
+# not a clean no-op: GNU's -f is --file-system, so `stat -f %m FILE` treats %m
+# and FILE as two operands, prints a filesystem block to stdout AND exits
+# non-zero. In a `||` chain that block gets captured alongside the real mtime
+# and the arithmetic below dies. Dispatch on the platform instead of probing.
+# $OSTYPE is set by bash itself, so this costs no fork.
+case "$OSTYPE" in
+  darwin*|*bsd*|FreeBSD*) _mtime() { stat -f %m "$1" 2>/dev/null || echo 0; } ;;
+  *)                      _mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; } ;;
+esac
+
 cache_is_stale() {
   [ ! -f "$CACHE_FILE" ] || \
-  [ $((now - $(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0))) -gt $CACHE_MAX_AGE ]
+  [ $((now - $(_mtime "$CACHE_FILE"))) -gt $CACHE_MAX_AGE ]
 }
 
 if cache_is_stale && [ -n "$cwd" ]; then
