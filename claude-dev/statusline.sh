@@ -15,6 +15,14 @@ ACCOUNT_NAME="DEV"        # or "PERSONAL" / "WORK"
 ACCOUNT_COLOR='\033[32m'  # Green DEV, '\033[36m' Cyan PERSONAL, '\033[33m' Yellow WORK
 # ─────────────────────────────────────────────────────────────────────
 
+# A caller (e.g. the ~/.claude router) can override the label when the session
+# is not running under one of the named account dirs, so the line never claims
+# to be an account it is not.
+if [ -n "$ACCOUNT_LABEL_OVERRIDE" ]; then
+  ACCOUNT_NAME="$ACCOUNT_LABEL_OVERRIDE"
+  ACCOUNT_COLOR='\033[37m'  # neutral white — not one of the account colours
+fi
+
 # -- ANSI colors --
 CYAN='\033[36m'
 GREEN='\033[32m'
