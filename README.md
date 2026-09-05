@@ -350,6 +350,14 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   port each rather than a `{port}` placeholder. Placeholders in the *path* are fine,
   which is why the Actions entry keeps `{owner}`, `{repo}` and `{id}`. At most 5 badges
   render at once, oldest displaced, and `/clear` wipes them.
+- The cost of a literal origin is that **every port needs its own entry**. The list covers
+  3000/3001 (Next.js default and fallback), 5173 (Vite), 8080, and the ports pinned in
+  individual projects — 3020, 3111, 3821. A project on an unlisted port simply gets no
+  badge, so add one when you pin a new port:
+
+  ```bash
+  grep -h '"dev":' */package.json | grep -oE '\-\-?p(ort)?[= ]*[0-9]{2,5}'
+  ```
 - For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
