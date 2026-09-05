@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A malformed settings.json silently disables *every* setting in that
+      # file, with no error at startup. These are hand-edited, so parse them.
+      - name: settings.json parses
+        run: |
+          for f in claude*/settings.json windows/settings.json; do
+            jq -e . "$f" > /dev/null && echo "ok    $f"
+          done
+
+      # The autoMode block holds client context (org names, CI secret names,
+      # protected branches, internal hostnames) and must never be committed.
+      - name: no autoMode in tracked settings
+        run: |
+          fail=0
+          for f in claude*/settings.json windows/settings.json; do
+            if [ "$(jq 'has("autoMode")' "$f")" = "true" ]; then
+              echo "FAIL  $f contains autoMode"; fail=1
+            else echo "ok    $f"; fi
+          done
+          exit $fail
+
+      # Paths are stored tilde-relative so a home directory never lands in a
+      # public repo and the files stay portable between machines.
+      - name: no absolute home paths in tracked settings
+        run: |
+          if grep -l '/Users/\|/home/' claude*/settings.json windows/settings.json; then
+            echo "FAIL  absolute home path in tracked settings"; exit 1
+          fi
+          echo "ok    all paths tilde-relative"
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # SC2154 is excluded: statusline.sh builds _rl5/_rl7 through
+          # `printf -v "$1"` indirection, which shellcheck cannot follow, so it
+          # reports them as referenced-but-unassigned. Verified false positives.
+          shellcheck --severity=warning --exclude=SC2154 install.sh iterm-tab-status.sh \
+            statusline.sh claude/statusline-command.sh claude*/statusline.sh
+
+      # The three account status lines are generated from statusline.sh and
+      # differ only in the config block on lines 14-15. Hand-editing one copy
+      # is the documented way they drift apart, so diff them ignoring it.
+      - name: account status lines match the template
+        run: |
+          fail=0
+          for a in claude-personal claude-work claude-dev; do
+            if diff <(sed '14,15d' statusline.sh) <(sed '14,15d' "$a/statusline.sh") > /dev/null; then
+              echo "ok    $a/statusline.sh"
+            else
+              echo "FAIL  $a/statusline.sh has drifted from statusline.sh"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: install.sh --help works
+        run: ./install.sh --help

@@ -216,5 +216,6 @@
       "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
       "label": "run {id}"
     }
-  ]
+  ],
+  "terminalProgressBarEnabled": true
 }

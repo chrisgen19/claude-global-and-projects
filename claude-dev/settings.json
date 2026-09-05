@@ -29,6 +29,7 @@
   "effortLevel": "high",
   "tui": "fullscreen",
   "theme": "dark",
+  "agentPushNotifEnabled": true,
   "hooks": {
     "PostToolUse": [
       {
@@ -149,5 +150,6 @@
       "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
       "label": "run {id}"
     }
-  ]
+  ],
+  "terminalProgressBarEnabled": true
 }

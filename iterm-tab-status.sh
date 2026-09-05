@@ -162,7 +162,7 @@ case "${1:-reset}" in
     current || exit 0
     kill_pulse "$was_pulsing"
     current || exit 0
-    set_state done
+    set_state "done"
     i=0
     while [ "$i" -lt "$BLINKS" ] && current; do
       tabcolor 40 200 120; sleep "$BLINK_DELAY"
