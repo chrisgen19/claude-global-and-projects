@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# iTerm2 tab status indicator for Claude Code.
+#
+#   busy     -> tab pulses orange while Claude is working
+#   waiting  -> tab goes red, dock bounces (Claude needs input / permission)
+#   done     -> tab blinks green x4, then stays green + one dock bounce
+#   reset    -> clears tab color, badge and any running animation
+#
+# Wired up from the hooks block in ~/.claude/settings.json.
+set -u
+
+# Only meaningful inside iTerm2.
+[ "${TERM_PROGRAM:-}" = "iTerm.app" ] || exit 0
+
+BADGE=1              # 0 = no translucent in-pane badge
+PULSE=1              # 0 = steady orange instead of the breathing animation
+BLINKS=4             # blink cycles for "done"
+BLINK_DELAY=0.22
+PULSE_DELAY=0.15
+MAX_PULSE_ITERS=100000   # backstop so an orphaned animation can't run forever
+
+# Hooks are spawned detached from the controlling terminal, so /dev/tty is
+# unusable and $PPID (an intermediate shell) reports no tty either. Walk up the
+# process tree until we hit the claude CLI, which does own the iTerm2 pty.
+find_tty() {
+  local p=$PPID t a i=0
+  while [ "$i" -lt 8 ] && [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ]; do
+    read -r t a <<< "$(ps -o tty=,ppid= -p "$p")"
+    case "${t:-??}" in
+      '?' | '??') ;;
+      *) printf '%s' "$t"; return 0 ;;
+    esac
+    p="$a"
+    i=$((i + 1))
+  done
+  return 1
+}
+# The detached animation child is handed the tty directly: by the time it
+# starts, its own parent has exited and the ancestry walk would find nothing.
+tty_name="${CLAUDE_TAB_TTY:-}"
+[ -n "$tty_name" ] || tty_name=$(find_tty)
+[ -n "$tty_name" ] || exit 0
+DEV="/dev/$tty_name"
+[ -w "$DEV" ] || exit 0
+
+RUN="${TMPDIR:-/tmp}"
+PIDFILE="$RUN/claude-tab-$tty_name.pid"
+STATEFILE="$RUN/claude-tab-$tty_name.state"
+
+# ps prints nothing (and no stderr) for a dead pid.
+alive()     { [ -n "$(ps -p "$1" -o pid=)" ]; }
+tabcolor()  { printf '\033]6;1;bg;red;brightness;%s\007\033]6;1;bg;green;brightness;%s\007\033]6;1;bg;blue;brightness;%s\007' \
+                "$1" "$2" "$3" > "$DEV"; }
+tabreset()  { printf '\033]6;1;bg;*;default\007' > "$DEV"; }
+attention() { printf '\033]1337;RequestAttention=%s\007' "$1" > "$DEV"; }
+badge()     { [ "$BADGE" = 1 ] || return 0
+              printf '\033]1337;SetBadgeFormat=%s\007' "$(printf '%s' "$1" | base64)" > "$DEV"; }
+set_state() { printf '%s' "$1" > "$STATEFILE"; }
+get_state() { local s=none; [ -f "$STATEFILE" ] && read -r s < "$STATEFILE"; printf '%s' "${s:-none}"; }
+
+pulse_pid() { local p=''; [ -f "$PIDFILE" ] && read -r p < "$PIDFILE"; printf '%s' "$p"; }
+
+stop_pulse() {
+  local p
+  p=$(pulse_pid)
+  [ -n "$p" ] && alive "$p" && kill "$p"
+  rm -f "$PIDFILE"
+  return 0
+}
+
+case "${1:-reset}" in
+
+  # Internal: the breathing-orange animation. Dark orange <-> bright orange.
+  __pulse)
+    watch_pid="${2:-0}"
+    levels=(0 12 25 40 55 70 85 100 85 70 55 40 25 12)
+    n=${#levels[@]}
+    i=0
+    while [ "$i" -lt "$MAX_PULSE_ITERS" ]; do
+      L=${levels[$((i % n))]}
+      tabcolor $((120 + 135 * L / 100)) $((55 + 95 * L / 100)) $((20 * L / 100))
+      sleep "$PULSE_DELAY"
+      i=$((i + 1))
+      # Cheap checks only every ~2s: are we still the owning animation,
+      # does the tty still exist, is the claude process still alive?
+      if [ $((i % 14)) -eq 0 ]; then
+        [ "$(pulse_pid)" = "$$" ] || break
+        [ -w "$DEV" ] || break
+        if [ "$watch_pid" != 0 ] && ! alive "$watch_pid"; then break; fi
+      fi
+    done
+    exit 0
+    ;;
+
+  busy)
+    p=$(pulse_pid)
+    if [ -n "$p" ] && alive "$p"; then
+      set_state busy       # already animating - nothing to do
+      exit 0
+    fi
+    set_state busy
+    attention no
+    badge ''
+    if [ "$PULSE" = 1 ]; then
+      claude_pid=$(ps -t "$tty_name" -o pid=,comm= | awk '$2 ~ /claude/ {print $1; exit}')
+      CLAUDE_TAB_TTY="$tty_name" "$0" __pulse "${claude_pid:-0}" > /dev/null &
+      printf '%s' "$!" > "$PIDFILE"
+    else
+      tabcolor 255 140 0
+    fi
+    ;;
+
+  waiting)
+    # Don't stomp on the green "done" tab when an idle notification fires.
+    [ "$(get_state)" = "done" ] && exit 0
+    stop_pulse
+    set_state waiting
+    tabcolor 225 60 60
+    attention yes
+    badge 'input?'
+    ;;
+
+  done)
+    stop_pulse
+    set_state done
+    i=0
+    while [ "$i" -lt "$BLINKS" ]; do
+      tabcolor 40 200 120; sleep "$BLINK_DELAY"
+      tabreset;            sleep "$BLINK_DELAY"
+      i=$((i + 1))
+    done
+    tabcolor 40 200 120
+    attention once
+    badge 'done'
+    ;;
+
+  *)
+    stop_pulse
+    set_state none
+    tabreset
+    attention no
+    badge ''
+    ;;
+esac
+exit 0

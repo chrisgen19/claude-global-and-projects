@@ -9,6 +9,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
+├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── claude-personal/                       # Deployed copy of ~/.claude-personal
 │   ├── statusline.sh                      #   PERSONAL variant (cyan label)
 │   └── settings.json                      #   sanitized — see note below
@@ -218,6 +219,113 @@ done
 - **Requires** bash 3.2+ (macOS stock `/bin/bash` works), `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
 - Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
 - All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
+
+### iTerm2 tab status
+
+Paints the iTerm2 tab of whichever session is running, so you can see at a glance which
+of several tabs still needs you. Driven entirely by hooks — no polling, no daemon.
+
+| State | Tab | Fired by |
+|-------|-----|----------|
+| Working | pulses orange (breathing, ~2s cycle) | `UserPromptSubmit`, `PostToolUse` |
+| Needs input or permission | red, dock bounces until focused, `input?` badge | `Notification` |
+| Finished | blinks green x4 then stays green, one dock bounce, `done` badge | `Stop` |
+| Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd` |
+
+#### Setup
+
+One shared copy serves every account — the hooks reference it by absolute path:
+
+```bash
+mkdir -p ~/.local/bin
+cp iterm-tab-status.sh ~/.local/bin/claude-iterm-tab-status.sh
+chmod +x ~/.local/bin/claude-iterm-tab-status.sh
+```
+
+Then wire it into each account's `settings.json` (already present in the tracked copies):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",    "async": true }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",    "async": true }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",    "async": true }] }],
+    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset" }] }],
+    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset" }] }]
+  }
+}
+```
+
+`async: true` on `busy` and `done` keeps the ~2s blink animation off the critical path.
+
+> Because `CLAUDE_CONFIG_DIR` replaces the config home outright, the accounts share
+> nothing — hooks added to one do **not** apply to the others. Every account needs its
+> own entry, which is why all three tracked `settings.json` files carry the block.
+
+#### How it works
+
+The tab is painted with iTerm2's proprietary escape sequences — `OSC 6;1;bg;...` for the
+tab colour, `OSC 1337;SetBadgeFormat` and `RequestAttention` for the badge and dock bounce.
+
+The awkward part is getting those bytes to the terminal at all. **Hooks are spawned
+detached from the controlling terminal**, so `/dev/tty` fails with `device not configured`,
+and `ps -o tty= -p $PPID` reports `??` because the immediate parent is an intermediate
+shell with no tty either. The script therefore walks up the process tree until it finds the
+`claude` CLI, which does own the pty, and writes straight to that device:
+
+```bash
+find_tty() {
+  local p=$PPID t a i=0
+  while [ "$i" -lt 8 ] && [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ]; do
+    read -r t a <<< "$(ps -o tty=,ppid= -p "$p")"
+    case "${t:-??}" in
+      '?' | '??') ;;
+      *) printf '%s' "$t"; return 0 ;;
+    esac
+    p="$a"; i=$((i + 1))
+  done
+  return 1
+}
+# -> /dev/ttys006
+```
+
+The orange pulse is a detached background loop, tracked by a pidfile keyed to the tty in
+`$TMPDIR`. Consequences worth knowing:
+
+- **`busy` is idempotent.** It has to be — it is wired to `PostToolUse`, which fires
+  constantly. A repeat call finds the running animation and returns immediately rather
+  than stacking a second one. That is also what restores orange after you approve a
+  permission prompt, since there is no "permission granted" event to hook.
+- **The animation cannot outlive its session.** Every ~2s it re-checks that it still owns
+  the pidfile, that the tty still exists, and that the `claude` process is alive, plus a
+  hard iteration cap as a backstop.
+- **Accounts in different tabs never collide**, because state is keyed by tty name.
+- A state file stops Claude Code's 60-second idle `Notification` from flipping a finished
+  green tab to red — `waiting` is ignored when the state is already `done`.
+
+#### Knobs
+
+At the top of the script:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `PULSE` | `1` | `0` = steady orange instead of the breathing animation |
+| `BADGE` | `1` | `0` = no translucent in-pane badge |
+| `BLINKS` | `4` | Green blink cycles on completion |
+| `BLINK_DELAY` / `PULSE_DELAY` | `0.22` / `0.15` | Animation timing, seconds |
+
+Colours are the `tabcolor r g b` calls in each branch of the `case`.
+
+#### Notes
+
+- **macOS + iTerm2 only.** The escape codes are iTerm2 extensions; Windows Terminal
+  ignores them silently, and there is no writable pty device to target there anyway. The
+  script exits cleanly when `$TERM_PROGRAM` is not `iTerm.app`, so it is harmless to
+  install everywhere.
+- For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
+  emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
+  in-process, so it sidesteps the detached-terminal problem entirely.
 
 ### Account settings
 
