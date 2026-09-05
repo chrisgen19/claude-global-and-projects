@@ -28,5 +28,90 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "high",
   "tui": "fullscreen",
-  "theme": "dark"
+  "theme": "dark",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
+            "async": true,
+            "statusMessage": "tab status: done"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      }
+    ]
+  },
+  "footerLinksRegexes": [
+    {
+      "type": "regex",
+      "pattern": "https?://localhost:(?<port>\\d{2,5})",
+      "url": "http://localhost:{port}",
+      "label": "localhost:{port}"
+    },
+    {
+      "type": "regex",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
+      "label": "run {id}"
+    }
+  ]
 }
