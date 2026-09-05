@@ -358,6 +358,11 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   ```bash
   grep -h '"dev":' */package.json | grep -oE '\-\-?p(ort)?[= ]*[0-9]{2,5}'
   ```
+
+  The entries are `http://` only, since nothing here serves dev over HTTPS. If you ever
+  enable it (`next dev --experimental-https`), the badge will silently not appear — add
+  an `https://` twin of the entry for that port, with an `https://` destination too, since
+  a literal origin cannot cover both schemes.
 - For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
