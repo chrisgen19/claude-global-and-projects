@@ -186,5 +186,19 @@
         ]
       }
     ]
-  }
+  },
+  "footerLinksRegexes": [
+    {
+      "type": "regex",
+      "pattern": "https?://localhost:(?<port>\\d{2,5})",
+      "url": "http://localhost:{port}",
+      "label": "localhost:{port}"
+    },
+    {
+      "type": "regex",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
+      "label": "run {id}"
+    }
+  ]
 }
