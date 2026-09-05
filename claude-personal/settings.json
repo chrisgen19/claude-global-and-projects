@@ -35,7 +35,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh activity claude_code"
+            "command": "bash ~/.vibemon/notify.sh activity claude_code",
+            "statusMessage": "vibemon: activity"
           }
         ]
       },
@@ -44,7 +45,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh bash claude_code"
+            "command": "bash ~/.vibemon/notify.sh bash claude_code",
+            "statusMessage": "vibemon: bash"
           }
         ]
       },
@@ -53,7 +55,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: busy"
           }
         ]
       }
@@ -63,7 +66,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh prompt claude_code"
+            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
+            "statusMessage": "vibemon: prompt"
           }
         ]
       },
@@ -72,7 +76,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: busy"
           }
         ]
       }
@@ -82,7 +87,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh stop claude_code"
+            "command": "bash ~/.vibemon/notify.sh stop claude_code",
+            "statusMessage": "vibemon: stop"
           }
         ]
       },
@@ -91,7 +97,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: done"
           }
         ]
       }
@@ -102,7 +109,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh permission claude_code"
+            "command": "bash ~/.vibemon/notify.sh permission claude_code",
+            "statusMessage": "vibemon: permission"
           }
         ]
       },
@@ -110,7 +118,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting"
           }
         ]
       }
@@ -120,7 +129,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_start claude_code"
+            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
+            "statusMessage": "vibemon: session_start"
           }
         ]
       },
@@ -128,7 +138,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
           }
         ]
       }
@@ -138,7 +149,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_end claude_code"
+            "command": "bash ~/.vibemon/notify.sh session_end claude_code",
+            "statusMessage": "vibemon: session_end"
           }
         ]
       },
@@ -146,7 +158,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
           }
         ]
       }
@@ -157,7 +170,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code"
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure"
           }
         ]
       },
@@ -166,7 +180,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code"
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure"
           }
         ]
       }

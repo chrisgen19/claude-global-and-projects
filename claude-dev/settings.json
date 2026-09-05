@@ -36,7 +36,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: busy"
           }
         ]
       }
@@ -47,7 +48,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: busy"
           }
         ]
       }
@@ -57,7 +59,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting"
           }
         ]
       }
@@ -68,7 +71,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true
+            "async": true,
+            "statusMessage": "tab status: done"
           }
         ]
       }
@@ -78,7 +82,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
           }
         ]
       }
@@ -88,7 +93,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
           }
         ]
       }
