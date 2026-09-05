@@ -301,10 +301,15 @@ The orange pulse is a detached background loop, tracked by a pidfile keyed to th
   pidfile is re-tested every frame using shell builtins only (no fork): the loser exits
   within one 0.15s tick rather than fighting for the tab.
 - **Every transition claims the tab** by writing its pid to a generation file, and the
-  `done` blink re-checks that claim before each write. Since `Stop` runs asynchronously,
+  `done` path re-checks that claim before each write. Since `Stop` runs asynchronously,
   its ~1.8s animation would otherwise keep painting after a new prompt or a `SessionEnd`
   had already moved on, leaving a green tab over a session that is actually working.
-  A superseded blink now aborts mid-animation.
+  A superseded blink aborts mid-animation. The claim also gates the *teardown* that runs
+  before the blink — stopping the pulse and writing the `done` state — because those are
+  destructive: applied to a session that had already moved on they would strand it with
+  no animation and suppress its red "needs input" tab. `done` additionally captures the
+  pulse pid *before* claiming, so it can only ever stop the animation that was live when
+  it started, never one a racing `busy` has since begun.
 - **A pid is never signalled without confirming what it is.** Pidfiles can outlive their
   animation (the `claude` process died, the tty vanished, the iteration cap hit) and the
   OS reuses pids, so `kill` is gated on the target's command line actually being one of

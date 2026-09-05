@@ -78,13 +78,18 @@ is_pulse() {
   return 1
 }
 
-stop_pulse() {
-  local p
-  p=$(pulse_pid)
-  [ -n "$p" ] && alive "$p" && is_pulse "$p" && kill "$p"
-  rm -f "$PIDFILE"
+# Kill one specific animation. Taking the pid as an argument matters: a caller
+# that captured it before claiming the tab must not kill whatever newer pulse
+# has started since. The pidfile is only cleared while it still names that pid.
+kill_pulse() {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  alive "$p" && is_pulse "$p" && kill "$p"
+  [ "$(pulse_pid)" = "$p" ] && rm -f "$PIDFILE"
   return 0
 }
+
+stop_pulse() { kill_pulse "$(pulse_pid)"; }
 
 case "${1:-reset}" in
 
@@ -145,8 +150,18 @@ case "${1:-reset}" in
     ;;
 
   done)
+    # Note what is running before claiming, so the teardown below can only ever
+    # target the animation that was live when this hook started.
+    was_pulsing=$(pulse_pid)
     claim
-    stop_pulse
+    # Stop runs async, so a busy/reset can claim between the lines below. Both
+    # of the next steps are destructive - killing the pulse and forcing the
+    # state to "done" would strand an active session with no animation and
+    # suppress its red "needs input" tab - so both are gated on still owning
+    # the claim, not just the repaints further down.
+    current || exit 0
+    kill_pulse "$was_pulsing"
+    current || exit 0
     set_state done
     i=0
     while [ "$i" -lt "$BLINKS" ] && current; do
