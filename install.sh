@@ -45,9 +45,14 @@ esac
 
 drift=0
 STAMP=$(date +%Y%m%d-%H%M%S)
+die()    { printf '\n  FAILED: %s\n' "$1" >&2; exit 1; }
 note()   { printf '  %s\n' "$1"; }
 differ() { drift=$((drift + 1)); printf '  DRIFT  %s\n' "$1"; }
-backup() { [ -f "$1" ] && cp "$1" "$1.bak-$STAMP"; return 0; }
+# A deploy must never overwrite a live file it could not back up first.
+backup() {
+  [ -f "$1" ] || return 0
+  cp "$1" "$1.bak-$STAMP" || die "cannot back up $1 — refusing to overwrite it"
+}
 
 # Compare tracked vs live settings, ignoring the deliberately stripped autoMode
 # block. Keys are sorted so formatting differences never read as drift.
@@ -78,15 +83,24 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
   # --- settings.json: the only artefact that flows in both directions ---
   case "$MODE" in
     install)
-      mkdir -p "$live_dir"
+      mkdir -p "$live_dir" || die "cannot create $live_dir"
       backup "$live_dir/settings.json"
-      cp "$repo_dir/settings.json" "$live_dir/settings.json"
+      cp "$repo_dir/settings.json" "$live_dir/settings.json" || die "cannot write $live_dir/settings.json"
       note "settings.json  (previous saved as settings.json.bak-$STAMP)"
       ;;
     pull)
       if [ -f "$live_dir/settings.json" ]; then
-        jq 'del(.autoMode)' "$live_dir/settings.json" > "$repo_dir/settings.json"
-        note "settings.json  <- live (autoMode stripped)"
+        # Redirection truncates its target before jq runs, so a malformed live
+        # file (or a missing jq) would empty the tracked one and, with no
+        # set -e, still report success. Stage it and only replace on success.
+        tmp="$repo_dir/.settings.json.pull.$$"
+        if jq 'del(.autoMode)' "$live_dir/settings.json" > "$tmp"; then
+          mv "$tmp" "$repo_dir/settings.json" || die "could not replace $repo_dir/settings.json"
+          note "settings.json  <- live (autoMode stripped)"
+        else
+          rm -f "$tmp"
+          die "$live_dir/settings.json is not valid JSON — tracked copy left untouched"
+        fi
       else
         note "settings.json  live file missing, skipped"
       fi
@@ -107,8 +121,8 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
 
     # --- status line ---
     if [ "$MODE" = "install" ]; then
-      cp "$repo_dir/$sl_name" "$live_dir/$sl_name"
-      chmod +x "$live_dir/$sl_name"
+      cp "$repo_dir/$sl_name" "$live_dir/$sl_name" || die "cannot write $live_dir/$sl_name"
+      chmod +x "$live_dir/$sl_name" || die "cannot chmod $live_dir/$sl_name"
       note "$sl_name"
     elif ! diff -q "$repo_dir/$sl_name" "$live_dir/$sl_name" > /dev/null; then
       differ "$sl_name"
@@ -118,7 +132,7 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
 
     # --- CLAUDE.md ---
     if [ "$MODE" = "install" ]; then
-      cp CLAUDE.md "$live_dir/CLAUDE.md"
+      cp CLAUDE.md "$live_dir/CLAUDE.md" || die "cannot write $live_dir/CLAUDE.md"
       note "CLAUDE.md"
     elif ! diff -q CLAUDE.md "$live_dir/CLAUDE.md" > /dev/null; then
       differ "CLAUDE.md"
@@ -131,8 +145,13 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
     for s in $(skills_for "$skillset"); do
       name=$(basename "$s")
       if [ "$MODE" = "install" ]; then
-        mkdir -p "$live_dir/skills"
-        cp -R "$s" "$live_dir/skills/"
+        mkdir -p "$live_dir/skills" || die "cannot create $live_dir/skills"
+        # cp -R overlays, so a file deleted from a tracked skill would survive
+        # here and --check would report that skill as drifted forever.
+        rm -rf "${live_dir:?}/skills/$name"
+        # ${s%/} strips the glob's trailing slash: with it, BSD cp copies the
+        # directory *contents* into skills/ instead of the directory itself.
+        cp -R "${s%/}" "$live_dir/skills/" || die "cannot copy skill $name"
       elif ! diff -rq "$s" "$live_dir/skills/$name" > /dev/null; then
         missing="$missing $name"
       fi
@@ -154,9 +173,9 @@ done <<< "$PROFILES"
 if [ "$MODE" != "pull" ]; then
   echo "shared"
   if [ "$MODE" = "install" ]; then
-    mkdir -p "$(dirname "$TAB_SCRIPT_DST")"
-    cp "$TAB_SCRIPT_SRC" "$TAB_SCRIPT_DST"
-    chmod +x "$TAB_SCRIPT_DST"
+    mkdir -p "$(dirname "$TAB_SCRIPT_DST")" || die "cannot create $(dirname "$TAB_SCRIPT_DST")"
+    cp "$TAB_SCRIPT_SRC" "$TAB_SCRIPT_DST" || die "cannot write $TAB_SCRIPT_DST"
+    chmod +x "$TAB_SCRIPT_DST" || die "cannot chmod $TAB_SCRIPT_DST"
     note "${TAB_SCRIPT_DST/#$HOME/\~}"
   elif [ ! -f "$TAB_SCRIPT_DST" ]; then
     differ "${TAB_SCRIPT_DST/#$HOME/\~} missing"
