@@ -10,6 +10,9 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
+├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
+│   ├── statusline-command.sh              #   router -> delegates to the right account script
+│   └── settings.json                      #   sanitized — see note below
 ├── claude-personal/                       # Deployed copy of ~/.claude-personal
 │   ├── statusline.sh                      #   PERSONAL variant (cyan label)
 │   └── settings.json                      #   sanitized — see note below
@@ -346,12 +349,21 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
 
 ### Account settings
 
-`claude-personal/settings.json`, `claude-work/settings.json`, and `claude-dev/settings.json` are copies of the live files from each account directory.
+`claude/settings.json`, `claude-personal/settings.json`, `claude-work/settings.json`, and `claude-dev/settings.json` are copies of the live files from each account directory.
+
+`claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
+
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 287-line template to keep in sync.
+
+```bash
+cp claude/statusline-command.sh ~/.claude/statusline-command.sh
+```
 
 > **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own.
 
 Restore with:
 ```bash
+cp claude/settings.json          ~/.claude/settings.json
 cp claude-personal/settings.json ~/.claude-personal/settings.json
 cp claude-work/settings.json     ~/.claude-work/settings.json
 cp claude-dev/settings.json      ~/.claude-dev/settings.json

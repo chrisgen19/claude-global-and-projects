@@ -1,0 +1,183 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh activity claude_code",
+            "statusMessage": "vibemon: activity"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh bash claude_code",
+            "statusMessage": "vibemon: bash"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
+            "statusMessage": "vibemon: prompt"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh stop claude_code",
+            "statusMessage": "vibemon: stop"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
+            "async": true,
+            "statusMessage": "tab status: done"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh permission claude_code",
+            "statusMessage": "vibemon: permission"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
+            "statusMessage": "vibemon: session_start"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh session_end claude_code",
+            "statusMessage": "vibemon: session_end"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure"
+          }
+        ]
+      }
+    ]
+  },
+  "footerLinksRegexes": [
+    {
+      "type": "regex",
+      "pattern": "https?://localhost:(?<port>\\d{2,5})",
+      "url": "http://localhost:{port}",
+      "label": "localhost:{port}"
+    },
+    {
+      "type": "regex",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
+      "label": "run {id}"
+    }
+  ]
+}
