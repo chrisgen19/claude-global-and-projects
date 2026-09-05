@@ -3,31 +3,7 @@
     "commit": "",
     "pr": ""
   },
-  "model": "claude-opus-5[1m]",
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude-personal/statusline.sh",
-    "refreshInterval": 60
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "figma@claude-plugins-official": true,
-    "modern-web-guidance@googlechrome": true,
-    "atlassian@claude-plugins-official": true,
-    "vercel@claude-plugins-official": true
-  },
-  "extraKnownMarketplaces": {
-    "googlechrome": {
-      "source": {
-        "source": "github",
-        "repo": "GoogleChrome/modern-web-guidance"
-      }
-    }
-  },
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
-  "tui": "fullscreen",
+  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
@@ -187,6 +163,19 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude-personal/statusline.sh",
+    "refreshInterval": 60
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true
+  },
+  "effortLevel": "xhigh",
+  "tui": "fullscreen",
+  "agentPushNotifEnabled": true,
   "footerLinksRegexes": [
     {
       "type": "regex",
@@ -236,5 +225,6 @@
       "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
       "label": "run {id}"
     }
-  ]
+  ],
+  "terminalProgressBarEnabled": true
 }

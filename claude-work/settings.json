@@ -4,22 +4,6 @@
     "pr": ""
   },
   "model": "opus[1m]",
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude-work/statusline.sh",
-    "refreshInterval": 60
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "vercel@claude-plugins-official": true,
-    "figma@claude-plugins-official": true
-  },
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
-  "tui": "fullscreen",
-  "skipDangerousModePermissionPrompt": true,
   "hooks": {
     "PostToolUse": [
       {
@@ -179,6 +163,22 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude-work/statusline.sh",
+    "refreshInterval": 60
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true
+  },
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "agentPushNotifEnabled": true,
   "footerLinksRegexes": [
     {
       "type": "regex",
@@ -228,5 +228,6 @@
       "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
       "label": "run {id}"
     }
-  ]
+  ],
+  "terminalProgressBarEnabled": true
 }

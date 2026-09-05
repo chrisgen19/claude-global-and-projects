@@ -10,6 +10,9 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
+├── install.sh                              # deploy repo -> live profiles, or --check for drift
+├── windows/                                # portable subset for a Windows machine
+│   └── settings.json                       #   no hooks, no bash-dependent status line
 ├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
 │   ├── statusline-command.sh              #   router -> delegates to the right account script
 │   └── settings.json                      #   sanitized — see note below
@@ -366,6 +369,62 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
 - For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
+
+### Install and drift check
+
+The copy commands throughout this README are the manual equivalent of `install.sh`.
+They are easy to run partially — which is exactly how the default `~/.claude` profile
+ended up untracked, with an empty `CLAUDE.md` and one of the eight skills.
+
+```bash
+./install.sh            # deploy repo -> ~/.claude, ~/.claude-{dev,personal,work}, ~/.local/bin
+./install.sh --check    # report where the live profiles differ; exit 1 on drift
+./install.sh --pull     # copy live settings back into the repo (autoMode stripped)
+```
+
+**Direction matters.** Deploying a stale repo silently reverts real live state — a plugin
+enabled since the last commit, an effort level raised in `/config`, a pinned model. Always
+`--check` first: if a difference is something you changed live, `--pull` it into the repo
+rather than deploying over it. Deploys back up the previous `settings.json` as
+`settings.json.bak-<timestamp>` either way.
+
+Only `settings.json` flows in both directions. `CLAUDE.md`, the skills, the status lines
+and the shared tab script are generated from the repo, so `--pull` leaves them alone.
+
+`--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
+the shared `claude-iterm-tab-status.sh`. Settings are compared with sorted keys and with
+`autoMode` removed, so formatting noise and the deliberately stripped block never read as
+drift. Run it before editing a live file by hand, and after.
+
+`install.sh` covers macOS and Linux. The Windows profile is copied by hand — see below.
+
+### Windows
+
+Most of this setup is macOS-specific, and the split is not obvious from the settings file:
+
+| Key | Windows |
+|-----|---------|
+| `footerLinksRegexes` | works — Claude Code renders the footer itself, no shell or terminal codes |
+| `attribution`, `model`, `theme`, `tui`, `effortLevel`, `terminalProgressBarEnabled` | work — plain config values |
+| `statusLine` | needs Git Bash, and the script uses `ps` and `stat` |
+| `hooks` | **do not copy** |
+
+The `hooks` block is the trap. On Windows, Claude Code runs hooks through PowerShell
+unless Git Bash is installed, and every command in this repo's hooks begins with `bash`.
+Without Git Bash each one fails on every prompt, tool call and session start. The iTerm2
+tab script would exit cleanly on its own (it checks `$TERM_PROGRAM`), but only after
+`bash` resolves.
+
+`windows/settings.json` is that portable subset — the badges and plain config values, no
+hooks and no status line. Copy it to `%USERPROFILE%\.claude\settings.json`.
+
+`terminalProgressBarEnabled` is the closest cross-platform stand-in for the iTerm2 tab
+indicator: Claude Code emits `OSC 9;4` in-process, which Windows Terminal renders as
+taskbar progress. It sidesteps the detached-terminal problem entirely, so it works where
+the tab script cannot.
+
+> The badge ports come from this machine's projects. Run the port scan from the iTerm2
+> section on the Windows box and add whatever it finds.
 
 ### Account settings
 
