@@ -103,9 +103,45 @@
   "footerLinksRegexes": [
     {
       "type": "regex",
-      "pattern": "https?://localhost:(?<port>\\d{2,5})",
-      "url": "http://localhost:{port}",
-      "label": "localhost:{port}"
+      "pattern": "http://localhost:3000\\b",
+      "url": "http://localhost:3000",
+      "label": "localhost:3000"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3001\\b",
+      "url": "http://localhost:3001",
+      "label": "localhost:3001"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3020\\b",
+      "url": "http://localhost:3020",
+      "label": "localhost:3020"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3111\\b",
+      "url": "http://localhost:3111",
+      "label": "localhost:3111"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3821\\b",
+      "url": "http://localhost:3821",
+      "label": "localhost:3821"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:5173\\b",
+      "url": "http://localhost:5173",
+      "label": "localhost:5173"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:8080\\b",
+      "url": "http://localhost:8080",
+      "label": "localhost:8080"
     },
     {
       "type": "regex",

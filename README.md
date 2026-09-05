@@ -343,6 +343,26 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   ignores them silently, and there is no writable pty device to target there anyway. The
   script exits cleanly when `$TERM_PROGRAM` is not `iTerm.app`, so it is harmless to
   install everywhere.
+- Footer link badges (`footerLinksRegexes` in each account's `settings.json`) turn matched
+  IDs in turn output into clickable badges: a dev-server URL, or a GitHub Actions run.
+  The URL template's **origin must be literal** — a capture group in the host or port is
+  accepted at load but silently never renders, so the localhost entries are one fixed
+  port each rather than a `{port}` placeholder. Placeholders in the *path* are fine,
+  which is why the Actions entry keeps `{owner}`, `{repo}` and `{id}`. At most 5 badges
+  render at once, oldest displaced, and `/clear` wipes them.
+- The cost of a literal origin is that **every port needs its own entry**. The list covers
+  3000/3001 (Next.js default and fallback), 5173 (Vite), 8080, and the ports pinned in
+  individual projects — 3020, 3111, 3821. A project on an unlisted port simply gets no
+  badge, so add one when you pin a new port:
+
+  ```bash
+  grep -h '"dev":' */package.json | grep -oE '\-\-?p(ort)?[= ]*[0-9]{2,5}'
+  ```
+
+  The entries are `http://` only, since nothing here serves dev over HTTPS. If you ever
+  enable it (`next dev --experimental-https`), the badge will silently not appear — add
+  an `https://` twin of the entry for that port, with an `https://` destination too, since
+  a literal origin cannot cover both schemes.
 - For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
