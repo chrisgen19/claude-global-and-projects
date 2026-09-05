@@ -297,9 +297,21 @@ The orange pulse is a detached background loop, tracked by a pidfile keyed to th
   constantly. A repeat call finds the running animation and returns immediately rather
   than stacking a second one. That is also what restores orange after you approve a
   permission prompt, since there is no "permission granted" event to hook.
-- **The animation cannot outlive its session.** Every ~2s it re-checks that it still owns
-  the pidfile, that the tty still exists, and that the `claude` process is alive, plus a
-  hard iteration cap as a backstop.
+  Two hooks *can* still race past that check and both spawn a loop, so ownership of the
+  pidfile is re-tested every frame using shell builtins only (no fork): the loser exits
+  within one 0.15s tick rather than fighting for the tab.
+- **Every transition claims the tab** by writing its pid to a generation file, and the
+  `done` blink re-checks that claim before each write. Since `Stop` runs asynchronously,
+  its ~1.8s animation would otherwise keep painting after a new prompt or a `SessionEnd`
+  had already moved on, leaving a green tab over a session that is actually working.
+  A superseded blink now aborts mid-animation.
+- **A pid is never signalled without confirming what it is.** Pidfiles can outlive their
+  animation (the `claude` process died, the tty vanished, the iteration cap hit) and the
+  OS reuses pids, so `kill` is gated on the target's command line actually being one of
+  these animation processes. A self-exiting loop also clears its own pidfile, but only
+  while it still owns it.
+- **The animation cannot outlive its session.** Every ~2s it re-checks that the tty still
+  exists and the `claude` process is alive, plus a hard iteration cap as a backstop.
 - **Accounts in different tabs never collide**, because state is keyed by tty name.
 - A state file stops Claude Code's 60-second idle `Notification` from flipping a finished
   green tab to red — `waiting` is ignored when the state is already `done`.

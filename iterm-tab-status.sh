@@ -6,7 +6,7 @@
 #   done     -> tab blinks green x4, then stays green + one dock bounce
 #   reset    -> clears tab color, badge and any running animation
 #
-# Wired up from the hooks block in ~/.claude/settings.json.
+# Wired up from the hooks block in each account's settings.json.
 set -u
 
 # Only meaningful inside iTerm2.
@@ -46,6 +46,7 @@ DEV="/dev/$tty_name"
 RUN="${TMPDIR:-/tmp}"
 PIDFILE="$RUN/claude-tab-$tty_name.pid"
 STATEFILE="$RUN/claude-tab-$tty_name.state"
+GENFILE="$RUN/claude-tab-$tty_name.gen"
 
 # ps prints nothing (and no stderr) for a dead pid.
 alive()     { [ -n "$(ps -p "$1" -o pid=)" ]; }
@@ -58,12 +59,29 @@ badge()     { [ "$BADGE" = 1 ] || return 0
 set_state() { printf '%s' "$1" > "$STATEFILE"; }
 get_state() { local s=none; [ -f "$STATEFILE" ] && read -r s < "$STATEFILE"; printf '%s' "${s:-none}"; }
 
+# Every state transition claims the tab by writing its own pid. A long-running
+# animation re-checks the claim before each write and bails the moment a newer
+# transition has taken over, so a slow "done" blink can never repaint over a
+# "busy" or "reset" that landed while it was still running.
+claim()     { printf '%s' "$$" > "$GENFILE"; }
+current()   { local g=''; [ -f "$GENFILE" ] && read -r g < "$GENFILE"; [ "$g" = "$$" ]; }
+
 pulse_pid() { local p=''; [ -f "$PIDFILE" ] && read -r p < "$PIDFILE"; printf '%s' "$p"; }
+
+# A stale pidfile can outlive its animation (claude died, tty vanished, cap hit),
+# and the OS reuses pids. Never signal a pid without confirming it is one of our
+# own animation processes.
+is_pulse() {
+  case "$(ps -p "$1" -o command=)" in
+    *iterm-tab-status*__pulse*) return 0 ;;
+  esac
+  return 1
+}
 
 stop_pulse() {
   local p
   p=$(pulse_pid)
-  [ -n "$p" ] && alive "$p" && kill "$p"
+  [ -n "$p" ] && alive "$p" && is_pulse "$p" && kill "$p"
   rm -f "$PIDFILE"
   return 0
 }
@@ -81,20 +99,25 @@ case "${1:-reset}" in
       tabcolor $((120 + 135 * L / 100)) $((55 + 95 * L / 100)) $((20 * L / 100))
       sleep "$PULSE_DELAY"
       i=$((i + 1))
-      # Cheap checks only every ~2s: are we still the owning animation,
-      # does the tty still exist, is the claude process still alive?
+      # Ownership is a builtin-only check (no fork), so it runs every tick: two
+      # hooks racing to start an animation resolve within one frame.
+      [ "$(pulse_pid)" = "$$" ] || break
+      # The checks that cost a fork run every ~2s instead.
       if [ $((i % 14)) -eq 0 ]; then
-        [ "$(pulse_pid)" = "$$" ] || break
         [ -w "$DEV" ] || break
         if [ "$watch_pid" != 0 ] && ! alive "$watch_pid"; then break; fi
       fi
     done
+    # Only clear the pidfile if it is still ours, so we never delete the record
+    # of the animation that replaced us.
+    [ "$(pulse_pid)" = "$$" ] && rm -f "$PIDFILE"
     exit 0
     ;;
 
   busy)
+    claim
     p=$(pulse_pid)
-    if [ -n "$p" ] && alive "$p"; then
+    if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
       set_state busy       # already animating - nothing to do
       exit 0
     fi
@@ -113,6 +136,7 @@ case "${1:-reset}" in
   waiting)
     # Don't stomp on the green "done" tab when an idle notification fires.
     [ "$(get_state)" = "done" ] && exit 0
+    claim
     stop_pulse
     set_state waiting
     tabcolor 225 60 60
@@ -121,20 +145,25 @@ case "${1:-reset}" in
     ;;
 
   done)
+    claim
     stop_pulse
     set_state done
     i=0
-    while [ "$i" -lt "$BLINKS" ]; do
+    while [ "$i" -lt "$BLINKS" ] && current; do
       tabcolor 40 200 120; sleep "$BLINK_DELAY"
+      current || break
       tabreset;            sleep "$BLINK_DELAY"
       i=$((i + 1))
     done
-    tabcolor 40 200 120
-    attention once
-    badge 'done'
+    if current; then
+      tabcolor 40 200 120
+      attention once
+      badge 'done'
+    fi
     ;;
 
   *)
+    claim
     stop_pulse
     set_state none
     tabreset
