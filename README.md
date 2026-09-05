@@ -76,7 +76,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/nextjs-conventions`** — Personal Next.js conventions: App Router, strict TypeScript, Prisma, Better Auth, server actions, file layout
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 
-> `nextjs-conventions` is installed on the personal and dev accounts only. The other seven are on all three.
+> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other seven. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -372,6 +372,7 @@ cp claude-dev/settings.json      ~/.claude-dev/settings.json
 ### Global config
 The root `CLAUDE.md` contains shared preferences. Copy it to every account directory:
 ```bash
+cp CLAUDE.md ~/.claude/CLAUDE.md
 cp CLAUDE.md ~/.claude-personal/CLAUDE.md
 cp CLAUDE.md ~/.claude-work/CLAUDE.md
 cp CLAUDE.md ~/.claude-dev/CLAUDE.md
@@ -380,6 +381,7 @@ cp CLAUDE.md ~/.claude-dev/CLAUDE.md
 ### Global skills
 Copy skills to every account directory:
 ```bash
+cp -r .claude/skills/* ~/.claude/skills/
 cp -r .claude/skills/* ~/.claude-personal/skills/
 cp -r .claude/skills/* ~/.claude-dev/skills/
 
