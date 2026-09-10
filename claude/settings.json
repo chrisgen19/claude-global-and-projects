@@ -3,123 +3,164 @@
     "commit": "",
     "pr": ""
   },
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/statusline-command.sh",
-    "refreshInterval": 60
-  },
+  "footerLinksRegexes": [
+    {
+      "label": "localhost:3000",
+      "pattern": "http://localhost:3000\\b",
+      "type": "regex",
+      "url": "http://localhost:3000"
+    },
+    {
+      "label": "localhost:3001",
+      "pattern": "http://localhost:3001\\b",
+      "type": "regex",
+      "url": "http://localhost:3001"
+    },
+    {
+      "label": "localhost:3020",
+      "pattern": "http://localhost:3020\\b",
+      "type": "regex",
+      "url": "http://localhost:3020"
+    },
+    {
+      "label": "localhost:3111",
+      "pattern": "http://localhost:3111\\b",
+      "type": "regex",
+      "url": "http://localhost:3111"
+    },
+    {
+      "label": "localhost:3821",
+      "pattern": "http://localhost:3821\\b",
+      "type": "regex",
+      "url": "http://localhost:3821"
+    },
+    {
+      "label": "localhost:5173",
+      "pattern": "http://localhost:5173\\b",
+      "type": "regex",
+      "url": "http://localhost:5173"
+    },
+    {
+      "label": "localhost:8080",
+      "pattern": "http://localhost:8080\\b",
+      "type": "regex",
+      "url": "http://localhost:8080"
+    },
+    {
+      "label": "run {id}",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "type": "regex",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}"
+    }
+  ],
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|NotebookEdit|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh activity claude_code",
-            "statusMessage": "vibemon: activity"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh bash claude_code",
-            "statusMessage": "vibemon: bash"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
-            "statusMessage": "vibemon: prompt"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh stop claude_code",
-            "statusMessage": "vibemon: stop"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true,
-            "statusMessage": "tab status: done"
-          }
-        ]
-      }
-    ],
     "Notification": [
       {
-        "matcher": "permission_prompt",
         "hooks": [
           {
-            "type": "command",
             "command": "bash ~/.vibemon/notify.sh permission claude_code",
-            "statusMessage": "vibemon: permission"
+            "statusMessage": "vibemon: permission",
+            "type": "command"
+          }
+        ],
+        "matcher": "permission_prompt"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting",
+            "type": "command"
           }
         ]
       },
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
-            "statusMessage": "tab status: waiting"
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
           }
         ]
       }
     ],
-    "SessionStart": [
+    "PermissionRequest": [
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
-            "statusMessage": "vibemon: session_start"
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh activity claude_code",
+            "statusMessage": "vibemon: activity",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|NotebookEdit|Task"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh bash claude_code",
+            "statusMessage": "vibemon: bash",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "statusMessage": "tab status: busy",
+            "type": "command"
           }
         ]
       },
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
-            "statusMessage": "tab status: reset"
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|NotebookEdit|Task"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "statusMessage": "vibemon: tool_failure",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
           }
         ]
       }
@@ -128,94 +169,141 @@
       {
         "hooks": [
           {
-            "type": "command",
             "command": "bash ~/.vibemon/notify.sh session_end claude_code",
-            "statusMessage": "vibemon: session_end"
+            "statusMessage": "vibemon: session_end",
+            "type": "command"
           }
         ]
       },
       {
         "hooks": [
           {
-            "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
-            "statusMessage": "tab status: reset"
+            "statusMessage": "tab status: reset",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
           }
         ]
       }
     ],
-    "PostToolUseFailure": [
+    "SessionStart": [
       {
-        "matcher": "Edit|Write|NotebookEdit|Task",
         "hooks": [
           {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
-            "statusMessage": "vibemon: tool_failure"
+            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
+            "statusMessage": "vibemon: session_start",
+            "type": "command"
           }
         ]
       },
       {
-        "matcher": "Bash",
         "hooks": [
           {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
-            "statusMessage": "vibemon: tool_failure"
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh stop claude_code",
+            "statusMessage": "vibemon: stop",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
+            "statusMessage": "tab status: done",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
+            "statusMessage": "vibemon: prompt",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "statusMessage": "tab status: busy",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
+            "type": "command"
           }
         ]
       }
     ]
   },
-  "footerLinksRegexes": [
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3000\\b",
-      "url": "http://localhost:3000",
-      "label": "localhost:3000"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3001\\b",
-      "url": "http://localhost:3001",
-      "label": "localhost:3001"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3020\\b",
-      "url": "http://localhost:3020",
-      "label": "localhost:3020"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3111\\b",
-      "url": "http://localhost:3111",
-      "label": "localhost:3111"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3821\\b",
-      "url": "http://localhost:3821",
-      "label": "localhost:3821"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:5173\\b",
-      "url": "http://localhost:5173",
-      "label": "localhost:5173"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:8080\\b",
-      "url": "http://localhost:8080",
-      "label": "localhost:8080"
-    },
-    {
-      "type": "regex",
-      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
-      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
-      "label": "run {id}"
-    }
-  ],
+  "statusLine": {
+    "command": "bash ~/.claude/statusline-command.sh",
+    "refreshInterval": 60,
+    "type": "command"
+  },
   "terminalProgressBarEnabled": true
 }

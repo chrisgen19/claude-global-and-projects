@@ -4,32 +4,6 @@
     "pr": ""
   },
   "model": "claude-opus-5[1m]",
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude-dev/statusline.sh",
-    "refreshInterval": 60
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "figma@claude-plugins-official": true,
-    "modern-web-guidance@googlechrome": true,
-    "atlassian@claude-plugins-official": true,
-    "vercel@claude-plugins-official": true
-  },
-  "extraKnownMarketplaces": {
-    "googlechrome": {
-      "source": {
-        "source": "github",
-        "repo": "GoogleChrome/modern-web-guidance"
-      }
-    }
-  },
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "high",
-  "tui": "fullscreen",
-  "theme": "dark",
-  "agentPushNotifEnabled": true,
   "hooks": {
     "PostToolUse": [
       {
@@ -37,8 +11,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -49,8 +31,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -64,6 +54,14 @@
             "statusMessage": "tab status: waiting"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -72,8 +70,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true,
-            "statusMessage": "tab status: done"
+            "statusMessage": "tab status: done",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -87,6 +93,14 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -98,8 +112,61 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude-dev/statusline.sh",
+    "refreshInterval": 60
   },
   "footerLinksRegexes": [
     {
@@ -151,5 +218,26 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "modern-web-guidance@googlechrome": true,
+    "atlassian@claude-plugins-official": true,
+    "vercel@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "googlechrome": {
+      "source": {
+        "source": "github",
+        "repo": "GoogleChrome/modern-web-guidance"
+      }
+    }
+  },
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "theme": "dark",
+  "terminalProgressBarEnabled": true,
+  "agentPushNotifEnabled": true
 }
