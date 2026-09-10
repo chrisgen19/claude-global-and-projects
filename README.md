@@ -401,6 +401,42 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
 
+### iTerm2 Claude Code integration
+
+iTerm2 3.7 detects Claude Code sessions natively and shows their state (`working`,
+`waiting`, `idle`) in the **Session Status** toolbelt tool and under the tab title.
+It is driven by a `cc-status` hook, not escape codes — it talks to iTerm2 over a unix
+socket, so unlike the tab-colour script above it cannot collide with the TUI's own
+writes to the pty.
+
+Turn it on with iTerm2's setup wizard, which also installs a **Workgroup** pairing a
+Claude session with a diff pane and a code-review pane. Open the toolbelt with `⌘⇧B`
+to see the status list; **Settings > Arrangements > Workgroups** to customise the
+panes; **iTerm2 > Uninstall Claude Code Integration** to reverse the lot.
+
+#### Why the hook is tracked here
+
+The wizard writes its hook to `~/.claude/settings.json` only — it has no idea
+`CLAUDE_CONFIG_DIR` exists. With the multi-account setup above that file is never
+read as user settings, so the integration appears to do nothing: status shows up
+only in sessions whose working directory happens to make `~/.claude/settings.json`
+the *project* settings file. All four account files therefore carry the hook.
+
+It is rewritten from the wizard's absolute path to a guarded form:
+
+```
+[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status
+```
+
+`~` drops the hardcoded username, and the guard makes it a clean no-op (exit 0) on
+any machine without iTerm2 — Linux and WSL included. Unguarded, the missing binary
+exits 127 and reports a failed hook on all ten events. `exec` preserves stdin, so
+the hook still receives its JSON payload.
+
+Because these are tracked, `install.sh` will restore them — including after an
+**Uninstall Claude Code Integration**, which only cleans `~/.claude/settings.json`.
+Remove them from the four tracked files as well if you want the uninstall to stick.
+
 ### Install and drift check
 
 The copy commands throughout this README are the manual equivalent of `install.sh`.
