@@ -340,6 +340,19 @@ At the top of the script:
 
 Colours are the `tabcolor r g b` calls in each branch of the `case`.
 
+| State | RGB | Contrast vs white tab text |
+|-------|-----|----------------------------|
+| Working | `178, 98, 0` | 4.53:1 |
+| Needs input | `218, 58, 58` | 4.52:1 |
+| Finished | `27, 134, 80` | 4.59:1 |
+
+> **Keep these dark.** iTerm2 draws the tab label in light text, so a mid-bright
+> fill leaves the label unreadable sitting on top of it. The original values
+> (`255,140,0` and `40,200,120`) measured 2.33:1 and 2.18:1 — bright enough to
+> require dark text, against a terminal drawing light text. Every colour above
+> clears the 4.5:1 WCAG AA threshold, and the `PULSE=1` ramp is scaled so even
+> its brightest frame lands exactly on the steady Working colour.
+
 > **Do not turn `PULSE` back on.** The animation repaints the tab every
 > `PULSE_DELAY` (0.15s) by writing an OSC sequence straight into `/dev/ttysNNN`,
 > from a process with no coordination with Claude Code — which is rendering a

@@ -50,6 +50,9 @@ GENFILE="$RUN/claude-tab-$tty_name.gen"
 
 # ps prints nothing (and no stderr) for a dead pid.
 alive()     { [ -n "$(ps -p "$1" -o pid=)" ]; }
+# Tab colours are deliberately dark: iTerm2 draws the tab label in light text,
+# so a mid-bright fill leaves the label unreadable against it. Every colour below
+# clears 4.5:1 against white. Do not brighten them - see README.
 tabcolor()  { printf '\033]6;1;bg;red;brightness;%s\007\033]6;1;bg;green;brightness;%s\007\033]6;1;bg;blue;brightness;%s\007' \
                 "$1" "$2" "$3" > "$DEV"; }
 tabreset()  { printf '\033]6;1;bg;*;default\007' > "$DEV"; }
@@ -101,7 +104,7 @@ case "${1:-reset}" in
     i=0
     while [ "$i" -lt "$MAX_PULSE_ITERS" ]; do
       L=${levels[$((i % n))]}
-      tabcolor $((120 + 135 * L / 100)) $((55 + 95 * L / 100)) $((20 * L / 100))
+      tabcolor $((84 + 94 * L / 100)) $((38 + 60 * L / 100)) 0
       sleep "$PULSE_DELAY"
       i=$((i + 1))
       # Ownership is a builtin-only check (no fork), so it runs every tick: two
@@ -145,7 +148,7 @@ case "${1:-reset}" in
       CLAUDE_TAB_TTY="$tty_name" "$0" __pulse "${claude_pid:-0}" > /dev/null &
       printf '%s' "$!" > "$PIDFILE"
     else
-      tabcolor 255 140 0
+      tabcolor 178 98 0
     fi
     ;;
 
@@ -155,7 +158,7 @@ case "${1:-reset}" in
     claim
     stop_pulse
     set_state waiting
-    tabcolor 225 60 60
+    tabcolor 218 58 58
     attention yes
     badge 'input?'
     ;;
@@ -176,13 +179,13 @@ case "${1:-reset}" in
     set_state "done"
     i=0
     while [ "$i" -lt "$BLINKS" ] && current; do
-      tabcolor 40 200 120; sleep "$BLINK_DELAY"
+      tabcolor 27 134 80; sleep "$BLINK_DELAY"
       current || break
       tabreset;            sleep "$BLINK_DELAY"
       i=$((i + 1))
     done
     if current; then
-      tabcolor 40 200 120
+      tabcolor 27 134 80
       attention once
       badge 'done'
     fi
