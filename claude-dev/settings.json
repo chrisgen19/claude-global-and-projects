@@ -51,6 +51,14 @@
             "statusMessage": "tab status: busy"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -73,6 +81,14 @@
             "statusMessage": "tab status: busy"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -91,6 +107,14 @@
             "type": "command",
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh waiting",
             "statusMessage": "tab status: waiting"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -115,6 +139,14 @@
             "statusMessage": "tab status: done"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "StopFailure": [
@@ -133,6 +165,14 @@
             "type": "command",
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset",
             "statusMessage": "tab status: reset"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -155,6 +195,14 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -175,6 +223,14 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -185,6 +241,34 @@
             "type": "command",
             "command": "bash ~/.local/bin/prisma-prod-guard",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
