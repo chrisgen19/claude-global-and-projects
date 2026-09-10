@@ -233,7 +233,7 @@ of several tabs still needs you. Driven entirely by hooks — no polling, no dae
 
 | State | Tab | Fired by |
 |-------|-----|----------|
-| Working | pulses orange (breathing, ~2s cycle) | `UserPromptSubmit`, `PostToolUse` |
+| Working | steady orange (`PULSE=1` for the breathing animation) | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, dock bounces until focused, `input?` badge | `Notification` |
 | Finished | blinks green x4 then stays green, one dock bounce, `done` badge | `Stop` |
 | Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd` |
@@ -333,12 +333,26 @@ At the top of the script:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `PULSE` | `1` | `0` = steady orange instead of the breathing animation |
+| `PULSE` | `0` | `1` = breathing orange animation instead of steady orange — see warning below |
 | `BADGE` | `1` | `0` = no translucent in-pane badge |
 | `BLINKS` | `4` | Green blink cycles on completion |
 | `BLINK_DELAY` / `PULSE_DELAY` | `0.22` / `0.15` | Animation timing, seconds |
 
 Colours are the `tabcolor r g b` calls in each branch of the `case`.
+
+> **Do not turn `PULSE` back on.** The animation repaints the tab every
+> `PULSE_DELAY` (0.15s) by writing an OSC sequence straight into `/dev/ttysNNN`,
+> from a process with no coordination with Claude Code — which is rendering a
+> fullscreen TUI (and, with `terminalProgressBarEnabled`, its own OSC progress
+> sequences) to that same pty. Roughly 7 times a second, a pulse write can land
+> mid-sequence; the pulse's leading `ESC` is then swallowed by the unterminated
+> sequence and iTerm2 prints the payload as literal text at the cursor — i.e.
+> `6;1;bg;red;brightness;136` appears typed into the prompt input box. The `136`
+> identifies the frame: `120 + 135*L/100` for `L=12`.
+>
+> `PULSE=0` reduces this to one write per state transition. The remaining window
+> is the `done` blink (`BLINKS` x 2 writes); set `BLINKS=0` if a green-channel
+> value (`40` / `200` / `120`) ever leaks.
 
 #### Notes
 

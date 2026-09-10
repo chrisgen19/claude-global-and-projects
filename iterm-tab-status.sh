@@ -13,7 +13,7 @@ set -u
 [ "${TERM_PROGRAM:-}" = "iTerm.app" ] || exit 0
 
 BADGE=1              # 0 = no translucent in-pane badge
-PULSE=1              # 0 = steady orange instead of the breathing animation
+PULSE=0              # 1 = breathing animation - racy, corrupts the TUI (see README)
 BLINKS=4             # blink cycles for "done"
 BLINK_DELAY=0.22
 PULSE_DELAY=0.15
@@ -122,9 +122,20 @@ case "${1:-reset}" in
   busy)
     claim
     p=$(pulse_pid)
-    if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
-      set_state busy       # already animating - nothing to do
-      exit 0
+    if [ "$PULSE" = 1 ]; then
+      if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
+        set_state busy       # already animating - nothing to do
+        exit 0
+      fi
+    else
+      # A pulse left over from a previous PULSE=1 install is still writing ~7x
+      # a second. claim() cannot stop it: the loop's ownership check reads
+      # PIDFILE, not GENFILE. Kill it explicitly before painting.
+      kill_pulse "$p"
+      # busy fires on every PostToolUse, so without this guard the tab would be
+      # repainted at every tool call - straight into the pty Claude Code is
+      # rendering to. Only repaint on a real state transition.
+      [ "$(get_state)" = busy ] && exit 0
     fi
     set_state busy
     attention no
