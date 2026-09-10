@@ -359,13 +359,17 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
 > fullscreen TUI (and, with `terminalProgressBarEnabled`, its own OSC progress
 > sequences) to that same pty. Roughly 7 times a second, a pulse write can land
 > mid-sequence; the pulse's leading `ESC` is then swallowed by the unterminated
-> sequence and iTerm2 prints the payload as literal text at the cursor — i.e.
-> `6;1;bg;red;brightness;136` appears typed into the prompt input box. The `136`
-> identifies the frame: `120 + 135*L/100` for `L=12`.
+> sequence and iTerm2 prints the payload as literal text at the cursor — a
+> fragment like `6;1;bg;red;brightness;178` appears typed into the prompt input
+> box.
 >
-> `PULSE=0` reduces this to one write per state transition. The remaining window
-> is the `done` blink (`BLINKS` x 2 writes); set `BLINKS=0` if a green-channel
-> value (`40` / `200` / `120`) ever leaks.
+> `PULSE=0` reduces this to one write per state transition. If a fragment does
+> leak, the value names the state that wrote it: `178`/`98`/`0` Working,
+> `218`/`58`/`58` Needs input, `27`/`134`/`80` Finished. The last comes from the
+> `done` blink (`BLINKS` x 2 writes) — set `BLINKS=0` if you see it. Under
+> `PULSE=1` the fragment instead carries a ramp frame from `84 + 94*L/100`
+> (red 84–178). The original incident, before the colours were darkened, showed
+> `136` — frame `L=12` of the old `120 + 135*L/100` ramp.
 
 #### Notes
 
