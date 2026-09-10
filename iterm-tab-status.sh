@@ -122,9 +122,20 @@ case "${1:-reset}" in
   busy)
     claim
     p=$(pulse_pid)
-    if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
-      set_state busy       # already animating - nothing to do
-      exit 0
+    if [ "$PULSE" = 1 ]; then
+      if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
+        set_state busy       # already animating - nothing to do
+        exit 0
+      fi
+    else
+      # A pulse left over from a previous PULSE=1 install is still writing ~7x
+      # a second. claim() cannot stop it: the loop's ownership check reads
+      # PIDFILE, not GENFILE. Kill it explicitly before painting.
+      kill_pulse "$p"
+      # busy fires on every PostToolUse, so without this guard the tab would be
+      # repainted at every tool call - straight into the pty Claude Code is
+      # rendering to. Only repaint on a real state transition.
+      [ "$(get_state)" = busy ] && exit 0
     fi
     set_state busy
     attention no

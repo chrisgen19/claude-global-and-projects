@@ -233,7 +233,7 @@ of several tabs still needs you. Driven entirely by hooks — no polling, no dae
 
 | State | Tab | Fired by |
 |-------|-----|----------|
-| Working | pulses orange (breathing, ~2s cycle) | `UserPromptSubmit`, `PostToolUse` |
+| Working | steady orange (`PULSE=1` for the breathing animation) | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, dock bounces until focused, `input?` badge | `Notification` |
 | Finished | blinks green x4 then stays green, one dock bounce, `done` badge | `Stop` |
 | Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd` |
