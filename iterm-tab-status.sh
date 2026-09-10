@@ -13,7 +13,7 @@ set -u
 [ "${TERM_PROGRAM:-}" = "iTerm.app" ] || exit 0
 
 BADGE=1              # 0 = no translucent in-pane badge
-PULSE=1              # 0 = steady orange instead of the breathing animation
+PULSE=0              # 1 = breathing animation - racy, corrupts the TUI (see README)
 BLINKS=4             # blink cycles for "done"
 BLINK_DELAY=0.22
 PULSE_DELAY=0.15
