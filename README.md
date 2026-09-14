@@ -482,7 +482,22 @@ Restore with:
 cp codex/config.toml ~/.codex/config.toml
 ```
 
-Merge rather than overwrite if you already have trusted projects locally, otherwise you will re-approve each directory on next use.
+That overwrites the file, so any directory you had already trusted has to be re-approved on next use. To keep them, merge instead - the repo config first, then the live `[projects.*]` tables appended back:
+
+```bash
+cp ~/.codex/config.toml ~/.codex/config.toml.bak
+{ cat codex/config.toml
+  echo
+  awk '/^\[/ { keep = /^\[projects\./ } keep' ~/.codex/config.toml.bak
+} > ~/.codex/config.toml
+```
+
+The `awk` keeps a line only while the most recent table header was a `[projects."..."]` one, so the trust entries come back and nothing else does. Order matters: the repo config has to come first, since every line after a table header belongs to that table.
+
+Check the result before trusting it:
+```bash
+python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", list(d))'
+```
 
 ### Account settings
 
