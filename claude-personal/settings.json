@@ -31,8 +31,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -52,8 +60,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -73,8 +89,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true,
-            "statusMessage": "tab status: done"
+            "statusMessage": "tab status: done",
+            "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -98,6 +122,14 @@
             "statusMessage": "tab status: waiting"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -118,6 +150,14 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -136,6 +176,14 @@
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
             "statusMessage": "tab status: reset"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
       }
@@ -161,6 +209,46 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -168,14 +256,6 @@
     "command": "bash ~/.claude-personal/statusline.sh",
     "refreshInterval": 60
   },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true
-  },
-  "effortLevel": "xhigh",
-  "tui": "fullscreen",
-  "agentPushNotifEnabled": true,
   "footerLinksRegexes": [
     {
       "type": "regex",
@@ -226,5 +306,13 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true
+  },
+  "effortLevel": "xhigh",
+  "tui": "fullscreen",
+  "terminalProgressBarEnabled": true,
+  "agentPushNotifEnabled": true
 }
