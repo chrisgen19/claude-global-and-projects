@@ -25,6 +25,8 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── claude-dev/                            # Deployed copy of ~/.claude-dev
 │   ├── statusline.sh                      #   DEV variant (green label)
 │   └── settings.json                      #   sanitized — see note below
+├── codex/
+│   └── config.toml                        # Codex CLI config + TUI status line
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -456,6 +458,31 @@ the tab script cannot.
 
 > The badge ports come from this machine's projects. Run the port scan from the iTerm2
 > section on the Windows box and add whatever it finds.
+
+### Codex config (`codex/`)
+
+`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, the TUI status line segments, and the Atlassian MCP server.
+
+```
+[tui]
+status_line = [
+  "model-with-reasoning", "fast-mode", "codex-version",
+  "current-dir", "git-branch", "branch-changes", "pull-request-number",
+  "context-used", "context-remaining",
+  "five-hour-limit", "weekly-limit", "estimated-thread-cost",
+]
+```
+
+Segments render left to right and each one hides itself when its data is absent, so the line stays short outside a git repo or early in a session. It covers the same ground as the Claude status line - model and reasoning effort, git branch and dirty state, open PR, context usage, 5h/weekly limits, thread cost - but it is declarative config rather than a shell script, so there is nothing to keep in sync across accounts.
+
+> **Sanitized.** The `[projects."<path>"]` trust entries are stripped before committing - they are machine-specific and leak local client paths. Codex rewrites them on its own the first time you trust a directory, so restoring this file loses nothing permanent.
+
+Restore with:
+```bash
+cp codex/config.toml ~/.codex/config.toml
+```
+
+Merge rather than overwrite if you already have trusted projects locally, otherwise you will re-approve each directory on next use.
 
 ### Account settings
 
