@@ -39,6 +39,16 @@
             "statusMessage": "tab status: busy"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -56,6 +66,16 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
+            "async": true,
+            "statusMessage": "tab status: busy"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy",
             "async": true,
             "statusMessage": "tab status: busy"
           }
@@ -81,6 +101,16 @@
             "statusMessage": "tab status: done"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh done",
+            "async": true,
+            "statusMessage": "tab status: done"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -99,6 +129,15 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting",
+            "statusMessage": "tab status: waiting"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh waiting",
             "statusMessage": "tab status: waiting"
           }
         ]
@@ -122,6 +161,15 @@
             "statusMessage": "tab status: reset"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -139,6 +187,15 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset",
             "statusMessage": "tab status: reset"
           }
         ]

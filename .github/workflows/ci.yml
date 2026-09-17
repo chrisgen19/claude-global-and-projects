@@ -46,7 +46,7 @@ jobs:
           # SC2154 is excluded: statusline.sh builds _rl5/_rl7 through
           # `printf -v "$1"` indirection, which shellcheck cannot follow, so it
           # reports them as referenced-but-unassigned. Verified false positives.
-          shellcheck --severity=warning --exclude=SC2154 install.sh iterm-tab-status.sh \
+          shellcheck --severity=warning --exclude=SC2154 install.sh iterm-tab-status.sh wt-tab-status.sh \
             statusline.sh claude/statusline-command.sh claude*/statusline.sh
 
       # The three account status lines are generated from statusline.sh and
