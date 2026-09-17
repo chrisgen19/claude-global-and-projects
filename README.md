@@ -10,6 +10,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
+├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
@@ -375,10 +376,10 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
 
 #### Notes
 
-- **macOS + iTerm2 only.** The escape codes are iTerm2 extensions; Windows Terminal
-  ignores them silently, and there is no writable pty device to target there anyway. The
-  script exits cleanly when `$TERM_PROGRAM` is not `iTerm.app`, so it is harmless to
-  install everywhere.
+- **macOS + iTerm2 only.** The escape codes are iTerm2 extensions. The script exits
+  cleanly when `$TERM_PROGRAM` is not `iTerm.app`, so it is harmless to install
+  everywhere. For WSL in Windows Terminal, see
+  [Windows Terminal tab status](#windows-terminal-tab-status-wsl) below.
 - Footer link badges (`footerLinksRegexes` in each account's `settings.json`) turn matched
   IDs in turn output into clickable badges: a dev-server URL, or a GitHub Actions run.
   The URL template's **origin must be literal** — a capture group in the host or port is
@@ -403,6 +404,78 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
 
+### Windows Terminal tab status (WSL)
+
+`wt-tab-status.sh` is the same indicator for Claude Code running in WSL inside Windows
+Terminal. Same hooks, same states, same tty discovery and claim logic, different escape
+codes. Tested on Windows Terminal 1.22, WSL2, Claude Code 2.1.274.
+
+| State | Tab | Taskbar | Fired by |
+|-------|-----|---------|----------|
+| Working | orange, spinning ring | indeterminate | `UserPromptSubmit`, `PostToolUse` |
+| Needs input or permission | red, red ring | red | `Notification` |
+| Finished | blinks green x4 then stays green, full ring | full, green | `Stop` |
+| Idle / cleared | colour and ring removed | cleared | `SessionStart`, `SessionEnd` |
+
+#### Setup
+
+`./install.sh` deploys it next to the iTerm2 script, and the tracked `settings.json` files
+already call both. By hand:
+
+```bash
+mkdir -p ~/.local/bin
+cp wt-tab-status.sh ~/.local/bin/claude-wt-tab-status.sh
+chmod +x ~/.local/bin/claude-wt-tab-status.sh
+```
+
+The hooks block is the iTerm2 one with `claude-iterm-tab-status.sh` swapped for
+`claude-wt-tab-status.sh`. Each script exits straight away on the wrong terminal
+(`$TERM_PROGRAM` for iTerm2, `$WT_SESSION` for Windows Terminal), so one settings file
+serves both machines.
+
+#### How it works
+
+| iTerm2 | Windows Terminal |
+|--------|------------------|
+| `OSC 6;1;bg;...` tab colour, any RGB | `DECAC` (`CSI 2;fg;bg,\|`), a 256-colour palette index |
+| `OSC 1337;RequestAttention` dock bounce | `OSC 9;4` progress state on the tab and taskbar |
+| `PULSE=1` background animation loop | `OSC 9;4;3`, animated by Windows Terminal itself |
+| `OSC 1337;SetBadgeFormat` badge | none, dropped |
+
+- **Tab colour.** `DECAC` item 2 ("window frame") is the tab colour in Windows Terminal.
+  It takes palette indices, not RGB, so the colours are the xterm cube entries nearest the
+  iTerm2 ones. Windows Terminal picks a contrasting label colour itself, so the iTerm2
+  contrast rule does not apply here. The reset is `CSI 2;263;264,|`: 263 and 264 are
+  Windows Terminal's own frame colour slots, so pointing the alias back at them restores
+  the profile default (no colour, or the profile's `tabColor`). See
+  `AdaptDispatch::AssignColor` and `Terminal::GetTabColor` in
+  [microsoft/terminal](https://github.com/microsoft/terminal).
+- **No animation loop.** The spinner is drawn by Windows Terminal, so there is no pidfile,
+  no `kill`, and none of the `PULSE` leak risk. The only multi-write path left is the
+  `done` blink, still guarded by the claim.
+- **Linux tty names contain a slash** (`pts/6`), so the state files flatten it:
+  `/tmp/claude-tab-pts-6.state`.
+- **State lives in `${TMPDIR:-/tmp}`**, not `$XDG_RUNTIME_DIR`: WSL sets that variable
+  without always creating `/run/user/<uid>`.
+
+#### Knobs
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `PROGRESS` | `1` | `0` = leave the tab ring and taskbar alone |
+| `BELL` | `0` | `1` = also ring the bell on "waiting" (sound or flash, per Windows Terminal's `bellStyle`) |
+| `BLINKS` / `BLINK_DELAY` | `4` / `0.22` | Green blink cycles and timing, seconds |
+| `COLOR_BUSY` / `COLOR_WAITING` / `COLOR_DONE` | `130` / `160` / `29` | Palette indices: `#af5f00`, `#d70000`, `#00875f` |
+
+#### Notes
+
+- **WSL + Windows Terminal only.** Native Windows has no pty device to write to, and
+  `windows/settings.json` carries no hooks anyway.
+- A tab opened with `wt --tabColor` ignores `DECAC`: the command-line colour wins.
+- Claude Code's own `terminalProgressBarEnabled` also writes `OSC 9;4`. If the ring
+  flickers between the two, set `PROGRESS=0` and keep the tab colour only.
+- Not tmux-aware: inside tmux the sequences would need passthrough wrapping.
+
 ### Install and drift check
 
 The copy commands throughout this README are the manual equivalent of `install.sh`.
@@ -422,10 +495,10 @@ rather than deploying over it. Deploys back up the previous `settings.json` as
 `settings.json.bak-<timestamp>` either way.
 
 Only `settings.json` flows in both directions. `CLAUDE.md`, the skills, the status lines
-and the shared tab script are generated from the repo, so `--pull` leaves them alone.
+and the shared tab scripts are generated from the repo, so `--pull` leaves them alone.
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
-the shared `claude-iterm-tab-status.sh`. Settings are compared with sorted keys and with
+the shared `claude-iterm-tab-status.sh` and `claude-wt-tab-status.sh`. Settings are compared with sorted keys and with
 `autoMode` removed, so formatting noise and the deliberately stripped block never read as
 drift. Run it before editing a live file by hand, and after.
 
@@ -444,9 +517,10 @@ Most of this setup is macOS-specific, and the split is not obvious from the sett
 
 The `hooks` block is the trap. On Windows, Claude Code runs hooks through PowerShell
 unless Git Bash is installed, and every command in this repo's hooks begins with `bash`.
-Without Git Bash each one fails on every prompt, tool call and session start. The iTerm2
-tab script would exit cleanly on its own (it checks `$TERM_PROGRAM`), but only after
-`bash` resolves.
+Without Git Bash each one fails on every prompt, tool call and session start. The tab
+scripts would exit cleanly on their own, but only after `bash` resolves. WSL is a
+different case: Claude Code there is a Linux install, so use `install.sh` and the
+[Windows Terminal tab status](#windows-terminal-tab-status-wsl) script.
 
 `windows/settings.json` is that portable subset — the badges and plain config values, no
 hooks and no status line. Copy it to `%USERPROFILE%\.claude\settings.json`.

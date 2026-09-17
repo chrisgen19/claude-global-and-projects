@@ -31,8 +31,9 @@ claude-dev:$HOME/.claude-dev:statusline.sh:all
 claude-personal:$HOME/.claude-personal:statusline.sh:all
 claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 
-TAB_SCRIPT_SRC="iterm-tab-status.sh"
-TAB_SCRIPT_DST="$HOME/.local/bin/claude-iterm-tab-status.sh"
+# repo file : live file. Shared by every profile; each exits on the wrong terminal.
+TAB_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
+wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh"
 
 MODE="install"
 case "${1:-}" in
@@ -169,21 +170,24 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
   echo
 done <<< "$PROFILES"
 
-# --- shared tab-status script: repo -> live only ---
+# --- shared tab-status scripts: repo -> live only ---
 if [ "$MODE" != "pull" ]; then
   echo "shared"
-  if [ "$MODE" = "install" ]; then
-    mkdir -p "$(dirname "$TAB_SCRIPT_DST")" || die "cannot create $(dirname "$TAB_SCRIPT_DST")"
-    cp "$TAB_SCRIPT_SRC" "$TAB_SCRIPT_DST" || die "cannot write $TAB_SCRIPT_DST"
-    chmod +x "$TAB_SCRIPT_DST" || die "cannot chmod $TAB_SCRIPT_DST"
-    note "${TAB_SCRIPT_DST/#$HOME/\~}"
-  elif [ ! -f "$TAB_SCRIPT_DST" ]; then
-    differ "${TAB_SCRIPT_DST/#$HOME/\~} missing"
-  elif ! diff -q "$TAB_SCRIPT_SRC" "$TAB_SCRIPT_DST" > /dev/null; then
-    differ "${TAB_SCRIPT_DST/#$HOME/\~}"
-  else
-    note "${TAB_SCRIPT_DST/#$HOME/\~}  ok"
-  fi
+  while IFS=: read -r src dst; do
+    [ -n "$src" ] || continue
+    if [ "$MODE" = "install" ]; then
+      mkdir -p "$(dirname "$dst")" || die "cannot create $(dirname "$dst")"
+      cp "$src" "$dst" || die "cannot write $dst"
+      chmod +x "$dst" || die "cannot chmod $dst"
+      note "${dst/#$HOME/\~}"
+    elif [ ! -f "$dst" ]; then
+      differ "${dst/#$HOME/\~} missing"
+    elif ! diff -q "$src" "$dst" > /dev/null; then
+      differ "${dst/#$HOME/\~}"
+    else
+      note "${dst/#$HOME/\~}  ok"
+    fi
+  done <<< "$TAB_SCRIPTS"
   echo
 fi
 
