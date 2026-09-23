@@ -56,7 +56,7 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 
   [optional footer(s)]
   ```
-- **Allowed types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`
+- **Allowed types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 - **Scope:** optional, in parentheses, e.g. `feat(cart): add discount validation`
 - **Breaking changes:** add `!` before colon and/or `BREAKING CHANGE:` footer, e.g. `feat(api)!: change response format`
 - **Body:** optional, separated by blank line, use for non-obvious "why" behind the change
@@ -72,7 +72,7 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - Summarize changes + remaining follow-ups
 
 ## Things I Don't Want
-- Don't add new packages without asking first: prefer native APIs or existing dependencies; if a new one is truly needed, verify it exists and link to its npm/packagist page
+- Don't add new packages without asking first: prefer native APIs or existing dependencies. Whenever you add or suggest a package, verify it exists and link to its npm/packagist page
 - Don't over-engineer simple features with complex design patterns
 - Don't create separate CSS/SCSS files when Tailwind can handle it
 - Don't use `index.ts` barrel files unless the project already uses them
@@ -80,5 +80,5 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - Don't assume the project structure: check first, then follow existing conventions
 - Don't make changes across multiple unrelated files in one go without explaining the scope
 - Never use em dashes or en dashes anywhere: chat replies, code, comments, commit messages, PR titles/descriptions/comments, or Jira. Use hyphens, colons, commas, or parentheses instead.
-- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to Bash commands. The Bash tool already captures stderr, and the `&` in `2>&1` can make the permission checker split one command into two (`cmd 2>` and `1`), which triggers a prompt or a denial.
+- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to Bash commands. The Bash tool already captures stderr, so redirecting it only hides errors from Claude.
 - Don't pipe builds, tests, installs or migrations into `head` or `grep`: `head` can kill the command early (SIGPIPE) and both hide its exit code. Use the command's own quiet flags instead; the Bash tool saves long output to a file automatically. Piping is fine for read-only commands like `git log` or `ls`.
