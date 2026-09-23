@@ -7,7 +7,7 @@ You are generating a pull request description for the current branch.
 
 ## Steps
 
-1. **Detect the base branch**: check for `main`, `master`, or `develop` (in that order).
+1. **Detect the base branch**: if a PR already exists, use its base (`gh pr view --json baseRefName`). Otherwise use the branch this one was cut from, checking `main`, `master` and `develop`; if more than one exists and it's unclear, ask.
 
 2. **Gather context:**
    - Run `git log <base>..HEAD --oneline` to get all commits on this branch.
@@ -31,7 +31,7 @@ You are generating a pull request description for the current branch.
 4. **Output a ready-to-use command:**
 
    ```bash
-   gh pr create --title "the title" --body "$(cat <<'EOF'
+   gh pr create --title 'the title' --body "$(cat <<'EOF'
    ## Summary
    - ...
 

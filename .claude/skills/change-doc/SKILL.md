@@ -37,7 +37,7 @@ Ask only if the location is genuinely ambiguous. If the user names a path, use i
 Follow this shape. Skip sections that would be empty rather than padding them.
 
 **Title + one-line scope.** Commit subject, SHA, branch, PR link. Then the totals:
-`N files · +X / −Y (A new, B modified)`.
+`N files · +X / -Y (A new, B modified)`.
 
 **The shape of the change.** A short table mapping *what had to happen* onto *which
 group of files*. This is the orientation paragraph: a reader who stops here should
@@ -47,7 +47,7 @@ still understand the change.
 new files, core logic, wiring, configuration/plumbing, tests, incidental fixes. For
 each file give:
 
-- Path as a heading, with `+X / −Y · new` or line count
+- Path as a heading, with `+X / -Y · new` or line count
 - What the file **is** and what it is for
 - What changed and why
 - Any decision a reviewer would question, stated plainly
@@ -59,15 +59,16 @@ prevents a reader assuming something was covered when it was not.
 
 **Diagrams.** Always last, see below.
 
-## 4. Diagrams (required, at the bottom)
+## 4. Diagrams (at the bottom)
 
-Two mermaid diagrams, in this order, after all prose:
+Up to two mermaid diagrams, in this order, after all prose:
 
 1. **Architecture / structure diagram**: how the changed pieces relate to each other
    and to what surrounds them. `flowchart` with subgraphs works well. Highlight the
    files that changed so they stand out from existing context.
 2. **Flowchart**: the runtime flow or decision logic the change introduces. Show the
-   conditional paths, especially feature flags, fallbacks, and error branches.
+   conditional paths, especially feature flags, fallbacks, and error branches. Skip it
+   when the change has no runtime behavior (docs, config values, renames).
 
 Rules:
 
@@ -96,8 +97,8 @@ This is what separates a useful document from a generated one:
   document. Verify it mechanically:
 
   ```bash
-  for f in $(git show --stat --format="" --name-only <sha>); do
-    grep -q "$(basename "$f")" <doc> && echo "ok   $f" || echo "MISS $f"
+  git diff --name-only <base>...HEAD | while IFS= read -r f; do
+    grep -qF -- "$f" <doc> && echo "ok   $f" || echo "MISS $f"
   done
   ```
 

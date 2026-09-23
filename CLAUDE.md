@@ -72,13 +72,13 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - Summarize changes + remaining follow-ups
 
 ## Things I Don't Want
-- Don't add new packages without asking first: prefer native APIs or existing dependencies. Whenever you add or suggest a package, verify it exists and link to its npm/packagist page
+- Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page
 - Don't over-engineer simple features with complex design patterns
 - Don't create separate CSS/SCSS files when Tailwind can handle it
 - Don't use `index.ts` barrel files unless the project already uses them
 - Don't introduce new linting rules, formatters, or tooling without asking first
 - Don't assume the project structure: check first, then follow existing conventions
 - Don't make changes across multiple unrelated files in one go without explaining the scope
-- Never use em dashes or en dashes anywhere: chat replies, code, comments, commit messages, PR titles/descriptions/comments, or Jira. Use hyphens, colons, commas, or parentheses instead.
-- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to Bash commands. The Bash tool already captures stderr, so redirecting it only hides errors from Claude.
-- Don't pipe builds, tests, installs or migrations into `head` or `grep`: `head` can kill the command early (SIGPIPE) and both hide its exit code. Use the command's own quiet flags instead; the Bash tool saves long output to a file automatically. Piping is fine for read-only commands like `git log` or `ls`.
+- Never use em dashes or en dashes in text you write: chat replies, code comments, docs, commit messages, PR titles/descriptions/comments, or Jira. Use hyphens, colons, commas, or parentheses instead. Leave existing dashes in code, content and strings alone (translation strings and tests may depend on them).
+- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to commands you run with the Bash tool. It already captures stderr, so redirection is unnecessary, and `2>/dev/null` hides errors from Claude. Scripts you write may redirect stderr where the script needs it.
+- Run builds, tests, installs and migrations without piping their output into anything (`head`, `tail`, `grep`, `sed`, `wc`...): the pipe hides the exit code, and `head` or `grep -q` can end the command early. Don't silence them with `--silent` either, since that also hides the error. The Bash tool saves long output to a file, so read that instead. Piping is fine for read-only commands like `git log` or `ls`.
