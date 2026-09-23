@@ -80,4 +80,5 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - Don't assume the project structure: check first, then follow existing conventions
 - Don't make changes across multiple unrelated files in one go without explaining the scope
 - Never use em dashes or en dashes anywhere: chat replies, code, comments, commit messages, PR titles/descriptions/comments, or Jira. Use hyphens, colons, commas, or parentheses instead.
-- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to Bash commands. The Bash tool already captures stderr, and the `&` in `2>&1` can make the permission checker split one command into two (`cmd 2>` and `1`), which triggers a prompt or a denial. To cut noise, pipe into `grep` or `head` instead.
+- NEVER add `2>&1`, `2>/dev/null` or any other stderr redirection to Bash commands. The Bash tool already captures stderr, and the `&` in `2>&1` can make the permission checker split one command into two (`cmd 2>` and `1`), which triggers a prompt or a denial.
+- Don't pipe builds, tests, installs or migrations into `head` or `grep`: `head` can kill the command early (SIGPIPE) and both hide its exit code. Use the command's own quiet flags instead; the Bash tool saves long output to a file automatically. Piping is fine for read-only commands like `git log` or `ls`.
