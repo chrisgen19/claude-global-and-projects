@@ -6,16 +6,16 @@ description: Generate a detailed file-by-file explanation document for a change,
 You are writing a document that explains a completed change to the user, file by file.
 
 The audience is the person who asked for the work. They want to understand **what
-each file does, what changed in it, and why it was done that way** — not a diff
+each file does, what changed in it, and why it was done that way**, not a diff
 restatement. Assume they will read this weeks later, or hand it to a teammate.
 
 ## 1. Gather the real change
 
 Never work from memory or assumption. Establish the exact scope first:
 
-- `git log --oneline <base>..HEAD` — the commits in scope
-- `git show --stat --format="" <sha>` or `git diff --stat <base>...HEAD` — the file list
-- `git diff <base>...HEAD` — the actual changes
+- `git log --oneline <base>..HEAD`: the commits in scope
+- `git show --stat --format="" <sha>` or `git diff --stat <base>...HEAD`: the file list
+- `git diff <base>...HEAD`: the actual changes
 
 If the work is committed, prefer the commit SHA as the source of truth. If it is still
 in the working tree, use `git status --short` plus `git diff`.
@@ -26,7 +26,7 @@ doc that cannot say what a file does has failed at its job.
 
 ## 2. Where to save it
 
-Default to the repo's **parent directory**, named `<Topic>-Files-Changed.md` — for
+Default to the repo's **parent directory**, named `<Topic>-Files-Changed.md`, for
 example `~/ag-projects/UID-Files-Changed.md`. These are personal understanding
 documents, not repo deliverables, so they usually should not be committed.
 
@@ -37,17 +37,17 @@ Ask only if the location is genuinely ambiguous. If the user names a path, use i
 Follow this shape. Skip sections that would be empty rather than padding them.
 
 **Title + one-line scope.** Commit subject, SHA, branch, PR link. Then the totals:
-`N files · +X / −Y — A new, B modified`.
+`N files · +X / -Y (A new, B modified)`.
 
 **The shape of the change.** A short table mapping *what had to happen* onto *which
-group of files*. This is the orientation paragraph — a reader who stops here should
+group of files*. This is the orientation paragraph: a reader who stops here should
 still understand the change.
 
 **Grouped file sections.** Group by **purpose, not alphabetically**. Typical groups:
 new files, core logic, wiring, configuration/plumbing, tests, incidental fixes. For
 each file give:
 
-- Path as a heading, with `+X / −Y · new` or line count
+- Path as a heading, with `+X / -Y · new` or line count
 - What the file **is** and what it is for
 - What changed and why
 - Any decision a reviewer would question, stated plainly
@@ -57,17 +57,18 @@ each file give:
 **Not in this change.** Deliberate exclusions, follow-up tickets, known gaps. This
 prevents a reader assuming something was covered when it was not.
 
-**Diagrams.** Always last — see below.
+**Diagrams.** Always last, see below.
 
-## 4. Diagrams (required, at the bottom)
+## 4. Diagrams (at the bottom)
 
-Two mermaid diagrams, in this order, after all prose:
+Up to two mermaid diagrams, in this order, after all prose:
 
-1. **Architecture / structure diagram** — how the changed pieces relate to each other
+1. **Architecture / structure diagram**: how the changed pieces relate to each other
    and to what surrounds them. `flowchart` with subgraphs works well. Highlight the
    files that changed so they stand out from existing context.
-2. **Flowchart** — the runtime flow or decision logic the change introduces. Show the
-   conditional paths, especially feature flags, fallbacks, and error branches.
+2. **Flowchart**: the runtime flow or decision logic the change introduces. Show the
+   conditional paths, especially feature flags, fallbacks, and error branches. Skip it
+   when the change has no runtime behavior (docs, config values, renames).
 
 Rules:
 
@@ -87,7 +88,7 @@ This is what separates a useful document from a generated one:
   "NetSuite adopts this id and echoes it back, which is how the return path re-anchors
   the record to a person" is an explanation.
 - **Surface the decisions.** Anywhere you deviated from a spec, chose between two
-  approaches, or did something that looks wrong at first glance — say so and give the
+  approaches, or did something that looks wrong at first glance, say so and give the
   reason. These are the parts the user most needs.
 - **Name the constraint.** If a change exists only because of a project convention, an
   env-var pattern, or a framework quirk, say which one. "Required because the code
@@ -96,8 +97,8 @@ This is what separates a useful document from a generated one:
   document. Verify it mechanically:
 
   ```bash
-  for f in $(git show --stat --format="" --name-only <sha>); do
-    grep -q "$(basename "$f")" <doc> && echo "ok   $f" || echo "MISS $f"
+  git diff --name-only <base>...HEAD | while IFS= read -r f; do
+    grep -qF -- "$f" <doc> && echo "ok   $f" || echo "MISS $f"
   done
   ```
 
