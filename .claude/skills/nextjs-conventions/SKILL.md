@@ -1,12 +1,12 @@
 ---
 name: nextjs-conventions
-description: Personal Next.js full-stack conventions — App Router, TypeScript strict, Prisma, Better Auth, server actions, and file-layout rules. Use when implementing or reviewing features in a personal Next.js project.
+description: "Personal Next.js full-stack conventions: App Router, TypeScript strict, Prisma, Better Auth, server actions, and file-layout rules. Use when implementing or reviewing features in a personal Next.js project."
 ---
 
 # Next.js Project Conventions
 
 These are the standing conventions for my personal Next.js apps. Follow them
-unless the repo's existing code clearly does otherwise — match the repo first.
+unless the repo's existing code clearly does otherwise: match the repo first.
 
 ## Stack
 - Next.js 15, App Router, TypeScript (strict).
@@ -20,7 +20,7 @@ unless the repo's existing code clearly does otherwise — match the repo first.
 ## File layout (hard rules)
 - Server Actions live in `src/actions/`. Do not inline mutations in components.
 - ALL database queries go through the data access layer in `src/lib/dal.ts`.
-  Never call Prisma directly from a component, route, or action — go via the DAL.
+  Never call Prisma directly from a component, route, or action: go via the DAL.
 - Environment variables are accessed through `src/lib/env.ts` (validated with
   Zod), never `process.env` directly in feature code.
 - Auth setup/config lives in `src/lib/auth.ts`.

@@ -83,7 +83,7 @@ After backup completes, provide a summary:
 - Remind the user to store the backup in a safe location (external drive, cloud storage, etc.)
 
 ## Important Notes
-- Never display database passwords in output — mask them
+- Never display database passwords in output: mask them
 - If the database is large (>500MB), warn the user it may take a while
 - If running on a live server, prefer `--single-transaction` to avoid locking tables
 - If credentials are wrong or connection fails, show a clear error and ask the user to verify `wp-config.php`
