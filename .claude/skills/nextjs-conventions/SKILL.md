@@ -1,6 +1,6 @@
 ---
 name: nextjs-conventions
-description: Personal Next.js full-stack conventions: App Router, TypeScript strict, Prisma, Better Auth, server actions, and file-layout rules. Use when implementing or reviewing features in a personal Next.js project.
+description: "Personal Next.js full-stack conventions: App Router, TypeScript strict, Prisma, Better Auth, server actions, and file-layout rules. Use when implementing or reviewing features in a personal Next.js project."
 ---
 
 # Next.js Project Conventions

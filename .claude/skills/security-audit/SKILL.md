@@ -52,7 +52,7 @@ You are performing a security audit on the current project's source code.
    - `src/components/comment.tsx:8`: `dangerouslySetInnerHTML` used but input is sanitized with DOMPurify (OK)
 
    ### Summary
-   - 2 Critical, 3 Warning, 1 Info
+   - 1 Critical, 1 Warning, 1 Info
    - Areas checked: input validation, output escaping, SQL injection, XSS, auth, CORS, secrets
    ```
 

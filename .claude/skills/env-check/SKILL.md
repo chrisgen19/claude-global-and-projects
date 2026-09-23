@@ -43,7 +43,7 @@ You are auditing environment variable usage and configuration in the current pro
    ### Critical
    - [file:line] Hardcoded secret found: `API_KEY = "sk_live_..."`
 
-   ### Warnings
+   ### Warning
    - `.env.example` is missing
    - `DATABASE_URL` used in code but not in `.env.example`
    - `NEXT_PUBLIC_OLD_VAR` in `.env.example` but not used in code
