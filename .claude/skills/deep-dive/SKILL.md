@@ -39,22 +39,22 @@ its behaviour.
 
 Adapt to the subject, but this order works and earns its keep:
 
-1. **The problem** — what is broken or missing, with evidence. Numbers if they exist.
+1. **The problem**: what is broken or missing, with evidence. Numbers if they exist.
    Include the root cause if you found one, with the reproduction.
-2. **End-to-end flow** — the main diagram. Where does the work sit relative to
+2. **End-to-end flow**: the main diagram. Where does the work sit relative to
    everything around it.
-3. **Why the design is what it is** — the non-obvious structural reason. Often "all
+3. **Why the design is what it is**: the non-obvious structural reason. Often "all
    these paths converge on one function", or "this boundary is where X changes hands".
-4. **What changed / what exists** — the concrete inventory, with a table.
-5. **Alignment** — if there is a spec, a line-by-line conformance table with an
+4. **What changed / what exists**: the concrete inventory, with a table.
+5. **Alignment**: if there is a spec, a line-by-line conformance table with an
    explicit status per row. Every deviation gets its own subsection: what the spec
    said, what you did, why, and what the effect is.
-6. **Verification** — commands, output, live results. Then a **limits** subsection
+6. **Verification**: commands, output, live results. Then a **limits** subsection
    stating plainly what was *not* tested.
-7. **Outstanding** — a table of open items with an **owner** column. Separating "ours"
+7. **Outstanding**: a table of open items with an **owner** column. Separating "ours"
    from "theirs" is usually the most actionable thing in the document.
-8. **Risk and rollback** — kill switches, what is safe to merge, how to undo.
-9. **Diagrams** — if they did not fit inline.
+8. **Risk and rollback**: kill switches, what is safe to merge, how to undo.
+9. **Diagrams**: if they did not fit inline.
 
 ## 3. Quality bar
 
@@ -121,7 +121,7 @@ Gotchas that will bite you:
 - `<pre>` needs `white-space: pre-wrap` or long lines run off the page.
 - Escape `<`, `>` and `&` inside `<pre><code>` blocks.
 
-## 6. Verify the output — do not assume it rendered
+## 6. Verify the output: do not assume it rendered
 
 Both formats, every time:
 

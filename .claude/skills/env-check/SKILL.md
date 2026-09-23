@@ -7,7 +7,7 @@ You are auditing environment variable usage and configuration in the current pro
 
 ## Steps
 
-1. **Detect the project type** — check for `next.config.*` (Next.js), `wp-config.php` (WordPress), `package.json`, or `composer.json` to determine the stack.
+1. **Detect the project type**: check for `next.config.*` (Next.js), `wp-config.php` (WordPress), `package.json`, or `composer.json` to determine the stack.
 
 2. **Scan for hardcoded secrets** in source files:
    - Search for patterns: API keys, passwords, tokens, connection strings, private keys.
@@ -28,7 +28,7 @@ You are auditing environment variable usage and configuration in the current pro
 5. **Stack-specific checks:**
 
    **Next.js:**
-   - Vars used in client components or `'use client'` files without `NEXT_PUBLIC_` prefix — these will be `undefined` at runtime.
+   - Vars used in client components or `'use client'` files without `NEXT_PUBLIC_` prefix (these will be `undefined` at runtime).
    - `NEXT_PUBLIC_` vars that look like secrets (contain `SECRET`, `KEY`, `PASSWORD`, `TOKEN` in the name).
 
    **WordPress:**
@@ -59,8 +59,8 @@ You are auditing environment variable usage and configuration in the current pro
 
 ## Rules
 
-- Never read or output the contents of `.env` or `.env.local` — only check for their existence and gitignore coverage.
+- Never read or output the contents of `.env` or `.env.local`: only check for their existence and gitignore coverage.
 - When reporting hardcoded secrets, truncate the value (show first 8 chars + `...`).
 - Group findings by severity: Critical → Warning → Info.
 - Include file paths and line numbers for all findings.
-- If the project is clean, say so — don't manufacture issues.
+- If the project is clean, say so. Don't manufacture issues.
