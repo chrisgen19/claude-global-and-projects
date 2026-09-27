@@ -11,6 +11,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
+├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
@@ -475,6 +476,37 @@ serves both machines.
 - Claude Code's own `terminalProgressBarEnabled` also writes `OSC 9;4`. If the ring
   flickers between the two, set `PROGRESS=0` and keep the tab colour only.
 - Not tmux-aware: inside tmux the sequences would need passthrough wrapping.
+
+### Prisma production guard
+
+`prisma-prod-guard.sh` is a `PreToolUse` hook on `Bash` in the personal, work and dev
+profiles. When Claude runs `prisma migrate dev`, `migrate reset`, `migrate resolve`,
+`db push` or `db execute` (via `npx`, `pnpm`, `yarn` or bare) and the database URL
+points at a production host, it returns `permissionDecision: "ask"`. You get a
+permission prompt naming the `.env` file, and the command runs once you approve it.
+It **never blocks**: working against the live databases on purpose is a normal workflow.
+
+It checks the URL in the command itself, `$DATABASE_URL`, and `.env`, `.env.local`,
+`.env.development`, `.env.development.local` and `prisma/.env` in the session directory
+and any directory the command `cd`s into. Only `*DATABASE*_URL`-style lines are read, so a
+site URL on the same domain does not trigger it. `generate`, `migrate deploy` and
+`studio` pass straight through.
+
+Production hosts are **machine-local** and never committed (this repo is public). Put
+them in `~/.config/prisma-prod-guard/hosts`, one extended-regex fragment per line:
+
+```bash
+mkdir -p ~/.config/prisma-prod-guard
+cat > ~/.config/prisma-prod-guard/hosts <<'EOF'
+# Production DB hosts (extended regex, one per line)
+203\.0\.113\.10
+example\.dev
+EOF
+```
+
+Without that file the hook exits immediately and does nothing, so deploying it to a
+machine is safe before the hosts are set. `install.sh` deploys it to
+`~/.local/bin/prisma-prod-guard`.
 
 ### Install and drift check
 
