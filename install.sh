@@ -31,9 +31,11 @@ claude-dev:$HOME/.claude-dev:statusline.sh:all
 claude-personal:$HOME/.claude-personal:statusline.sh:all
 claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 
-# repo file : live file. Shared by every profile; each exits on the wrong terminal.
-TAB_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
-wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh"
+# repo file : live file. Shared by every profile. The tab-status scripts each exit
+# on the wrong terminal; the Prisma guard is inert without its local hosts file.
+SHARED_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
+wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh
+prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard"
 
 MODE="install"
 case "${1:-}" in
@@ -170,7 +172,7 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
   echo
 done <<< "$PROFILES"
 
-# --- shared tab-status scripts: repo -> live only ---
+# --- shared scripts: repo -> live only ---
 if [ "$MODE" != "pull" ]; then
   echo "shared"
   while IFS=: read -r src dst; do
@@ -187,7 +189,7 @@ if [ "$MODE" != "pull" ]; then
     else
       note "${dst/#$HOME/\~}  ok"
     fi
-  done <<< "$TAB_SCRIPTS"
+  done <<< "$SHARED_SCRIPTS"
   echo
 fi
 
