@@ -47,7 +47,7 @@ jobs:
           # `printf -v "$1"` indirection, which shellcheck cannot follow, so it
           # reports them as referenced-but-unassigned. Verified false positives.
           shellcheck --severity=warning --exclude=SC2154 install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh \
-            statusline.sh claude/statusline-command.sh claude*/statusline.sh
+            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh
 
       # The three account status lines are generated from statusline.sh and
       # differ only in the config block on lines 14-15. Hand-editing one copy
