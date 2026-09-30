@@ -33,6 +33,9 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
 │   ├── security-audit/SKILL.md          # Scan for vulnerabilities (PHP + JS/TS)
 │   ├── change-doc/SKILL.md              # File-by-file writeup of a completed change
+│   ├── review-loop/                     # Claude + Codex review, cross-verify, auto-fix loop
+│   │   ├── SKILL.md
+│   │   └── pr-bots.sh                     #   Trigger, wait for and collect @codex / @claude PR reviews
 │   ├── deep-dive/SKILL.md               # Research a system, output Markdown + PDF
 │   ├── explain-code/SKILL.md            # Explain code with diagrams and analogies
 │   ├── nextjs-conventions/SKILL.md      # Personal Next.js conventions (personal + dev only)
@@ -69,6 +72,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 **Git & review**
 - **`/pr-description`** — Reads branch diff and commits, generates a structured PR description with a ready-to-use `gh pr create` command
 - **`/change-doc`** — File-by-file explanation of a completed change, with mermaid diagrams, so you can see what was built and why
+- **`/review-loop`**: Reviews the changes with Claude and Codex, either locally (Claude subagent + `codex` CLI) or through the `@codex review` / `@claude review` PR bots (asks which when a PR is open, or pass `--pr` / `--local`). Each finding is verified by the other model, confirmed low-risk ones are auto-fixed, lint/type-check/tests run, and the fixes are re-reviewed. Ends with a report and commit command; in PR mode it asks before pushing and replying to bot threads. `--triage-only` skips the fixing
 
 **Auditing**
 - **`/env-check`** — Audits environment variables: hardcoded secrets, `.gitignore` coverage, `.env.example` completeness, stack-specific misconfigurations
