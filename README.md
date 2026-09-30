@@ -11,6 +11,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configura
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
+├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
@@ -479,6 +480,49 @@ serves both machines.
 - Claude Code's own `terminalProgressBarEnabled` also writes `OSC 9;4`. If the ring
   flickers between the two, set `PROGRESS=0` and keep the tab colour only.
 - Not tmux-aware: inside tmux the sequences would need passthrough wrapping.
+
+### Prisma production guard
+
+`prisma-prod-guard.sh` is a `PreToolUse` hook on `Bash` in all four profiles (default,
+personal, work and dev). When Claude runs `prisma migrate dev`, `migrate reset`,
+`migrate resolve`, `db push` or `db execute` (via `npx`, `bunx`, `pnpm`, `yarn` or bare)
+and the database URL points at a production host, it returns
+`permissionDecision: "ask"`. You get a permission prompt naming the `.env` file, and the
+command runs once you approve it. It **never blocks**: working against the live
+databases on purpose is a normal workflow.
+
+- **Package scripts count.** `pnpm db:push`, `npm run db:migrate`, `bun run build` or
+  `npm start` are resolved against `package.json`, so a `build` or `start` script that
+  runs `prisma db push` gets the same prompt. The prompt names the script.
+- **Where it looks for the URL:** the command itself, `$DATABASE_URL`, and `.env`,
+  `.env.local`, `.env.development`, `.env.development.local` and `prisma/.env` in the
+  session directory and each directory the command `cd`s into. Chained relative `cd`s
+  are followed, and quoted paths with spaces are kept whole.
+- Only `*DATABASE*_URL`-style lines are read, so a site URL on the same domain does not
+  trigger it. `generate`, `migrate deploy` and `studio` pass straight through.
+- Without `jq` it reports a non-blocking hook error on Prisma and package commands
+  instead of silently allowing them.
+
+Not covered, on purpose: env files chosen explicitly on the command line
+(`dotenv -e .env.production`, `--env-file`), a `.env` beside a `--schema` outside
+`prisma/`, `pnpm -C <dir>` / `--filter`, and scripts that call other scripts. None of
+the local projects use these; add them if that changes.
+
+Production hosts are **machine-local** and never committed (this repo is public). Put
+them in `~/.config/prisma-prod-guard/hosts`, one extended-regex fragment per line:
+
+```bash
+mkdir -p ~/.config/prisma-prod-guard
+cat > ~/.config/prisma-prod-guard/hosts <<'EOF'
+# Production DB hosts (extended regex, one per line)
+203\.0\.113\.10
+example\.dev
+EOF
+```
+
+Without that file the hook exits immediately and does nothing, so deploying it to a
+machine is safe before the hosts are set. `install.sh` deploys it to
+`~/.local/bin/prisma-prod-guard`.
 
 ### Install and drift check
 
