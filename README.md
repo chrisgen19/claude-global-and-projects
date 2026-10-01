@@ -583,7 +583,17 @@ the tab script cannot.
 
 ### Codex config (`codex/`)
 
-`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, the TUI status line segments, and the Atlassian MCP server.
+`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, and the Atlassian MCP server.
+
+Auto-review is enabled with these top-level settings:
+
+```toml
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+```
+
+Codex works inside the sandbox and sends eligible approval requests to a reviewer agent. Some actions still require direct consent or may be denied by the reviewer. Use a client that supports Auto-review; managed organization policy takes precedence. Restart Codex after restoring the config to load these settings. See the [official Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 ```
 [tui]
