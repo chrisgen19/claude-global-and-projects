@@ -2,12 +2,15 @@
 
 Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configuration for my development workflow. Contains global preferences, project-specific standards, and reusable skill files for WordPress and Next.js development.
 
+Also includes Codex CLI configuration and a zsh launcher that defaults to sandboxed Auto-review.
+
 ## Structure
 
 ```
 .
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
+├── .zshrc-codex                           # Codex Auto-review launcher (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
@@ -630,6 +633,26 @@ Check the result before trusting it:
 ```bash
 python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", list(d))'
 ```
+
+#### Always use Auto-review from the terminal
+
+The config sets the default, but an existing chat can retain its manual approval mode when resumed. `.zshrc-codex` adds a `codex` function that explicitly passes `--approve-for-me` on each launch, including `codex resume` and `codex fork`. It keeps the workspace sandbox enabled.
+
+Add the contents of `.zshrc-codex` to `~/.zshrc` once, before the Powerlevel10k theme if present, then open a new terminal tab. `install.sh` deploys Claude profiles and shared scripts; the Codex config and shell block are restored separately using these instructions.
+
+Use the usual commands:
+
+```zsh
+codex
+codex resume --last
+codex fork --last
+```
+
+Use a Codex CLI version whose `codex --help` lists `--approve-for-me` (verified with 0.160.0). The function uses `command codex` internally to avoid recursion and preserves the arguments you pass, including quoted prompts and paths.
+
+This launcher applies to terminal sessions that load `~/.zshrc`. The desktop app and IDE extension have their own active permission selection; select **Approve for me** there when needed. See the [official permissions instructions](https://learn.chatgpt.com/docs/permission-modes).
+
+To remove the terminal override, delete the `codex` function from `~/.zshrc` and open a new tab. The settings in `~/.codex/config.toml` still apply as defaults.
 
 ### Account settings
 
