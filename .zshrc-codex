@@ -1,0 +1,13 @@
+# Codex: always use sandboxed automatic approval review.
+# Add this block to ~/.zshrc before the Powerlevel10k theme, if present.
+# Pass the flag to resume/fork too, overriding a saved manual approval mode.
+codex() {
+  case "${1-}" in
+    resume|fork)
+      command codex "$1" --approve-for-me "${@:2}"
+      ;;
+    *)
+      command codex --approve-for-me "$@"
+      ;;
+  esac
+}
