@@ -1,13 +1,15 @@
 # Codex: always use sandboxed automatic approval review.
+# --no-daemon keeps hooks under this tab's codex process, which the tab-status
+# hooks need to find their tty (see README "Tab status hooks").
 # Add this block to ~/.zshrc before the Powerlevel10k theme, if present.
-# Pass the flag to resume/fork too, overriding a saved manual approval mode.
+# Pass the flags to resume/fork too, overriding a saved manual approval mode.
 codex() {
   case "${1-}" in
     resume|fork)
-      command codex "$1" --approve-for-me "${@:2}"
+      command codex "$1" --approve-for-me --no-daemon "${@:2}"
       ;;
     *)
-      command codex --approve-for-me "$@"
+      command codex --approve-for-me --no-daemon "$@"
       ;;
   esac
 }

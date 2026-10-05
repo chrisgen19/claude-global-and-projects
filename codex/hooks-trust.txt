@@ -1,0 +1,17 @@
+# Trust hashes for codex/hooks.json, written by ./install.sh --pull from the
+# live ~/.codex/config.toml. Format: <event>:<group>:<handler> <hash>.
+# Edit hooks.json -> deploy -> trust the changes in codex /hooks -> --pull.
+interrupt:0:0 sha256:34b7f8eddefca0d71ee63aded55d207e8d9c43cfedd9c8ad5d3da1173df5834e
+interrupt:0:1 sha256:a86a14c35bc9455b0a7df588a9d133abb5a7beffe66c99995b6ce67425578b6a
+permission_request:0:0 sha256:1dff6de8203867f5693e77d559a4ac274c820acd690c673976c3ffc28bf78424
+permission_request:0:1 sha256:a3d50736b9aab011f9baa637269ce22ae4cb9d3ad63345e850c2a406577fa425
+post_tool_use:0:0 sha256:6f11263a0ad49c7fad0ab0a2e53f6e3635ab06f654cfc85c8a512c8f88c42c34
+post_tool_use:0:1 sha256:6eda8b904dde13133816abf8f38cc661357091d573242d664d228e9ce4cc1510
+session_end:0:0 sha256:e62826e9a019040064dbb743f17998f581a7dd527c67e0b029a0bcf764469c3b
+session_end:0:1 sha256:2c3862297fd5c712d82163731ef0ec5242299f5133021a8521693e5d02a05653
+session_start:0:0 sha256:dfde39e32257a26070f8007bd8fce247768ccb26d10ba2ccceaa9eaff4398e30
+session_start:0:1 sha256:3b16275f073e212fff7f6dfa5d2c1f2b4d3f683274207b0e36724fe6225abe68
+stop:0:0 sha256:70a32f2f5b201b70e592d024e5b56124e3346bec1742533a4576b9b11b3fc939
+stop:0:1 sha256:15db8de18a236a3b49a97fa5916efaa4659779f807f732b5672a446483b95b73
+user_prompt_submit:0:0 sha256:4ebf85de002effa8f0e2b557e705af29bacaf6be7f9ccad733de8257c5ff93be
+user_prompt_submit:0:1 sha256:99be463c6ba11c7ebabfdf7bf432cd88ae198a985915694fc894f620ac6aa267

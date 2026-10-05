@@ -15,7 +15,7 @@ jobs:
       # file, with no error at startup. These are hand-edited, so parse them.
       - name: settings.json parses
         run: |
-          for f in claude*/settings.json windows/settings.json; do
+          for f in claude*/settings.json windows/settings.json codex/hooks.json; do
             jq -e . "$f" > /dev/null && echo "ok    $f"
           done
 
@@ -32,10 +32,12 @@ jobs:
           exit $fail
 
       # Paths are stored tilde-relative so a home directory never lands in a
-      # public repo and the files stay portable between machines.
+      # public repo and the files stay portable between machines. The Codex
+      # files are included because live config.toml keys [projects] and
+      # [hooks.state] tables by absolute path.
       - name: no absolute home paths in tracked settings
         run: |
-          if grep -l '/Users/\|/home/' claude*/settings.json windows/settings.json; then
+          if grep -l '/Users/\|/home/' claude*/settings.json windows/settings.json codex/*; then
             echo "FAIL  absolute home path in tracked settings"; exit 1
           fi
           echo "ok    all paths tilde-relative"

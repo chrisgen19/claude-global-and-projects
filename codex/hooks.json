@@ -1,0 +1,62 @@
+{
+  "description": "Tab status indicator (iTerm2 / Windows Terminal). Only works under `codex --no-daemon`: daemon-spawned hooks have no tty to find (openai/codex#37537).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear)$",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset", "timeout": 5 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset", "timeout": 5 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy", "async": true, "timeout": 10 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy", "async": true, "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy", "async": true, "timeout": 10 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy", "async": true, "timeout": 10 }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting", "timeout": 5 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh waiting", "timeout": 5 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done", "async": true, "timeout": 10 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh done", "async": true, "timeout": 10 }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset", "timeout": 3 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset", "timeout": 3 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset", "timeout": 3 },
+          { "type": "command", "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset", "timeout": 3 }
+        ]
+      }
+    ]
+  }
+}
