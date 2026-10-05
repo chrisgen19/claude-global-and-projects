@@ -652,7 +652,7 @@ codex resume --last
 codex fork --last
 ```
 
-Use a Codex CLI version whose `codex --help` lists `--approve-for-me` (verified with 0.160.0). The function uses `command codex` internally to avoid recursion and preserves the arguments you pass, including quoted prompts and paths.
+Use a Codex CLI version whose `codex --help` lists both `--approve-for-me` and `--no-daemon` (verified with 0.160.0); an older one rejects the unknown flag and `codex` will not start. The function uses `command codex` internally to avoid recursion and preserves the arguments you pass, including quoted prompts and paths.
 
 This launcher applies to terminal sessions that load `~/.zshrc`. The desktop app and IDE extension have their own active permission selection; select **Approve for me** there when needed. See the [official permissions instructions](https://learn.chatgpt.com/docs/permission-modes).
 
