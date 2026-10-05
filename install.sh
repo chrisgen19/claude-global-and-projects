@@ -3,9 +3,9 @@
 # Install this repo's configuration into the live Claude Code profiles, check
 # the live profiles against it, or pull live changes back into the repo.
 #
-#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin
+#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex hooks
 #   ./install.sh --check    report where the live profiles differ (exit 1 on drift)
-#   ./install.sh --pull     copy live settings back into the repo (autoMode stripped)
+#   ./install.sh --pull     copy live settings and Codex hooks back (autoMode stripped)
 #   ./install.sh --help
 #
 # Direction matters. Deploying a stale repo silently reverts real live state -
@@ -36,6 +36,19 @@ claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 SHARED_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
 wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh
 prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard"
+
+# Codex runs hooks from hooks.json only once each is trusted in /hooks, and
+# records that in config.toml as [hooks.state."<abs path>:<event>:<group>:<n>"].
+# The hash covers the hook definition, not the path, so the tracked list keeps
+# only "<event>:<group>:<n> <hash>" and install.sh re-keys it for this machine.
+CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
+CODEX_HOOKS="$CODEX_DIR/hooks.json"
+CODEX_CONFIG="$CODEX_DIR/config.toml"
+CODEX_TRUST_PREFIX="[hooks.state.\"$CODEX_HOOKS:"
+TRUST_FILE="codex/hooks-trust.txt"
+TRUST_HEADER="# Trust hashes for codex/hooks.json, written by ./install.sh --pull from the
+# live ~/.codex/config.toml. Format: <event>:<group>:<handler> <hash>.
+# Edit hooks.json -> deploy -> trust the changes in codex /hooks -> --pull."
 
 MODE="install"
 case "${1:-}" in
@@ -69,6 +82,64 @@ skills_for() { # skill set -> prints source skill dirs
     [ "$1" = "no-nextjs" ] && [ "$(basename "$s")" = "nextjs-conventions" ] && continue
     printf '%s\n' "$s"
   done
+}
+
+# Trust key suffix of every handler in a hooks.json, as Codex builds them:
+# snake_case event, then the group and handler index within that event.
+codex_hook_keys() { # hooks.json
+  jq -r '.hooks | to_entries[]
+    | (.key | gsub("(?<a>[a-z])(?<b>[A-Z])"; "\(.a)_\(.b)") | ascii_downcase) as $e
+    | .value | to_entries[] | .key as $g
+    | .value.hooks | keys[] | "\($e):\($g):\(.)"' "$1" | sort
+}
+
+# "<suffix> <hash>" for each hook in the live hooks.json that config.toml marks
+# trusted. Stale entries left behind by removed hooks are filtered out.
+codex_live_trust() {
+  [ -f "$CODEX_CONFIG" ] && [ -f "$CODEX_HOOKS" ] || return 0
+  awk -v prefix="$CODEX_TRUST_PREFIX" -v keys="$(codex_hook_keys "$CODEX_HOOKS")" '
+    BEGIN { n = split(keys, k, "\n"); for (i = 1; i <= n; i++) valid[k[i]] = 1 }
+    /^\[/ {
+      key = ""
+      if (index($0, prefix) == 1) { key = substr($0, length(prefix) + 1); sub(/"\][ \t]*$/, "", key) }
+      next
+    }
+    key in valid && /^[ \t]*trusted_hash[ \t]*=/ {
+      h = $0; sub(/^[^"]*"/, "", h); sub(/".*$/, "", h); print key, h
+    }' "$CODEX_CONFIG" | sort
+}
+
+codex_tracked_trust() { grep -v -e '^#' -e '^[[:space:]]*$' "$TRUST_FILE" | sort; }
+
+# Give every tracked hook its tracked hash in config.toml. Other keys in those
+# tables (an "enabled = false" set in /hooks) and all other tables are kept;
+# hooks with no table yet get one appended.
+codex_seed_trust() {
+  local tmp="$CODEX_CONFIG.trust.$$"
+  [ -f "$CODEX_CONFIG" ] || : > "$CODEX_CONFIG" || die "cannot create $CODEX_CONFIG"
+  # umask: config.toml is 0600 and mv keeps the temp file's mode.
+  if ! (umask 077; awk -v prefix="$CODEX_TRUST_PREFIX" -v list="$(codex_tracked_trust)" '
+    BEGIN {
+      n = split(list, line, "\n")
+      for (i = 1; i <= n; i++) { split(line[i], f, " "); want[f[1]] = f[2]; order[i] = f[1] }
+    }
+    /^\[/ {
+      cur = ""
+      if (index($0, prefix) == 1) {
+        k = substr($0, length(prefix) + 1); sub(/"\][ \t]*$/, "", k)
+        if (k in want) { cur = k; print; printf "trusted_hash = \"%s\"\n", want[k]; done[k] = 1; next }
+      }
+    }
+    cur != "" && /^[ \t]*trusted_hash[ \t]*=/ { next }
+    { print }
+    END {
+      for (i = 1; i <= n; i++) if (!(order[i] in done))
+        printf "\n%s%s\"]\ntrusted_hash = \"%s\"\n", prefix, order[i], want[order[i]]
+    }' "$CODEX_CONFIG" > "$tmp"); then
+    rm -f "$tmp"; die "could not update hook trust in $CODEX_CONFIG"
+  fi
+  backup "$CODEX_CONFIG"
+  mv "$tmp" "$CODEX_CONFIG" || die "cannot write $CODEX_CONFIG"
 }
 
 echo "Claude Code config — ${MODE}"
@@ -192,6 +263,68 @@ if [ "$MODE" != "pull" ]; then
   done <<< "$SHARED_SCRIPTS"
   echo
 fi
+
+# --- Codex tab-status hooks: hooks.json both ways, trust seeded on deploy ---
+echo "codex  ->  ${CODEX_DIR/#$HOME/\~}"
+if [ ! -d "$CODEX_DIR" ]; then
+  note "not installed, skipped"
+else
+  case "$MODE" in
+    install)
+      if diff -q codex/hooks.json "$CODEX_HOOKS" > /dev/null 2>&1; then
+        note "hooks.json  ok"
+      else
+        backup "$CODEX_HOOKS"
+        cp codex/hooks.json "$CODEX_HOOKS" || die "cannot write $CODEX_HOOKS"
+        note "hooks.json"
+      fi
+      # Only rewrite config.toml when a tracked hook is actually untrusted, so
+      # a no-op deploy leaves no backup behind.
+      if [ -z "$(comm -23 <(codex_tracked_trust) <(codex_live_trust))" ]; then
+        note "hook trust  ok"
+      else
+        codex_seed_trust
+        note "hook trust  (previous config.toml saved as config.toml.bak-$STAMP)"
+      fi
+      ;;
+    check)
+      if [ ! -f "$CODEX_HOOKS" ]; then
+        differ "codex hooks.json missing"
+      elif ! diff -q codex/hooks.json "$CODEX_HOOKS" > /dev/null; then
+        differ "codex hooks.json"
+      else
+        note "hooks.json  ok"
+      fi
+      untrusted=$(comm -23 <(codex_tracked_trust) <(codex_live_trust) | wc -l | tr -d ' ')
+      if [ "$untrusted" -gt 0 ]; then
+        differ "codex hook trust: $untrusted hook(s) not trusted in config.toml"
+      else
+        note "hook trust  ok"
+      fi
+      ;;
+    pull)
+      if [ ! -f "$CODEX_HOOKS" ]; then
+        note "hooks.json  live file missing, skipped"
+      else
+        jq -e . "$CODEX_HOOKS" > /dev/null || die "$CODEX_HOOKS is not valid JSON - tracked copy left untouched"
+        cp "$CODEX_HOOKS" codex/hooks.json || die "cannot write codex/hooks.json"
+        tmp="$TRUST_FILE.pull.$$"
+        if { printf '%s\n' "$TRUST_HEADER"; codex_live_trust; } > "$tmp"; then
+          mv "$tmp" "$TRUST_FILE" || die "cannot write $TRUST_FILE"
+        else
+          rm -f "$tmp"; die "could not read hook trust from $CODEX_CONFIG"
+        fi
+        total=$(codex_hook_keys codex/hooks.json | wc -l | tr -d ' ')
+        trusted=$(codex_tracked_trust | wc -l | tr -d ' ')
+        note "hooks.json, hook trust  <- live ($trusted of $total hooks trusted)"
+        if [ "$trusted" -lt "$total" ]; then
+          note "  trust the rest in codex /hooks, then --pull again"
+        fi
+      fi
+      ;;
+  esac
+fi
+echo
 
 if [ "$MODE" = "check" ]; then
   if [ "$drift" -gt 0 ]; then

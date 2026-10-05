@@ -31,7 +31,9 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   ├── statusline.sh                      #   DEV variant (green label)
 │   └── settings.json                      #   sanitized — see note below
 ├── codex/
-│   └── config.toml                        # Codex CLI config + TUI status line
+│   ├── config.toml                        # Codex CLI config + TUI status line
+│   ├── hooks.json                         # Codex tab-status hooks (deployed by install.sh)
+│   └── hooks-trust.txt                    #   their /hooks trust hashes, pre-seeded by install.sh
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -483,6 +485,8 @@ serves both machines.
 - Claude Code's own `terminalProgressBarEnabled` also writes `OSC 9;4`. If the ring
   flickers between the two, set `PROGRESS=0` and keep the tab colour only.
 - Not tmux-aware: inside tmux the sequences would need passthrough wrapping.
+- Codex drives the same two scripts from `codex/hooks.json`, but only when it runs with
+  `--no-daemon`. See [Tab status hooks](#tab-status-hooks).
 
 ### Prisma production guard
 
@@ -610,35 +614,35 @@ status_line = [
 
 Segments render left to right and each one hides itself when its data is absent, so the line stays short outside a git repo or early in a session. It covers the same ground as the Claude status line - model and reasoning effort, git branch and dirty state, open PR, context usage, 5h/weekly limits, thread cost - but it is declarative config rather than a shell script, so there is nothing to keep in sync across accounts.
 
-> **Sanitized.** The `[projects."<path>"]` trust entries are stripped before committing - they are machine-specific and leak local client paths. Codex rewrites them on its own the first time you trust a directory, so restoring this file loses nothing permanent.
+> **Sanitized.** The `[projects."<path>"]` trust entries are stripped before committing - they are machine-specific and leak local client paths. Codex rewrites them on its own the first time you trust a directory, so restoring this file loses nothing permanent. The same goes for `[hooks.state."<path>"]`: hook trust is tracked path-free in `codex/hooks-trust.txt` instead, and `./install.sh` writes it back. CI fails if a home path appears in any `codex/` file.
 
 Restore with:
 ```bash
 cp codex/config.toml ~/.codex/config.toml
 ```
 
-That overwrites the file, so any directory you had already trusted has to be re-approved on next use. To keep them, merge instead - the repo config first, then the live `[projects.*]` tables appended back:
+That overwrites the file, so any directory you had already trusted has to be re-approved on next use (re-run `./install.sh` to restore hook trust). To keep both, merge instead - the repo config first, then the live `[projects.*]` and `[hooks.state.*]` tables appended back:
 
 ```bash
 cp ~/.codex/config.toml ~/.codex/config.toml.bak
 { cat codex/config.toml
   echo
-  awk '/^\[/ { keep = /^\[projects\./ } keep' ~/.codex/config.toml.bak
+  awk '/^\[/ { keep = /^\[(projects|hooks\.state)[].]/ } keep' ~/.codex/config.toml.bak
 } > ~/.codex/config.toml
 ```
 
-The `awk` keeps a line only while the most recent table header was a `[projects."..."]` one, so the trust entries come back and nothing else does. Order matters: the repo config has to come first, since every line after a table header belongs to that table.
+The `awk` keeps a line only while the most recent table header was a `[projects...]` or `[hooks.state...]` one, so the trust entries come back and nothing else does. Order matters: the repo config has to come first, since every line after a table header belongs to that table.
 
 Check the result before trusting it:
 ```bash
-python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", list(d))'
+python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", len(d.get("hooks", {}).get("state", {})), "hook trust entries,", list(d))'
 ```
 
 #### Always use Auto-review from the terminal
 
 The config sets the default, but an existing chat can retain its manual approval mode when resumed. `.zshrc-codex` adds a `codex` function that explicitly passes `--approve-for-me` on each launch, including `codex resume` and `codex fork`. It keeps the workspace sandbox enabled.
 
-Add the contents of `.zshrc-codex` to `~/.zshrc` once, before the Powerlevel10k theme if present, then open a new terminal tab. `install.sh` deploys Claude profiles and shared scripts; the Codex config and shell block are restored separately using these instructions.
+Add the contents of `.zshrc-codex` to `~/.zshrc` once, before the Powerlevel10k theme if present, then open a new terminal tab. `install.sh` deploys Claude profiles, shared scripts and the Codex hooks; the Codex config and shell block are restored separately using these instructions.
 
 Use the usual commands:
 
@@ -653,6 +657,33 @@ Use a Codex CLI version whose `codex --help` lists `--approve-for-me` (verified 
 This launcher applies to terminal sessions that load `~/.zshrc`. The desktop app and IDE extension have their own active permission selection; select **Approve for me** there when needed. See the [official permissions instructions](https://learn.chatgpt.com/docs/permission-modes).
 
 To remove the terminal override, delete the `codex` function from `~/.zshrc` and open a new tab. The settings in `~/.codex/config.toml` still apply as defaults.
+
+#### Tab status hooks
+
+`codex/hooks.json` wires the same `claude-iterm-tab-status.sh` and `claude-wt-tab-status.sh` scripts into Codex, so a Codex tab gets the same working / needs input / finished colours as a Claude tab. Both scripts are called for every event and each exits on the wrong terminal, so one file serves the Mac and WSL.
+
+| Codex event | State | Note |
+|-------------|-------|------|
+| `SessionStart` (`startup`, `resume`, `clear`) | reset | `compact` is left out, so a compaction mid-turn does not clear the tab |
+| `UserPromptSubmit`, `PostToolUse` | busy | `async` |
+| `PermissionRequest` | waiting | Codex has no `Notification` event; this is the closest |
+| `Stop` | done | `async` |
+| `Interrupt`, `SessionEnd` | reset | Codex caps these at 3 s |
+
+**Needs `--no-daemon`.** Since Codex 0.157 the TUI is a thin client of a shared `codex app-server` daemon, and hooks run inside that daemon: its parent is init, it has no tty, and its environment belongs to whichever tab started it first. The scripts find their tab by walking up the process tree to a process that owns a tty, so under the daemon they silently exit. Launch Codex with `--no-daemon` (put it in the `codex` launcher from `.zshrc-codex`, including the `resume` / `fork` branch) and hooks run under the tab's own `codex` process. OpenAI treats the daemon behaviour as by design ([openai/codex#37537](https://github.com/openai/codex/issues/37537), [#48500](https://github.com/openai/codex/issues/48500)). `features.daemon_auto_start = false` is not a substitute: it stops Codex starting a daemon but still attaches to one that is running ([#48778](https://github.com/openai/codex/issues/48778)).
+
+- **Trade-offs.** A `--no-daemon` session ends with its tab, `codex agents` cannot see it, and remote control is unavailable. `codex exec` already runs in the terminal's process tree and needs nothing. The desktop app and IDE extension do not load `~/.zshrc` and are unaffected.
+- **A daemon that is already up keeps running** until `codex app-server daemon stop` or a reboot, and sessions started without the flag still use it.
+
+**Trust is pre-seeded.** Codex skips a hook until it is trusted in `/hooks`, and records that in `config.toml` as `[hooks.state."<abs path>:<event>:<group>:<handler>"]` with a `trusted_hash`. The hash covers the hook definition (event, matcher, command, timeout, async), not the path, so it is the same on every machine. `codex/hooks-trust.txt` keeps the path-free part, and `install.sh` handles the rest:
+
+- **deploy** copies `codex/hooks.json` to `~/.codex/hooks.json` (or `$CODEX_HOME`) and adds or corrects each hook's `trusted_hash` in `config.toml`, backing it up first and keeping other keys such as an `enabled = false` set in `/hooks`. Machines without `~/.codex` are skipped.
+- **`--check`** reports a hook whose trust is missing or stale.
+- **`--pull`** copies `hooks.json` back and regenerates the trust list from the live config, ignoring entries left behind by removed hooks.
+
+After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
+
+Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a fresh `CODEX_HOME` at a different path, the app-server `hooks/list` call reports all 14 hooks as `trusted`.
 
 ### Account settings
 
