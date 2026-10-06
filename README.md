@@ -44,7 +44,9 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   │   └── pr-bots.sh                     #   Trigger, wait for and collect @codex / @claude PR reviews
 │   ├── deep-dive/SKILL.md               # Research a system, output Markdown + PDF
 │   ├── explain-code/SKILL.md            # Explain code with diagrams and analogies
-│   ├── nextjs-conventions/SKILL.md      # Personal Next.js conventions (personal + dev only)
+│   ├── nextjs-conventions/              # Personal Next.js conventions (personal + dev only)
+│   │   ├── SKILL.md
+│   │   └── patterns.md                    #   Verified reference code: env, Prisma 7, Better Auth, DAL, actions, proxy
 │   └── wp-backup/SKILL.md               # Export WordPress DB + zip files
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
@@ -89,7 +91,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/deep-dive`** — Researches a system or integration thoroughly, then writes it up as both Markdown (mermaid) and a print-ready PDF (inline SVG)
 
 **Stack-specific**
-- **`/nextjs-conventions`** — Personal Next.js conventions: App Router, strict TypeScript, Prisma, Better Auth, server actions, file layout
+- **`/nextjs-conventions`** — Personal Next.js 16 conventions: App Router, strict TypeScript, Prisma 7, Better Auth, Zod 4, Server Actions, data access layer, Biome, pnpm
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 
 > `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other seven. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
