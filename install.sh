@@ -32,10 +32,12 @@ claude-personal:$HOME/.claude-personal:statusline.sh:all
 claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 
 # repo file : live file. Shared by every profile. The tab-status scripts each exit
-# on the wrong terminal; the Prisma guard is inert without its local hosts file.
+# on the wrong terminal; the Prisma guard is inert without its local hosts file;
+# wt-dev is a command you run yourself, never a hook.
 SHARED_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
 wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh
-prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard"
+prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard
+wt-dev.sh:$HOME/.local/bin/wt-dev"
 
 # Codex runs hooks from hooks.json only once each is trusted in /hooks, and
 # records that in config.toml as [hooks.state."<abs path>:<event>:<group>:<n>"].
