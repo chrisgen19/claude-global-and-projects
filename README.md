@@ -15,6 +15,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
 ├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
+├── wt-dev.sh                               # dev server per git worktree in one tmux session, stable ports
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
@@ -533,6 +534,64 @@ Without that file the hook exits immediately and does nothing, so deploying it t
 machine is safe before the hosts are set. `install.sh` deploys it to
 `~/.local/bin/prisma-prod-guard`.
 
+### Worktree dev servers (`wt-dev`)
+
+`wt-dev.sh` runs a dev server for each git worktree of a repo inside one tmux session, so
+every branch's output is one keystroke away and its URL never moves. `install.sh` deploys
+it to `~/.local/bin/wt-dev`. It needs tmux (`sudo apt install tmux` / `brew install tmux`).
+
+```bash
+wt-dev                   # every worktree of the current repo
+wt-dev main feature/x    # only these branches
+```
+
+- **One window per worktree,** named `<branch> :<port>` and opened in that worktree. Running
+  `wt-dev` again from any worktree re-attaches instead of starting a second copy. The
+  session is named after the main worktree's directory.
+- **Stable ports.** The port is `3100 + cksum(branch) % 900`, so a branch always gets the
+  same URL, on both machines (POSIX `cksum` is the same on macOS and Linux). Next.js's own
+  fallback hands out 3000, 3001, 3002 in whatever order the servers happened to start.
+- **Per-repo dev command,** with `{port}` replaced by the worktree's port. First match wins:
+  1. `WT_DEV_CMD` env var, for a one-off: `WT_DEV_CMD='pnpm dev --port {port}' wt-dev`
+  2. `git config wt.devcmd '...'`, stored in the repo's `.git/config`: every worktree
+     shares it and nothing is committed to the project
+  3. `PORT={port} pnpm dev`
+- Worktrees whose directory is gone are skipped, with a hint to run `git worktree prune`.
+
+A dev script that hardcodes `--port` ignores `PORT`, and in a monorepo the root `dev`
+script often starts every app at once. Point `wt-dev` at one app and pass a second
+`--port`: pnpm appends extra args to the end of the script, and Next.js uses the last
+`--port` it is given.
+
+```bash
+git config wt.devcmd 'pnpm --filter web dev --port {port}'
+```
+
+Inside the session every tmux key starts with `Ctrl-b`:
+
+| Keys | Does |
+|------|------|
+| `Ctrl-b` `w` | Pick a window, with a live preview of its output |
+| `Ctrl-b` `0`-`9` / `n` / `p` | Jump to a window / next / previous |
+| `Ctrl-b` `[` | Scroll mode (`q` to leave). Or add `set -g mouse on` to `~/.tmux.conf` |
+| `Ctrl-b` `d` | Detach. The servers keep running; `wt-dev` re-attaches |
+| `Ctrl-c` | Stop that server. The shell stays, so up-arrow + Enter restarts it |
+
+`tmux kill-session -t <session>` stops every server in the session.
+
+#### Notes
+
+- **Worktrees don't copy untracked files.** A new worktree has no `.env.local` and no
+  `node_modules`: copy the env file in and run `pnpm install` before starting it.
+- **Absolute URLs in env files still name the old port** (`BASE_URL`, auth callback URLs).
+  Set them per worktree when a flow redirects, or it lands on another branch's server.
+- **Cookies are not isolated by port,** so signing in on one `localhost` port can replace
+  the session cookie of another.
+- **Memory.** A Next.js dev server can hold a GB or more. Start the branches you are
+  checking, not every worktree.
+- While a session is running, `wt-dev <branch>` only re-attaches: it does not add that
+  worktree. Kill the session and start it again with the branches you want.
+
 ### Install and drift check
 
 The copy commands throughout this README are the manual equivalent of `install.sh`.
@@ -555,7 +614,8 @@ Only `settings.json` flows in both directions. `CLAUDE.md`, the skills, the stat
 and the shared tab scripts are generated from the repo, so `--pull` leaves them alone.
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
-the shared `claude-iterm-tab-status.sh` and `claude-wt-tab-status.sh`. Settings are compared with sorted keys and with
+the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard` and
+`wt-dev`). Settings are compared with sorted keys and with
 `autoMode` removed, so formatting noise and the deliberately stripped block never read as
 drift. Run it before editing a live file by hand, and after.
 
