@@ -551,6 +551,8 @@ wt-dev main feature/x    # only these branches
 - **Stable ports.** The port is `3100 + cksum(branch) % 900`, so a branch always gets the
   same URL, on both machines (POSIX `cksum` is the same on macOS and Linux). Next.js's own
   fallback hands out 3000, 3001, 3002 in whatever order the servers happened to start.
+  Two branches can land on the same port (rare, there are 900): `wt-dev` warns when that
+  happens, so start one of them on its own.
 - **Per-repo dev command,** with `{port}` replaced by the worktree's port. First match wins:
   1. `WT_DEV_CMD` env var, for a one-off: `WT_DEV_CMD='pnpm dev --port {port}' wt-dev`
   2. `git config wt.devcmd '...'`, stored in the repo's `.git/config`: every worktree

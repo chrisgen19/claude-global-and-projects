@@ -22,6 +22,8 @@ if tmux has-session -t "=$session" 2>/dev/null; then
   exec tmux attach -t "=$session"
 fi
 
+# A string, not an array: bash 3.2 treats an empty array as unset under set -u.
+used_ports=" "
 while IFS=$'\t' read -r path branch; do
   if [[ $# -gt 0 && " $* " != *" $branch "* ]]; then continue; fi
   if [[ ! -d $path ]]; then
@@ -29,12 +31,17 @@ while IFS=$'\t' read -r path branch; do
     continue
   fi
   port=$(( 3100 + $(printf '%s' "$branch" | cksum | cut -d' ' -f1) % 900 ))
+  if [[ $used_ports == *" $port "* ]]; then
+    echo "warning: $branch shares port $port with another worktree, start one of them on its own" >&2
+  fi
+  used_ports+="$port "
   if tmux has-session -t "=$session" 2>/dev/null; then
     win=$(tmux new-window -d -P -F '#{window_id}' -t "$session:" -n "$branch :$port" -c "$path")
   else
     win=$(tmux new-session -d -P -F '#{window_id}' -s "$session" -n "$branch :$port" -c "$path")
   fi
-  tmux send-keys -t "$win" "${cmd//\{port\}/$port}" Enter
+  tmux send-keys -t "$win" -l "${cmd//\{port\}/$port}"
+  tmux send-keys -t "$win" Enter
   printf '%-40s http://localhost:%s\n' "$branch" "$port"
 done < <(git worktree list --porcelain | awk '
   /^worktree / { path = substr($0, 10) }
