@@ -75,7 +75,7 @@ import { z } from "zod";
 
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
-  email: z.string().email("Invalid email"),
+  email: z.email("Invalid email"),
   message: z.string().min(10, "Message must be at least 10 characters").max(2000),
 });
 
@@ -96,7 +96,7 @@ export async function submitContact(
   });
 
   if (!result.success) {
-    return { success: false, errors: result.error.flatten().fieldErrors };
+    return { success: false, errors: z.flattenError(result.error).fieldErrors };
   }
 
   try {
@@ -190,7 +190,7 @@ import { cn } from "@/lib/utils";
 
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
+  email: z.email("Invalid email"),
   message: z.string().min(10, "Message must be at least 10 characters"),
 });
 
@@ -375,7 +375,7 @@ const createPostSchema = z.object({
   title: z.string().min(1).max(200),
   slug: z.string().min(1).max(200).regex(/^[a-z0-9-]+$/),
   content: z.string().optional(),
-  authorId: z.string().cuid(),
+  authorId: z.cuid(),
 });
 
 export async function createPost(data: z.infer<typeof createPostSchema>) {
@@ -401,23 +401,24 @@ export async function togglePublish(id: string) {
 
 ## Revalidation Patterns
 
+`"use cache"` needs `cacheComponents: true` in `next.config.ts`. With that flag on, request data (`cookies()`, `params`, `searchParams`) must be read under `<Suspense>`, and uncached reads need `<Suspense>` or `"use cache"`, so adapt the page patterns in this file before enabling it. Without the flag, keep `unstable_cache` for database reads.
+
 ```ts
 // Tag-based revalidation
-import { unstable_cache } from "next/cache";
-import { revalidateTag } from "next/cache";
+import { cacheLife, cacheTag, revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 
 // Cached query with tags
-export const getFeaturedPosts = unstable_cache(
-  async () => {
-    return db.post.findMany({
-      where: { published: true, featured: true },
-      take: 6,
-    });
-  },
-  ["featured-posts"],
-  { tags: ["posts"], revalidate: 3600 }
-);
+export async function getFeaturedPosts() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("posts");
+
+  return db.post.findMany({
+    where: { published: true, featured: true },
+    take: 6,
+  });
+}
 
 // Invalidate after mutation. Next.js 16 requires the second argument.
 // In a Server Action, use updateTag("posts") when the user must see their own write.
