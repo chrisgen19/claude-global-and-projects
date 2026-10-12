@@ -67,6 +67,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ### Global `CLAUDE.md`
 Shared conventions that apply to all projects:
 - Communication style and response format
+- Accuracy rules (read code before describing it, check installed library versions)
 - Code style (TypeScript, naming conventions, quality rules)
 - Tooling defaults (pnpm, Node 20+)
 - Tech preferences (Lucide React, Framer Motion, Prisma/Drizzle)

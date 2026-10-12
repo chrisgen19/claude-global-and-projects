@@ -11,6 +11,10 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 - Show file path + surrounding context for code changes
 - On failure: show error + fix, never silently retry
 
+## Accuracy
+- Before stating how existing code works, read it and cite `path/to/file.ts:42`. If you haven't checked, say so instead of guessing.
+- For library APIs, props and config options, check the installed version (`node_modules`, lockfile or current docs) rather than memory, especially fast-moving ones (Next.js, Prisma, Zod).
+
 ## Response Format
 1. **Plan** (1-3 bullets)
 2. **Code / Commands**
