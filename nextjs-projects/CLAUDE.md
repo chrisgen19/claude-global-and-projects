@@ -1,6 +1,6 @@
 # Next.js Project Standards
 
-App Router + TypeScript + Tailwind. Shared conventions (naming, git, security) in global CLAUDE.md.
+App Router + TypeScript + Tailwind. Shared conventions (naming, git) in global CLAUDE.md.
 
 ## Structure
 ```
@@ -25,13 +25,12 @@ src/
 
 ## Components
 - Server Components by default. `'use client'` only when needed (hooks, events, browser APIs).
-- Default export for `page.tsx`, `layout.tsx`, `error.tsx`, `loading.tsx`. Named exports elsewhere.
 - Props interface: `{Component}Props`. Destructure in function params.
 - Co-locate types in same file unless shared across multiple components.
 
 ## Data Fetching
 - Fetch in Server Components — never `useEffect` for initial data.
-- Next.js 15+ fetch default is `no-store` (dynamic). Use `{ cache: 'force-cache' }` for static, `{ next: { revalidate: N } }` for ISR.
+- Next.js 15+: `fetch` is not cached by default. Use `{ cache: 'force-cache' }` to cache, `{ next: { revalidate: N } }` for ISR.
 - Server Actions (`'use server'`) for mutations. Validate with Zod before processing.
 - `revalidateTag()` / `revalidatePath()` for granular cache invalidation.
 - Parallel fetches with `Promise.all()` when data is independent.
@@ -46,12 +45,11 @@ src/
 - Mobile-first responsive (`sm:`, `md:`, `lg:`). Dark mode via `dark:` variant if needed.
 
 ## Forms
-- React Hook Form + Zod. Share schema between client validation and Server Action.
+- Zod for validation. React Hook Form only for complex client-side forms. Share the schema between client validation and the Server Action.
 - Inline field errors. Handle submission loading + server error states.
 
 ## State
 - URL state (`useSearchParams`, `nuqs`) for filterable/shareable UI.
-- React state/context for local. Zustand for complex cross-component state.
 - No client state for server-fetchable data.
 
 ## Database
@@ -74,7 +72,7 @@ src/
 ## Environment
 - `.env.local` for dev (gitignored). Vercel/Coolify env vars for staging/prod.
 - Client-exposed vars: `NEXT_PUBLIC_` prefix.
-- Validate env vars with Zod at build time via `lib/env.ts`.
+- Validate env vars with Zod via `lib/env.ts`.
 
 ## Deploy Checklist
 - [ ] Lint + type-check pass

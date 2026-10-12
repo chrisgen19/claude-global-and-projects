@@ -1,6 +1,6 @@
 # WordPress Project Standards
 
-Custom themes + plugins. Shared conventions (naming, git, security philosophy) in global CLAUDE.md.
+Custom themes + plugins. Shared conventions (naming, git) in global CLAUDE.md.
 
 ## Conventions
 - Unique prefix per client (e.g., `ag_` for Access Group, `mmg_` for Magnetite)
