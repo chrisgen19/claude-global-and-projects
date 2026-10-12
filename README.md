@@ -69,8 +69,8 @@ Shared conventions that apply to all projects:
 - Communication style and response format
 - Accuracy rules (read code before describing it, check installed library versions)
 - Code style (TypeScript, naming conventions, quality rules)
-- Tooling defaults (pnpm, Node 20+)
-- Tech preferences (Lucide React, Framer Motion, Prisma/Drizzle)
+- Tooling defaults (pnpm, Node 24 LTS)
+- Tech preferences (Lucide React, Motion, Prisma/Drizzle)
 - Deployment & hosting (Vercel, cPanel/VPS, Coolify, Docker)
 - Git workflow (conventional commits, branch naming)
 - Security guidelines and things to avoid
