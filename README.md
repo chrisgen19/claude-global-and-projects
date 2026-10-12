@@ -111,7 +111,7 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 - Project structure (`src/` with app, components, lib, hooks, types, schemas)
 - Component conventions (Server Components by default, `'use client'` only when needed)
 - Data fetching, caching, and revalidation patterns
-- Forms (React Hook Form + Zod, Server Actions)
+- Forms (Zod and Server Actions, React Hook Form for complex client-side forms)
 - Scaffold and runtime code patterns (layouts, Prisma CRUD, auth, Zustand, middleware)
 
 ## How It Works
