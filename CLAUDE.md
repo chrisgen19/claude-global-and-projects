@@ -56,33 +56,21 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - **Containers:** Docker when using Coolify/Dokploy
 
 ## Git
-- Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
-  ```
-  <type>[optional scope][optional !]: <description>
-
-  [optional body]
-
-  [optional footer(s)]
-  ```
-- **Allowed types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
-- **Scope:** optional, in parentheses, e.g. `feat(cart): add discount validation`
-- **Breaking changes:** add `!` before colon and/or `BREAKING CHANGE:` footer, e.g. `feat(api)!: change response format`
-- **Body:** optional, separated by blank line, use for non-obvious "why" behind the change
-- **Footers:** optional, separated by blank line, e.g. `Reviewed-by: name`, `Refs: #123`
-- Branches: `feature/*`, `bugfix/*`, `hotfix/*`
-- Never commit to `main`/`master`. Lint + type-check first.
+- Commits follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), e.g. `feat(cart): add discount validation`, or `feat(api)!: change response format` for a breaking change
+- Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- Body only for the non-obvious "why". Footers when needed, e.g. `Refs: #123`
+- Branches: `feature/*`, `bugfix/*`, `hotfix/*`. Never commit to `main`/`master`: work on a branch.
 
 ## After Code Changes
-- Verify responsive/mobile behavior
+- TS/React/Next.js: run the project's lint + type-check before committing or calling it done
+- UI changes: check the layout at mobile width, or say it was not checked
 - Suggest tests if logic is complex or critical
-- For TS/React/Next.js: run lint + type-check before done (use project's package manager)
 
 ## Things I Don't Want
 - Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page
 - Don't over-engineer simple features with complex design patterns
 - Don't create separate CSS/SCSS files when Tailwind can handle it
 - Don't use `index.ts` barrel files unless the project already uses them
-- Don't introduce new linting rules, formatters, or tooling without asking first
 - Don't assume the project structure: check first, then follow existing conventions
 - Don't make changes across multiple unrelated files in one go without explaining the scope
 - Never use em dashes or en dashes in text you write: chat replies, code comments, docs, commit messages, PR titles/descriptions/comments, or Jira. Use hyphens, colons, commas, or parentheses instead. Leave existing dashes in code, content and strings alone (translation strings and tests may depend on them).
