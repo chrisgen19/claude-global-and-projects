@@ -108,7 +108,76 @@ export async function submitContact(
 }
 ```
 
-## Form with React Hook Form + Zod
+## Form with useActionState (default)
+
+```tsx
+// src/components/forms/contact-form-action.tsx
+"use client";
+
+import { useActionState } from "react";
+import { submitContact } from "@/app/actions/contact";
+
+export function ContactFormAction() {
+  const [state, formAction, isPending] = useActionState(submitContact, {
+    success: false,
+  });
+
+  return (
+    <form action={formAction} className="space-y-4">
+      <div>
+        <input
+          name="name"
+          placeholder="Name"
+          className="w-full rounded-md border border-gray-300 px-3 py-2"
+        />
+        {state.errors?.name && (
+          <p className="mt-1 text-sm text-red-600">{state.errors.name[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <input
+          name="email"
+          type="email"
+          placeholder="Email"
+          className="w-full rounded-md border border-gray-300 px-3 py-2"
+        />
+        {state.errors?.email && (
+          <p className="mt-1 text-sm text-red-600">{state.errors.email[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <textarea
+          name="message"
+          rows={4}
+          placeholder="Message"
+          className="w-full rounded-md border border-gray-300 px-3 py-2"
+        />
+        {state.errors?.message && (
+          <p className="mt-1 text-sm text-red-600">{state.errors.message[0]}</p>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={isPending}
+        className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
+      >
+        {isPending ? "Sending..." : "Send"}
+      </button>
+
+      {state.message && (
+        <p className={state.success ? "text-green-600" : "text-red-600"}>
+          {state.message}
+        </p>
+      )}
+    </form>
+  );
+}
+```
+
+## Form with React Hook Form + Zod (complex client-side forms only)
 
 ```tsx
 // src/components/forms/contact-form.tsx
@@ -209,75 +278,6 @@ export function ContactForm() {
       >
         {isSubmitting ? "Sending..." : "Send Message"}
       </button>
-    </form>
-  );
-}
-```
-
-## Form with useActionState (Server Action)
-
-```tsx
-// src/components/forms/contact-form-action.tsx
-"use client";
-
-import { useActionState } from "react";
-import { submitContact } from "@/app/actions/contact";
-
-export function ContactFormAction() {
-  const [state, formAction, isPending] = useActionState(submitContact, {
-    success: false,
-  });
-
-  return (
-    <form action={formAction} className="space-y-4">
-      <div>
-        <input
-          name="name"
-          placeholder="Name"
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-        {state.errors?.name && (
-          <p className="mt-1 text-sm text-red-600">{state.errors.name[0]}</p>
-        )}
-      </div>
-
-      <div>
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-        {state.errors?.email && (
-          <p className="mt-1 text-sm text-red-600">{state.errors.email[0]}</p>
-        )}
-      </div>
-
-      <div>
-        <textarea
-          name="message"
-          rows={4}
-          placeholder="Message"
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-        {state.errors?.message && (
-          <p className="mt-1 text-sm text-red-600">{state.errors.message[0]}</p>
-        )}
-      </div>
-
-      <button
-        type="submit"
-        disabled={isPending}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
-      >
-        {isPending ? "Sending..." : "Send"}
-      </button>
-
-      {state.message && (
-        <p className={state.success ? "text-green-600" : "text-red-600"}>
-          {state.message}
-        </p>
-      )}
     </form>
   );
 }
@@ -419,10 +419,11 @@ export const getFeaturedPosts = unstable_cache(
   { tags: ["posts"], revalidate: 3600 }
 );
 
-// Invalidate after mutation
+// Invalidate after mutation. Next.js 16 requires the second argument.
+// In a Server Action, use updateTag("posts") when the user must see their own write.
 export async function updatePost(id: string, data: Record<string, unknown>) {
   await db.post.update({ where: { id }, data });
-  revalidateTag("posts");
+  revalidateTag("posts", "max");
 }
 ```
 
