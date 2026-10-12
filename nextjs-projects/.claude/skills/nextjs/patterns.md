@@ -2,6 +2,8 @@
 
 ## Server Component with Data Fetching
 
+This component reads at request time. Render it inside `<Suspense>` or below a `loading.tsx`, or read through a cached query (see Cached Queries in `scaffold.md`).
+
 ```tsx
 // src/components/services/service-list.tsx
 import { db } from "@/lib/db";
@@ -401,7 +403,7 @@ export async function togglePublish(id: string) {
 
 ## Revalidation Patterns
 
-`"use cache"` needs `cacheComponents: true` in `next.config.ts`. With that flag on, request data (`cookies()`, `params`, `searchParams`) must be read under `<Suspense>`, and uncached reads need `<Suspense>` or `"use cache"`, so adapt the page patterns in this file before enabling it. Without the flag, keep `unstable_cache` for database reads.
+`"use cache"` needs `cacheComponents: true`, which the scaffold `next.config.ts` sets. With the flag on, request data (`cookies()`, `params`, `searchParams`) must be read under `<Suspense>` or below a `loading.tsx`, and uncached reads need the same or `"use cache"`. In a project without the flag, keep `unstable_cache` for database reads.
 
 ```ts
 // Tag-based revalidation
@@ -467,16 +469,25 @@ export async function requireAdmin() {
 
 ```tsx
 // src/app/dashboard/page.tsx
+import { Suspense } from "react";
 import { requireAuth } from "@/lib/auth";
 
-export default async function DashboardPage() {
-  const user = await requireAuth();
-
+// The page stays static. The cookie read happens in a child under <Suspense>
+// and streams in at request time.
+export default function DashboardPage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-12">
-      <h1 className="text-2xl font-bold">Welcome, {user.name}</h1>
+      <Suspense fallback={<p className="text-gray-500">Loading...</p>}>
+        <Welcome />
+      </Suspense>
     </main>
   );
+}
+
+async function Welcome() {
+  const user = await requireAuth();
+
+  return <h1 className="text-2xl font-bold">Welcome, {user.name}</h1>;
 }
 ```
 
@@ -484,6 +495,7 @@ export default async function DashboardPage() {
 
 ```tsx
 // src/app/posts/page.tsx
+import { Suspense } from "react";
 import { getPublishedPosts } from "@/lib/queries/posts";
 import { Pagination } from "@/components/ui/pagination";
 
@@ -491,13 +503,25 @@ type Props = {
   searchParams: Promise<{ page?: string; q?: string }>;
 };
 
-export default async function PostsPage({ searchParams }: Props) {
-  const { page, q } = await searchParams;
+// searchParams is only known at request time. Pass the promise to a child
+// under <Suspense> instead of awaiting it here.
+export default function PostsPage({ searchParams }: Props) {
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-12">
+      <Suspense fallback={<p className="text-gray-500">Loading posts...</p>}>
+        <PostResults searchParams={searchParams} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function PostResults({ searchParams }: Props) {
+  const { page } = await searchParams;
   const currentPage = Math.max(1, Number(page) || 1);
   const { posts, totalPages } = await getPublishedPosts(currentPage, 10);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-12">
+    <>
       <div className="grid gap-6">
         {posts.map((post) => (
           <article key={post.id}>
@@ -506,7 +530,7 @@ export default async function PostsPage({ searchParams }: Props) {
         ))}
       </div>
       <Pagination currentPage={currentPage} totalPages={totalPages} />
-    </main>
+    </>
   );
 }
 ```

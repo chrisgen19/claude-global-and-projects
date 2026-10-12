@@ -31,6 +31,7 @@ src/
 ## Data Fetching
 - Fetch in Server Components — never `useEffect` for initial data.
 - Next.js 15+: `fetch` is not cached by default. Use `{ cache: 'force-cache' }` to cache, `{ next: { revalidate: N } }` for ISR.
+- With `cacheComponents: true` (the scaffold default on Next.js 16): cache shared reads with `"use cache"` plus `cacheLife` and `cacheTag`, and read `cookies()`, `params` and `searchParams` inside `<Suspense>`.
 - Server Actions (`'use server'`) for mutations. Validate with Zod before processing.
 - `revalidateTag()` / `revalidatePath()` for granular cache invalidation.
 - Parallel fetches with `Promise.all()` when data is independent.
