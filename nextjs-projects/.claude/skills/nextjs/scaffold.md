@@ -62,15 +62,18 @@ export default async function ServicesPage() {
 // src/app/services/[slug]/page.tsx
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { getServiceBySlug, getServiceSlugs } from "@/lib/queries/services";
 
 type Props = { params: Promise<{ slug: string }> };
 
+// Must return at least one param: with Cache Components an empty array fails the build.
 export async function generateStaticParams() {
   const slugs = await getServiceSlugs();
   return slugs.map((slug) => ({ slug }));
 }
 
+// The database read is a cached query, so the metadata can prerender.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const service = await getServiceBySlug(slug);
@@ -78,17 +81,70 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: service.title, description: service.excerpt };
 }
 
-export default async function ServicePage({ params }: Props) {
+// The page does not await params. It passes the promise to a child under
+// <Suspense>, so the shell also prerenders for slugs not known at build time.
+export default function ServicePage({ params }: Props) {
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-12">
+      <Suspense fallback={<p className="text-gray-500">Loading...</p>}>
+        <ServiceContent params={params} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function ServiceContent({ params }: Props) {
   const { slug } = await params;
   const service = await getServiceBySlug(slug);
   if (!service) notFound();
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
+    <>
       <h1 className="mb-4 text-3xl font-bold">{service.title}</h1>
       <div className="prose max-w-none">{service.content}</div>
-    </main>
+    </>
   );
+}
+```
+
+## Cached Queries
+
+Reads that many requests share go through `"use cache"` functions. A page can then await them at the top and still prerender.
+
+```ts
+// src/lib/queries/services.ts
+import { cacheLife, cacheTag } from "next/cache";
+import { db } from "@/lib/db";
+
+export async function getServices() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("services");
+
+  return db.service.findMany({
+    where: { published: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getServiceSlugs() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("services");
+
+  const services = await db.service.findMany({
+    where: { published: true },
+    select: { slug: true },
+  });
+  return services.map((service) => service.slug);
+}
+
+export async function getServiceBySlug(slug: string) {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("services");
+
+  return db.service.findUnique({ where: { slug } });
 }
 ```
 
@@ -209,6 +265,7 @@ model User {
   name      String?
   role      Role     @default(USER)
   posts     Post[]
+  sessions  Session[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -219,6 +276,7 @@ model Post {
   id          String   @id @default(cuid())
   title       String
   slug        String   @unique
+  excerpt     String?
   content     String?
   published   Boolean  @default(false)
   featured    Boolean  @default(false)
@@ -231,6 +289,31 @@ model Post {
   @@index([authorId])
   @@index([slug])
   @@map("posts")
+}
+
+model Service {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  excerpt   String?
+  content   String?
+  published Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("services")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
 }
 
 enum Role {
@@ -313,6 +396,7 @@ export default function Loading() {
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.example.com" },
