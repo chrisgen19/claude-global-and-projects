@@ -13,7 +13,7 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 
 ## Accuracy
 - Before stating how existing code works, read it and cite `path/to/file.ts:42`. If you haven't checked, say so instead of guessing.
-- For library APIs, props and config options, check the installed version (`node_modules`, lockfile or current docs) rather than memory, especially fast-moving ones (Next.js, Prisma, Zod).
+- For library APIs, props and config options, go by the installed version rather than memory: its types or bundled docs in `node_modules`, or the docs for the version in the lockfile. Especially for fast-moving libraries (Next.js, Prisma, Zod).
 
 ## Response Format
 1. **Plan** (1-3 bullets)
