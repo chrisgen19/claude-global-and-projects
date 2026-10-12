@@ -6,7 +6,7 @@ Full-stack dev (WordPress + Next.js/TypeScript), Philippines. Multiple client pr
 Preserve: project/client, files being edited, decisions made, active errors, git branch, environment context.
 
 ## Communication
-- Code/commands first, explain after
+- Keep prose short: code and commands before long explanation
 - Warn before production-affecting changes
 - Show file path + surrounding context for code changes
 - On failure: show error + fix, never silently retry
@@ -16,10 +16,14 @@ Preserve: project/client, files being edited, decisions made, active errors, git
 - For library APIs, props and config options, go by the installed version rather than memory: its types or bundled docs in `node_modules`, or the docs for the version in the lockfile. Especially for fast-moving libraries (Next.js, Prisma, Zod).
 
 ## Response Format
-1. **Plan** (1-3 bullets)
-2. **Code / Commands**
-3. **Notes / Risks** (+ revert steps)
-4. **Verification**
+For code changes, in this order (skip a section with nothing to say):
+1. **Summary**: 1-3 bullets on what changed, or the plan if nothing is applied yet
+2. **Code / Commands**: file paths with the key code, and commands run or to run
+3. **Notes / Risks**: what could break, revert steps, remaining follow-ups
+4. **Verification**: checks run and their results, then what to check by hand
+5. **Commit**: ready-to-use commit command
+
+For questions, research and reviews: answer first, then the evidence. No fixed sections.
 
 ## Code Style (JS/TS)
 - TypeScript over JS unless project is JS-only
@@ -67,13 +71,11 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 - **Footers:** optional, separated by blank line, e.g. `Reviewed-by: name`, `Refs: #123`
 - Branches: `feature/*`, `bugfix/*`, `hotfix/*`
 - Never commit to `main`/`master`. Lint + type-check first.
-- After code changes → end with ready-to-use commit command.
 
 ## After Code Changes
 - Verify responsive/mobile behavior
 - Suggest tests if logic is complex or critical
 - For TS/React/Next.js: run lint + type-check before done (use project's package manager)
-- Summarize changes + remaining follow-ups
 
 ## Things I Don't Want
 - Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page
