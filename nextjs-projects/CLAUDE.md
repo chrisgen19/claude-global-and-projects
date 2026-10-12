@@ -60,9 +60,10 @@ src/
 ## Security
 1. Validate all inputs with Zod (Server Actions, API routes, params)
 2. Auth via `cookies()` / `headers()` from `next/headers` — never trust client-sent auth
-3. Avoid `dangerouslySetInnerHTML` — sanitize if unavoidable
-4. Server Actions have built-in CSRF. API routes need manual checks for non-GET.
-5. Rate limit public API routes
+3. Authenticate and authorize inside every Server Action. Each one is reachable by a direct POST, so a page-level check does not protect it.
+4. Avoid `dangerouslySetInnerHTML` — sanitize if unavoidable
+5. Server Actions have built-in CSRF. API routes need manual checks for non-GET.
+6. Rate limit public API routes
 
 ## Performance
 - Server Components to reduce client JS bundle

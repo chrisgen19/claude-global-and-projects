@@ -58,7 +58,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
     ├── CLAUDE.md                          # Next.js project standards
     └── .claude/skills/nextjs/
         ├── SKILL.md                       # Skill entry point
-        ├── scaffold.md                    # Boilerplate: layouts, configs, Prisma, middleware, env validation
+        ├── scaffold.md                    # Boilerplate: layouts, configs, Prisma, proxy, env validation
         └── patterns.md                    # Runtime: data fetching, forms, Server Actions, Zustand, auth
 ```
 
@@ -73,7 +73,7 @@ Shared conventions that apply to all projects:
 - Tech preferences (Lucide React, Motion, Prisma/Drizzle)
 - Deployment & hosting (Vercel, cPanel/VPS, Coolify, Docker)
 - Git workflow (conventional commits, branch naming)
-- Security guidelines and things to avoid
+- Things to avoid (unrequested packages, over-engineering, hidden command errors)
 
 ### Global Skills (`.claude/skills/`)
 Cross-project skills that work everywhere — copy to `~/.claude/skills/` for global availability:
@@ -112,7 +112,7 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 - Component conventions (Server Components by default, `'use client'` only when needed)
 - Data fetching, caching, and revalidation patterns
 - Forms (Zod and Server Actions, React Hook Form for complex client-side forms)
-- Scaffold and runtime code patterns (layouts, Prisma CRUD, auth, Zustand, middleware)
+- Scaffold and runtime code patterns (layouts, Prisma CRUD, auth, Zustand, proxy)
 
 ## How It Works
 

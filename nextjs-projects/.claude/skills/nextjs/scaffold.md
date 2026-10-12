@@ -119,15 +119,17 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-## Middleware
+## Proxy
+
+Next.js 16 renamed `middleware.ts` to `proxy.ts` (Node.js runtime only). On Next.js 15, keep `src/middleware.ts` exporting `middleware`. Use it for optimistic checks: read the cookie, no database calls. Real authorization happens in pages, Server Actions and the data layer.
 
 ```ts
-// src/middleware.ts
+// src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 
 const protectedPaths = ["/dashboard", "/settings", "/admin"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
 
