@@ -67,9 +67,14 @@ import { getServiceBySlug, getServiceSlugs } from "@/lib/queries/services";
 
 type Props = { params: Promise<{ slug: string }> };
 
-// Must return at least one param: with Cache Components an empty array fails the build.
+// Cache Components needs at least one param here, or the build fails. With no
+// published service yet, return a placeholder: no service has this slug, so the
+// page below answers it with notFound().
+const PLACEHOLDER_SLUG = "__placeholder__";
+
 export async function generateStaticParams() {
   const slugs = await getServiceSlugs();
+  if (slugs.length === 0) return [{ slug: PLACEHOLDER_SLUG }];
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -144,7 +149,7 @@ export async function getServiceBySlug(slug: string) {
   cacheLife("hours");
   cacheTag("services");
 
-  return db.service.findUnique({ where: { slug } });
+  return db.service.findUnique({ where: { slug, published: true } });
 }
 ```
 
