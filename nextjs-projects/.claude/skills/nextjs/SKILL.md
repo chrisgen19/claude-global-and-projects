@@ -5,6 +5,8 @@ description: Next.js App Router development skill. Use when building or modifyin
 
 You are working on a Next.js App Router project with TypeScript, Tailwind CSS, Prisma, and Zod.
 
+The patterns target Next.js 16, Tailwind CSS 4, Prisma 7 and Zod 4. In a project on older majors, follow its existing code and do not upgrade unasked.
+
 Before writing any code, read the relevant pattern file:
 - For boilerplate and project setup (layouts, configs, Prisma client, proxy, env validation, utilities) → read `scaffold.md`
 - For runtime patterns (data fetching, Server Actions, forms, Zustand, auth, Prisma CRUD, error handling, search params) → read `patterns.md`

@@ -97,6 +97,7 @@ export default async function ServicePage({ params }: Props) {
 ```ts
 // src/app/api/contact/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { contactSchema } from "@/schemas/contact";
 
 export async function POST(request: NextRequest) {
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
 
   if (!result.success) {
     return NextResponse.json(
-      { error: "Validation failed", issues: result.error.flatten().fieldErrors },
+      { error: "Validation failed", issues: z.flattenError(result.error).fieldErrors },
       { status: 400 }
     );
   }
@@ -154,15 +155,39 @@ export const config = {
 
 ### Client singleton
 
+Prisma 7 generates the client into the project and connects through a driver adapter (`@prisma/adapter-pg`). Run `prisma generate` after changing the schema.
+
 ```ts
 // src/lib/db.ts
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+import { env } from "@/lib/env";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const db = globalForPrisma.prisma ?? new PrismaClient();
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter: new PrismaPg({ connectionString: env.DATABASE_URL }),
+  });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+```
+
+### prisma.config.ts
+
+```ts
+// prisma.config.ts
+import "dotenv/config";
+import { defineConfig } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: { path: "prisma/migrations" },
+  // process.env, not Prisma's env(): env() throws when the variable is unset,
+  // which breaks `prisma generate` on CI and Docker installs.
+  datasource: { url: process.env.DATABASE_URL },
+});
 ```
 
 ### Schema example
@@ -170,12 +195,12 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 ```prisma
 // prisma/schema.prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -196,6 +221,7 @@ model Post {
   slug        String   @unique
   content     String?
   published   Boolean  @default(false)
+  featured    Boolean  @default(false)
   author      User     @relation(fields: [authorId], references: [id])
   authorId    String   @map("author_id")
   publishedAt DateTime? @map("published_at")
@@ -220,8 +246,8 @@ enum Role {
 import { z } from "zod";
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SITE_URL: z.string().url(),
+  DATABASE_URL: z.url(),
+  NEXT_PUBLIC_SITE_URL: z.url(),
   SESSION_SECRET: z.string().min(32),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
@@ -309,30 +335,35 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-### tailwind.config.ts
+### globals.css (Tailwind CSS 4)
 
-```ts
-import type { Config } from "tailwindcss";
+Tailwind CSS 4 is configured in CSS. There is no `tailwind.config.ts` and no `content` list: sources are detected automatically.
 
-const config: Config = {
-  content: ["./src/**/*.{ts,tsx}"],
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-      },
-      colors: {
-        brand: {
-          50: "#f0f7ff",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          900: "#1e3a5f",
-        },
-      },
-    },
+```css
+/* src/app/globals.css */
+@import "tailwindcss";
+
+/* inline: --font-inter is set at runtime by next/font in the root layout */
+@theme inline {
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+@theme {
+  --color-brand-50: #f0f7ff;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a5f;
+}
+```
+
+### postcss.config.mjs
+
+```js
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
   },
-  plugins: [],
 };
 
 export default config;
@@ -376,6 +407,7 @@ out/
 !.env.example
 *.tsbuildinfo
 next-env.d.ts
+src/generated/
 ```
 
 ### .env.example
