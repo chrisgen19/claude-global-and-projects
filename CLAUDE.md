@@ -39,7 +39,7 @@ For PHP naming and conventions, see project-level CLAUDE.md.
 
 ## Tooling
 - `pnpm` unless project uses something else. Node 20+.
-- Follow existing lint/format/test configs. Don't add tooling without asking.
+- Follow existing lint/format/test configs. Don't add tooling or change lint rules without asking.
 
 ## Tech Preferences
 - Framework: Next.js App Router (primary), React + Vite when appropriate
