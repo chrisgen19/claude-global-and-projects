@@ -103,8 +103,10 @@ stop_watch() {
   rm -f "$WATCHFILE"
 }
 
-# Reads the hook's JSON input on stdin for the transcript path. No jq, or no
-# transcript_path (Codex), means no watcher: the old behaviour.
+# Reads the hook's JSON input on stdin for the transcript path. No jq or no
+# transcript_path means no watcher: the old behaviour. Codex sends one too, but
+# its transcript never carries Claude Code's marker, so there the watcher just
+# idles until done/reset or Codex exits.
 start_watch() {
   local transcript
   transcript=$(jq -r '.transcript_path // empty' 2>/dev/null) || return 0

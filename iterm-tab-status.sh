@@ -6,6 +6,9 @@
 #   done     -> tab blinks green x4, then stays green + one dock bounce
 #   reset    -> clears tab color, badge and any running animation
 #
+# An interrupted turn (Esc / Ctrl+C) runs no hook at all, so busy also starts a
+# watcher that resets the tab when the interrupt lands in the transcript.
+#
 # Wired up from the hooks block in each account's settings.json.
 set -u
 
@@ -18,27 +21,32 @@ BLINKS=4             # blink cycles for "done"
 BLINK_DELAY=0.22
 PULSE_DELAY=0.15
 MAX_PULSE_ITERS=100000   # backstop so an orphaned animation can't run forever
+SETTLE_DELAY=0.3     # interrupt reset waits this long for in-flight busy hooks to land
+INTERRUPT_MARK='"text":"[Request interrupted by user'   # also "... for tool use]"
 
 # Hooks are spawned detached from the controlling terminal, so /dev/tty is
 # unusable and $PPID (an intermediate shell) reports no tty either. Walk up the
 # process tree until we hit the claude CLI, which does own the iTerm2 pty.
+# Prints the tty name and that process's pid.
 find_tty() {
   local p=$PPID t a i=0
   while [ "$i" -lt 8 ] && [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ]; do
     read -r t a <<< "$(ps -o tty=,ppid= -p "$p")"
     case "${t:-??}" in
       '?' | '??') ;;
-      *) printf '%s' "$t"; return 0 ;;
+      *) printf '%s %s' "$t" "$p"; return 0 ;;
     esac
     p="$a"
     i=$((i + 1))
   done
   return 1
 }
-# The detached animation child is handed the tty directly: by the time it
-# starts, its own parent has exited and the ancestry walk would find nothing.
+# The detached animation and watcher children are handed the tty directly: by
+# the time they start, their own parent has exited and the ancestry walk would
+# find nothing.
 tty_name="${CLAUDE_TAB_TTY:-}"
-[ -n "$tty_name" ] || tty_name=$(find_tty)
+tty_pid=''
+[ -n "$tty_name" ] || read -r tty_name tty_pid <<< "$(find_tty)"
 [ -n "$tty_name" ] || exit 0
 DEV="/dev/$tty_name"
 [ -w "$DEV" ] || exit 0
@@ -47,6 +55,7 @@ RUN="${TMPDIR:-/tmp}"
 PIDFILE="$RUN/claude-tab-$tty_name.pid"
 STATEFILE="$RUN/claude-tab-$tty_name.state"
 GENFILE="$RUN/claude-tab-$tty_name.gen"
+WATCHFILE="$RUN/claude-tab-$tty_name.watch"
 
 # ps prints nothing (and no stderr) for a dead pid.
 alive()     { [ -n "$(ps -p "$1" -o pid=)" ]; }
@@ -94,6 +103,50 @@ kill_pulse() {
 
 stop_pulse() { kill_pulse "$(pulse_pid)"; }
 
+# Claude Code runs no hook when a turn is interrupted: Stop is documented not to
+# fire on a user interrupt, so the tab would stay orange (or red with an
+# "input?" badge, from a permission prompt) until a later turn finishes. The
+# interrupt is still written to the session transcript as a user message, so
+# busy starts one __watch per turn that tails the transcript and resets the tab
+# when that message shows up. done/reset kill it.
+watcher_pid() { local p=''; [ -f "$WATCHFILE" ] && read -r p < "$WATCHFILE"; printf '%s' "$p"; }
+
+# Same pid-reuse guard as is_pulse.
+is_watcher() {
+  case "$(ps -p "$1" -o command=)" in
+    *iterm-tab-status*__watch*) return 0 ;;
+  esac
+  return 1
+}
+
+watcher_running() { local p; p=$(watcher_pid); [ -n "$p" ] && alive "$p" && is_watcher "$p"; }
+
+# The watcher leads its own process group, so this takes its tail, grep and
+# claude check down with it.
+stop_watcher() {
+  local p
+  p=$(watcher_pid)
+  [ -n "$p" ] && alive "$p" && is_watcher "$p" && kill -- "-$p" 2>/dev/null
+  [ "$(watcher_pid)" = "$p" ] && rm -f "$WATCHFILE"
+  return 0
+}
+
+# Reads the hook's JSON input on stdin for the transcript path. No jq, no
+# transcript_path, or no claude pid to outlive means no watcher: the old
+# behaviour. Codex sends a transcript_path too, but its transcript never carries
+# Claude Code's marker, so there the watcher just idles until done/reset or
+# Codex exits.
+start_watcher() {
+  local transcript
+  [ -n "$tty_pid" ] || return 0
+  transcript=$(jq -r '.transcript_path // empty' 2>/dev/null) || return 0
+  [ -n "$transcript" ] || return 0
+  set -m   # job control gives the watcher its own process group
+  CLAUDE_TAB_TTY="$tty_name" "$0" __watch "$tty_pid" "$transcript" < /dev/null > /dev/null 2>&1 &
+  printf '%s' "$!" > "$WATCHFILE"
+  set +m
+}
+
 case "${1:-reset}" in
 
   # Internal: the breathing-orange animation. Dark orange <-> bright orange.
@@ -122,8 +175,33 @@ case "${1:-reset}" in
     exit 0
     ;;
 
+  # Internal: resets the tab when the turn is interrupted. Runs as its own
+  # process group leader (see start_watcher), so a kill of -$$ ends all of it.
+  __watch)
+    claude_pid="${2:-}"
+    transcript="${3:-}"
+    [ -n "$claude_pid" ] || exit 0
+    [ -n "$transcript" ] || exit 0
+    # macOS tail has no --pid, so end the watcher here once claude is gone.
+    ( while alive "$claude_pid"; do sleep 2; done; kill -- "-$$" ) &
+    tail -n 0 -F "$transcript" 2>/dev/null | {
+      grep -m 1 -qF "$INTERRUPT_MARK" || exit 0
+      sleep "$SETTLE_DELAY"
+      case "$(get_state)" in
+        busy | waiting) claim; stop_pulse; set_state none; tabreset; attention no; badge '' ;;
+      esac
+      [ "$(watcher_pid)" = "$$" ] && rm -f "$WATCHFILE"
+      # tail only notices grep is gone on its next write, so end it directly.
+      kill -- "-$$"
+    }
+    exit 0
+    ;;
+
   busy)
     claim
+    # Before the busy guard, so a missing watcher (say, a state file left
+    # behind by an older version of this script) is started on the next hook.
+    watcher_running || start_watcher
     p=$(pulse_pid)
     if [ "$PULSE" = 1 ]; then
       if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
@@ -168,13 +246,14 @@ case "${1:-reset}" in
     # target the animation that was live when this hook started.
     was_pulsing=$(pulse_pid)
     claim
-    # Stop runs async, so a busy/reset can claim between the lines below. Both
-    # of the next steps are destructive - killing the pulse and forcing the
-    # state to "done" would strand an active session with no animation and
-    # suppress its red "needs input" tab - so both are gated on still owning
-    # the claim, not just the repaints further down.
+    # Stop runs async, so a busy/reset can claim between the lines below. The
+    # next steps are destructive - killing the pulse and watcher and forcing
+    # the state to "done" would strand an active session with no animation or
+    # interrupt watcher and suppress its red "needs input" tab - so they are
+    # gated on still owning the claim, not just the repaints further down.
     current || exit 0
     kill_pulse "$was_pulsing"
+    stop_watcher
     current || exit 0
     set_state "done"
     i=0
@@ -194,6 +273,7 @@ case "${1:-reset}" in
   *)
     claim
     stop_pulse
+    stop_watcher
     set_state none
     tabreset
     attention no
