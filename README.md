@@ -252,7 +252,7 @@ of several tabs still needs you. Driven entirely by hooks — no polling, no dae
 | Working | steady orange (`PULSE=1` for the breathing animation) | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, dock bounces until focused, `input?` badge | `Notification` |
 | Finished | blinks green x4 then stays green, one dock bounce, `done` badge | `Stop` |
-| Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd` |
+| Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt with no queued next message |
 
 #### Setup
 
@@ -273,6 +273,7 @@ Then wire it into each account's `settings.json` (already present in the tracked
     "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",    "async": true }] }],
     "Notification":     [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh waiting" }] }],
     "Stop":             [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",    "async": true }] }],
+    "StopFailure":      [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset" }] }],
     "SessionStart":     [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset" }] }],
     "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset" }] }]
   }
@@ -339,6 +340,24 @@ The orange pulse is a detached background loop, tracked by a pidfile keyed to th
   while it still owns it.
 - **The animation cannot outlive its session.** Every ~2s it re-checks that the tty still
   exists and the `claude` process is alive, plus a hard iteration cap as a backstop.
+- **Interrupting a turn (Esc or Ctrl+C) fires no hook.** `Stop` is documented not to run
+  on a user interrupt, so the tab would stay orange. Claude Code does write a
+  `[Request interrupted by user]` line to the session transcript, so `busy` starts a
+  `__watch` process that follows the hook's `transcript_path` and resets the tab when that
+  line appears. `done` and `reset` kill it, a `mkdir` lock stops concurrent `busy` hooks
+  from starting two, and it exits on its own once `claude` does. API errors fire
+  `StopFailure` instead of `Stop`, which is wired to `reset`.
+  Esc with a message queued sends that message straight away as a new turn, so the
+  watcher first checks for the queue's `dequeue` line: if one landed at the interrupt, it
+  leaves the tab busy and keeps watching for that turn's own interrupt.
+  `UserPromptSubmit` cannot be used for this, since it fires when a message is queued,
+  not when it is sent.
+- **Known gap: Esc before the response starts.** Esc pressed within about a second of
+  Enter (measured up to 1.0s on Haiku 5.5; Esc at 1.5s interrupted normally) does not
+  interrupt the turn: Claude Code cancels the submission and puts the prompt back in the
+  input box. `UserPromptSubmit` has already turned the tab orange, and nothing records the
+  cancel (no interrupt line, no `Stop`, no idle `Notification` within 80s), so the tab
+  stays orange until you resubmit and that turn finishes, or run `/clear`.
 - **Accounts in different tabs never collide**, because state is keyed by tty name.
 - A state file stops Claude Code's 60-second idle `Notification` from flipping a finished
   green tab to red — `waiting` is ignored when the state is already `done`.
@@ -428,7 +447,7 @@ codes. Tested on Windows Terminal 1.22, WSL2, Claude Code 2.1.274.
 | Working | orange, spinning ring | indeterminate | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, red ring | red | `Notification` |
 | Finished | blinks green x4 then stays green, full ring | full, green | `Stop` |
-| Idle / cleared | colour and ring removed | cleared | `SessionStart`, `SessionEnd` |
+| Idle / cleared | colour and ring removed | cleared | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt with no queued next message |
 
 #### Setup
 
@@ -470,6 +489,9 @@ serves both machines.
   `/tmp/claude-tab-pts-6.state`.
 - **State lives in `${TMPDIR:-/tmp}`**, not `$XDG_RUNTIME_DIR`: WSL sets that variable
   without always creating `/run/user/<uid>`.
+- **Interrupts** reset the tab through the same transcript watcher as the
+  [iTerm2 version](#iterm2-tab-status), here a background subshell ended by GNU
+  `tail --pid`, and have the same gap when Esc lands before the response starts.
 
 #### Knobs
 
