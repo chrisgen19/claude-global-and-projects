@@ -252,7 +252,7 @@ of several tabs still needs you. Driven entirely by hooks — no polling, no dae
 | Working | steady orange (`PULSE=1` for the breathing animation) | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, dock bounces until focused, `input?` badge | `Notification` |
 | Finished | blinks green x4 then stays green, one dock bounce, `done` badge | `Stop` |
-| Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt |
+| Idle / cleared | tab colour removed | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt with no queued next message |
 
 #### Setup
 
@@ -447,7 +447,7 @@ codes. Tested on Windows Terminal 1.22, WSL2, Claude Code 2.1.274.
 | Working | orange, spinning ring | indeterminate | `UserPromptSubmit`, `PostToolUse` |
 | Needs input or permission | red, red ring | red | `Notification` |
 | Finished | blinks green x4 then stays green, full ring | full, green | `Stop` |
-| Idle / cleared | colour and ring removed | cleared | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt |
+| Idle / cleared | colour and ring removed | cleared | `SessionStart`, `SessionEnd`, `StopFailure`, an interrupt with no queued next message |
 
 #### Setup
 
