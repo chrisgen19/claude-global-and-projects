@@ -83,7 +83,26 @@ current()   { local g=''; [ -f "$GENFILE" ] && read -r g < "$GENFILE"; [ "$g" = 
 # turn that tails the transcript and resets the tab when that message shows up.
 # done/reset kill it, and tail --pid ends it if claude itself exits.
 INTERRUPT_MARK='"text":"[Request interrupted by user'   # also "... for tool use]"
-SETTLE_DELAY=0.3     # lets async busy hooks fired just before the interrupt land first
+SETTLE_DELAY=0.5     # lets async busy hooks fired just before the interrupt land first
+DEQUEUE_MARK='"type":"queue-operation","operation":"dequeue"'
+
+# Epoch seconds of a transcript line's "timestamp" (2026-10-13T02:10:09.494Z).
+# fromdateiso8601 rejects fractional seconds, so they are split off and added back.
+line_time() {
+  jq -r '.timestamp // empty | capture("^(?<s>[^.Z]+)(\\.(?<f>[0-9]+))?Z$")
+         | ((.s + "Z") | fromdateiso8601) + ("0." + (.f // "0") | tonumber)' 2>/dev/null
+}
+
+# True when transcript $1 shows a queued message being sent at (or just before)
+# epoch time $2. Esc with a message queued interrupts the turn and sends that
+# message straight away as a new one. UserPromptSubmit cannot tell us: it fires
+# when the message is queued, not when it is sent, so the watcher checks for
+# the queue's dequeue line instead, which Claude Code writes immediately.
+queued_since() {
+  local d
+  d=$(grep -F "$DEQUEUE_MARK" "$1" | tail -n 1 | line_time)
+  [ -n "$d" ] && [ -n "$2" ] && awk -v d="$d" -v i="$2" 'BEGIN { exit !(d >= i - 0.2) }'
+}
 
 # Prints the live watcher's pid. The args check stops a recycled pid from being
 # mistaken for (and killed as) the watcher.
@@ -131,15 +150,20 @@ start_watch() {
   [ -n "$transcript" ] || return 0
   set -m   # job control gives the background watcher its own process group
   (
-    exec 3< <(tail -n 0 -F --pid="$tty_pid" "$transcript" 2>/dev/null)
-    tail_pid=$!
-    grep -m 1 -qF "$INTERRUPT_MARK" <&3 || exit 0
-    kill "$tail_pid" 2>/dev/null
-    sleep "$SETTLE_DELAY"
-    case "$(get_state)" in
-      busy | waiting) claim; set_state none; tabreset; progress 0 ;;
-    esac
-    [ "$(watch_pid)" = "$BASHPID" ] && rm -f "$WATCHFILE"
+    pg=$BASHPID   # group leader, so kill -- -$pg ends tail, grep and the loop
+    tail -n 0 -F --pid="$tty_pid" "$transcript" 2>/dev/null \
+      | grep --line-buffered -F "$INTERRUPT_MARK" \
+      | while IFS= read -r line; do
+          sleep "$SETTLE_DELAY"
+          # A queued message went out as a new turn: keep watching for that
+          # turn's own interrupt instead of clearing it.
+          queued_since "$transcript" "$(printf '%s' "$line" | line_time)" && continue
+          case "$(get_state)" in
+            busy | waiting) claim; set_state none; tabreset; progress 0 ;;
+          esac
+          [ "$(watch_pid)" = "$pg" ] && rm -f "$WATCHFILE"
+          kill -- "-$pg"
+        done
   ) < /dev/null > /dev/null 2>&1 &
   printf '%s' "$!" > "$WATCHFILE"
   set +m

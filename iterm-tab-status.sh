@@ -21,8 +21,9 @@ BLINKS=4             # blink cycles for "done"
 BLINK_DELAY=0.22
 PULSE_DELAY=0.15
 MAX_PULSE_ITERS=100000   # backstop so an orphaned animation can't run forever
-SETTLE_DELAY=0.3     # interrupt reset waits this long for in-flight busy hooks to land
+SETTLE_DELAY=0.5     # interrupt reset waits this long for in-flight busy hooks to land
 INTERRUPT_MARK='"text":"[Request interrupted by user'   # also "... for tool use]"
+DEQUEUE_MARK='"type":"queue-operation","operation":"dequeue"'
 
 # Hooks are spawned detached from the controlling terminal, so /dev/tty is
 # unusable and $PPID (an intermediate shell) reports no tty either. Walk up the
@@ -157,6 +158,24 @@ ensure_watcher() {
   rmdir "$WATCHLOCK"
 }
 
+# Epoch seconds of a transcript line's "timestamp" (2026-10-13T02:10:09.494Z).
+# fromdateiso8601 rejects fractional seconds, so they are split off and added back.
+line_time() {
+  jq -r '.timestamp // empty | capture("^(?<s>[^.Z]+)(\\.(?<f>[0-9]+))?Z$")
+         | ((.s + "Z") | fromdateiso8601) + ("0." + (.f // "0") | tonumber)' 2>/dev/null
+}
+
+# True when transcript $1 shows a queued message being sent at (or just before)
+# epoch time $2. Esc with a message queued interrupts the turn and sends that
+# message straight away as a new one. UserPromptSubmit cannot tell us: it fires
+# when the message is queued, not when it is sent, so the watcher checks for
+# the queue's dequeue line instead, which Claude Code writes immediately.
+queued_since() {
+  local d
+  d=$(grep -F "$DEQUEUE_MARK" "$1" | tail -n 1 | line_time)
+  [ -n "$d" ] && [ -n "$2" ] && awk -v d="$d" -v i="$2" 'BEGIN { exit !(d >= i - 0.2) }'
+}
+
 # Reads the hook's JSON input on stdin for the transcript path. No jq, no
 # transcript_path, or no claude pid to outlive means no watcher: the old
 # behaviour. Codex sends a transcript_path too, but its transcript never carries
@@ -210,16 +229,20 @@ case "${1:-reset}" in
     [ -n "$transcript" ] || exit 0
     # macOS tail has no --pid, so end the watcher here once claude is gone.
     ( while alive "$claude_pid"; do sleep 2; done; kill -- "-$$" ) &
-    tail -n 0 -F "$transcript" 2>/dev/null | {
-      grep -m 1 -qF "$INTERRUPT_MARK" || exit 0
-      sleep "$SETTLE_DELAY"
-      case "$(get_state)" in
-        busy | waiting) claim; stop_pulse; set_state none; tabreset; attention no; badge '' ;;
-      esac
-      [ "$(watcher_pid)" = "$$" ] && rm -f "$WATCHFILE"
-      # tail only notices grep is gone on its next write, so end it directly.
-      kill -- "-$$"
-    }
+    tail -n 0 -F "$transcript" 2>/dev/null \
+      | grep --line-buffered -F "$INTERRUPT_MARK" \
+      | while IFS= read -r line; do
+          sleep "$SETTLE_DELAY"
+          # A queued message went out as a new turn: keep watching for that
+          # turn's own interrupt instead of clearing it.
+          queued_since "$transcript" "$(printf '%s' "$line" | line_time)" && continue
+          case "$(get_state)" in
+            busy | waiting) claim; stop_pulse; set_state none; tabreset; attention no; badge '' ;;
+          esac
+          [ "$(watcher_pid)" = "$$" ] && rm -f "$WATCHFILE"
+          # tail only notices the loop is gone on its next write, so end it directly.
+          kill -- "-$$"
+        done
     exit 0
     ;;
 

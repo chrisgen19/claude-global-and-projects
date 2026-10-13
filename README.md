@@ -347,6 +347,11 @@ The orange pulse is a detached background loop, tracked by a pidfile keyed to th
   line appears. `done` and `reset` kill it, a `mkdir` lock stops concurrent `busy` hooks
   from starting two, and it exits on its own once `claude` does. API errors fire
   `StopFailure` instead of `Stop`, which is wired to `reset`.
+  Esc with a message queued sends that message straight away as a new turn, so the
+  watcher first checks for the queue's `dequeue` line: if one landed at the interrupt, it
+  leaves the tab busy and keeps watching for that turn's own interrupt.
+  `UserPromptSubmit` cannot be used for this, since it fires when a message is queued,
+  not when it is sent.
 - **Known gap: Esc before the response starts.** Esc pressed within about a second of
   Enter (measured up to 1.0s on Haiku 5.5; Esc at 1.5s interrupted normally) does not
   interrupt the turn: Claude Code cancels the submission and puts the prompt back in the
