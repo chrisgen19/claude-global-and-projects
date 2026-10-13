@@ -117,6 +117,26 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.local/bin/claude-wt-tab-status.sh reset",
+            "statusMessage": "tab status: reset"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
