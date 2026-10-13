@@ -56,6 +56,7 @@ PIDFILE="$RUN/claude-tab-$tty_name.pid"
 STATEFILE="$RUN/claude-tab-$tty_name.state"
 GENFILE="$RUN/claude-tab-$tty_name.gen"
 WATCHFILE="$RUN/claude-tab-$tty_name.watch"
+WATCHLOCK="$RUN/claude-tab-$tty_name.watch.lock"
 
 # ps prints nothing (and no stderr) for a dead pid.
 alive()     { [ -n "$(ps -p "$1" -o pid=)" ]; }
@@ -119,16 +120,41 @@ is_watcher() {
   return 1
 }
 
-watcher_running() { local p; p=$(watcher_pid); [ -n "$p" ] && alive "$p" && is_watcher "$p"; }
-
-# The watcher leads its own process group, so this takes its tail, grep and
-# claude check down with it.
-stop_watcher() {
+# Looser than is_watcher: a watcher launched a moment ago may not have exec'd
+# into __watch mode yet, and still shows the launching hook's command line.
+watcher_running() {
   local p
   p=$(watcher_pid)
-  [ -n "$p" ] && alive "$p" && is_watcher "$p" && kill -- "-$p" 2>/dev/null
+  [ -n "$p" ] || return 1
+  case "$(ps -p "$p" -o command=)" in
+    *iterm-tab-status*) return 0 ;;
+  esac
+  return 1
+}
+
+# Kill one specific watcher, like kill_pulse: done captures the pid before
+# claiming, so it can never stop a watcher started since. The watcher leads its
+# own process group, so this takes its tail, grep and claude check down with it.
+kill_watcher() {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  alive "$p" && is_watcher "$p" && kill -- "-$p" 2>/dev/null
   [ "$(watcher_pid)" = "$p" ] && rm -f "$WATCHFILE"
   return 0
+}
+
+stop_watcher() { kill_watcher "$(watcher_pid)"; }
+
+# Several busy hooks can fire at once (parallel tool calls each send
+# PostToolUse). mkdir is atomic, so only one of them starts a watcher and the
+# rest skip it, instead of leaving an untracked one behind. A lock left by a
+# hook that died mid-start is cleared once it is a minute old.
+ensure_watcher() {
+  watcher_running && return 0
+  [ -n "$(find "$WATCHLOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$WATCHLOCK" 2>/dev/null
+  mkdir "$WATCHLOCK" 2>/dev/null || return 0
+  watcher_running || start_watcher
+  rmdir "$WATCHLOCK"
 }
 
 # Reads the hook's JSON input on stdin for the transcript path. No jq, no
@@ -201,7 +227,7 @@ case "${1:-reset}" in
     claim
     # Before the busy guard, so a missing watcher (say, a state file left
     # behind by an older version of this script) is started on the next hook.
-    watcher_running || start_watcher
+    ensure_watcher
     p=$(pulse_pid)
     if [ "$PULSE" = 1 ]; then
       if [ -n "$p" ] && alive "$p" && is_pulse "$p"; then
@@ -243,8 +269,9 @@ case "${1:-reset}" in
 
   done)
     # Note what is running before claiming, so the teardown below can only ever
-    # target the animation that was live when this hook started.
+    # target the animation and watcher that were live when this hook started.
     was_pulsing=$(pulse_pid)
+    was_watching=$(watcher_pid)
     claim
     # Stop runs async, so a busy/reset can claim between the lines below. The
     # next steps are destructive - killing the pulse and watcher and forcing
@@ -253,7 +280,7 @@ case "${1:-reset}" in
     # gated on still owning the claim, not just the repaints further down.
     current || exit 0
     kill_pulse "$was_pulsing"
-    stop_watcher
+    kill_watcher "$was_watching"
     current || exit 0
     set_state "done"
     i=0

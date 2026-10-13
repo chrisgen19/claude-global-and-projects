@@ -56,6 +56,7 @@ RUN="${TMPDIR:-/tmp}"
 STATEFILE="$RUN/claude-tab-$key.state"
 GENFILE="$RUN/claude-tab-$key.gen"
 WATCHFILE="$RUN/claude-tab-$key.watch"
+WATCHLOCK="$RUN/claude-tab-$key.watch.lock"
 
 # DECAC item 2 (window frame) is the WT tab colour. 263/264 are WT's own frame
 # fg/bg table slots, so pointing the alias back at them restores the profile
@@ -96,11 +97,28 @@ watch_pid() {
   esac
 }
 
-# The watcher leads its own process group, so this takes its tail and grep too.
+# Kill one specific watcher. It leads its own process group, so this takes its
+# tail and grep too. Taking the pid as an argument matters: done captures it
+# before claiming, so it can never stop a watcher started since. The watch file
+# is only cleared while it still names that pid.
 stop_watch() {
-  local w
-  w=$(watch_pid) && kill -- "-$w" 2>/dev/null
-  rm -f "$WATCHFILE"
+  local w=$1 f=''
+  [ -n "$w" ] && kill -- "-$w" 2>/dev/null
+  [ -f "$WATCHFILE" ] && read -r f < "$WATCHFILE"
+  [ "$f" = "$w" ] && rm -f "$WATCHFILE"
+  return 0
+}
+
+# Several busy hooks can fire at once (parallel tool calls each send
+# PostToolUse). mkdir is atomic, so only one of them starts a watcher and the
+# rest skip it, instead of leaving an untracked one behind. A lock left by a
+# hook that died mid-start is cleared once it is a minute old.
+ensure_watch() {
+  watch_pid > /dev/null && return 0
+  [ -n "$(find "$WATCHLOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$WATCHLOCK" 2>/dev/null
+  mkdir "$WATCHLOCK" 2>/dev/null || return 0
+  watch_pid > /dev/null || start_watch
+  rmdir "$WATCHLOCK"
 }
 
 # Reads the hook's JSON input on stdin for the transcript path. No jq or no
@@ -133,7 +151,7 @@ case "${1:-reset}" in
     claim
     # Before the busy guard, so a missing watcher (say, a state file left
     # behind by an older version of this script) is started on the next hook.
-    watch_pid > /dev/null || start_watch
+    ensure_watch
     # busy fires on every PostToolUse, so without this guard the tab would be
     # repainted at every tool call - straight into the pty Claude Code is
     # rendering to. Only repaint on a real state transition.
@@ -154,10 +172,15 @@ case "${1:-reset}" in
     ;;
 
   done)
+    # Note the watcher before claiming, so the teardown below can only ever
+    # stop the one that was live when this hook started.
+    was_watching=$(watch_pid)
     claim
-    stop_watch
-    # A busy/reset may have claimed in between - don't force the state back to
-    # "done" over it, or the next red "needs input" tab would be suppressed.
+    # A busy/reset may have claimed in between - don't stop the watcher a newer
+    # transition relies on, or force the state back to "done" over it (the next
+    # red "needs input" tab would be suppressed).
+    current || exit 0
+    stop_watch "$was_watching"
     current || exit 0
     set_state "done"
     i=0
@@ -175,7 +198,7 @@ case "${1:-reset}" in
 
   *)
     claim
-    stop_watch
+    stop_watch "$(watch_pid)"
     set_state none
     tabreset
     progress 0
