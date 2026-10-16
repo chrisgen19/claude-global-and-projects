@@ -86,7 +86,7 @@
       {
         "hooks": [
           {
-            "command": "bash ~/.codex/herdr-agent-state.sh session",
+            "command": "[ -f ~/.codex/herdr-agent-state.sh ] || exit 0; exec bash ~/.codex/herdr-agent-state.sh session",
             "timeout": 10,
             "type": "command"
           }
