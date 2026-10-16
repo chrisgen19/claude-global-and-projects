@@ -97,8 +97,9 @@ codex_hook_keys() { # hooks.json
 # trusted. Stale entries left behind by removed hooks are filtered out.
 codex_live_trust() {
   [ -f "$CODEX_CONFIG" ] && [ -f "$CODEX_HOOKS" ] || return 0
-  awk -v prefix="$CODEX_TRUST_PREFIX" -v keys="$(codex_hook_keys "$CODEX_HOOKS")" '
-    BEGIN { n = split(keys, k, "\n"); for (i = 1; i <= n; i++) valid[k[i]] = 1 }
+  # Multi-line lists go through ENVIRON: macOS awk rejects a newline in -v.
+  keys="$(codex_hook_keys "$CODEX_HOOKS")" awk -v prefix="$CODEX_TRUST_PREFIX" '
+    BEGIN { n = split(ENVIRON["keys"], k, "\n"); for (i = 1; i <= n; i++) valid[k[i]] = 1 }
     /^\[/ {
       key = ""
       if (index($0, prefix) == 1) { key = substr($0, length(prefix) + 1); sub(/"\][ \t]*$/, "", key) }
@@ -118,9 +119,9 @@ codex_seed_trust() {
   local tmp="$CODEX_CONFIG.trust.$$"
   [ -f "$CODEX_CONFIG" ] || : > "$CODEX_CONFIG" || die "cannot create $CODEX_CONFIG"
   # umask: config.toml is 0600 and mv keeps the temp file's mode.
-  if ! (umask 077; awk -v prefix="$CODEX_TRUST_PREFIX" -v list="$(codex_tracked_trust)" '
+  if ! (umask 077; list="$(codex_tracked_trust)" awk -v prefix="$CODEX_TRUST_PREFIX" '
     BEGIN {
-      n = split(list, line, "\n")
+      n = split(ENVIRON["list"], line, "\n")
       for (i = 1; i <= n; i++) { split(line[i], f, " "); want[f[1]] = f[2]; order[i] = f[1] }
     }
     /^\[/ {
