@@ -61,6 +61,9 @@ esac
 
 drift=0
 STAMP=$(date +%Y%m%d-%H%M%S)
+# Shown in place of $HOME in paths. Through a variable because bash 3.2 keeps
+# the backslash of a literal \~ in a ${var/#$HOME/...} replacement.
+TILDE='~'
 die()    { printf '\n  FAILED: %s\n' "$1" >&2; exit 1; }
 note()   { printf '  %s\n' "$1"; }
 differ() { drift=$((drift + 1)); printf '  DRIFT  %s\n' "$1"; }
@@ -148,7 +151,7 @@ echo
 
 while IFS=: read -r repo_dir live_dir sl_name skillset; do
   [ -n "$repo_dir" ] || continue
-  echo "$repo_dir  ->  ${live_dir/#$HOME/\~}"
+  echo "$repo_dir  ->  ${live_dir/#$HOME/$TILDE}"
 
   if [ "$MODE" != "install" ] && [ ! -d "$live_dir" ]; then
     differ "profile directory missing"
@@ -253,20 +256,20 @@ if [ "$MODE" != "pull" ]; then
       mkdir -p "$(dirname "$dst")" || die "cannot create $(dirname "$dst")"
       cp "$src" "$dst" || die "cannot write $dst"
       chmod +x "$dst" || die "cannot chmod $dst"
-      note "${dst/#$HOME/\~}"
+      note "${dst/#$HOME/$TILDE}"
     elif [ ! -f "$dst" ]; then
-      differ "${dst/#$HOME/\~} missing"
+      differ "${dst/#$HOME/$TILDE} missing"
     elif ! diff -q "$src" "$dst" > /dev/null; then
-      differ "${dst/#$HOME/\~}"
+      differ "${dst/#$HOME/$TILDE}"
     else
-      note "${dst/#$HOME/\~}  ok"
+      note "${dst/#$HOME/$TILDE}  ok"
     fi
   done <<< "$SHARED_SCRIPTS"
   echo
 fi
 
 # --- Codex tab-status hooks: hooks.json both ways, trust seeded on deploy ---
-echo "codex  ->  ${CODEX_DIR/#$HOME/\~}"
+echo "codex  ->  ${CODEX_DIR/#$HOME/$TILDE}"
 if [ ! -d "$CODEX_DIR" ]; then
   note "not installed, skipped"
 else
