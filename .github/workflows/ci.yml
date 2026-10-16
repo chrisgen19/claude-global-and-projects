@@ -80,7 +80,7 @@ jobs:
       - name: scripts parse under bash 3.2
         run: |
           fail=0
-          for f in install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh \
+          for f in install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh wt-dev.sh \
             statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh; do
             if /bin/bash -n "$f"; then echo "ok    $f"; else echo "FAIL  $f"; fail=1; fi
           done
