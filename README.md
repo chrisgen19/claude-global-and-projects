@@ -583,6 +583,9 @@ the shared `claude-iterm-tab-status.sh` and `claude-wt-tab-status.sh`. Settings 
 drift. Run it before editing a live file by hand, and after.
 
 `install.sh` covers macOS and Linux. The Windows profile is copied by hand — see below.
+CI checks both: besides the Ubuntu job, a `macos-latest` job deploys into a scratch
+`HOME` with the stock `/bin/bash` 3.2 and BSD `awk`, then requires a clean `--check`
+and nothing on stderr.
 
 ### Windows
 

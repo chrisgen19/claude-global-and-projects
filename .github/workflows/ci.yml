@@ -68,3 +68,39 @@ jobs:
 
       - name: install.sh --help works
         run: ./install.sh --help
+
+  # The Mac runs these scripts with the stock /bin/bash 3.2 and BSD awk, sed and
+  # cp, which the Ubuntu job never exercises. A newline in `awk -v` passed there
+  # and broke both --check and deploy on macOS (#31).
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: scripts parse under bash 3.2
+        run: |
+          fail=0
+          for f in install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh \
+            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh; do
+            if /bin/bash -n "$f"; then echo "ok    $f"; else echo "FAIL  $f"; fail=1; fi
+          done
+          exit $fail
+
+      # Deploy into a scratch HOME (with ~/.codex, so the hook trust is seeded
+      # too), then --check must find no drift. awk reports errors without
+      # failing the script, so anything on stderr fails the step as well.
+      - name: install.sh deploys and checks clean with BSD tools
+        run: |
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+          export HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME/.codex"
+          awk --version
+          err="$RUNNER_TEMP/stderr.txt"
+          fail=0
+          /bin/bash ./install.sh 2> "$err" || fail=1
+          /bin/bash ./install.sh --check 2>> "$err" || fail=1
+          if [ -s "$err" ]; then
+            echo "FAIL  install.sh wrote to stderr:"; cat "$err"; fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "ok    deploy and --check, nothing on stderr"; fi
+          exit $fail
