@@ -3,7 +3,7 @@
     "commit": "",
     "pr": ""
   },
-  "model": "claude-opus-5[1m]",
+  "model": "opus",
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude-dev/statusline.sh",
@@ -15,13 +15,20 @@
     "figma@claude-plugins-official": true,
     "modern-web-guidance@googlechrome": true,
     "atlassian@claude-plugins-official": true,
-    "vercel@claude-plugins-official": true
+    "vercel@claude-plugins-official": true,
+    "next-steps@claude-community": true
   },
   "extraKnownMarketplaces": {
     "googlechrome": {
       "source": {
         "source": "github",
         "repo": "GoogleChrome/modern-web-guidance"
+      }
+    },
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
       }
     }
   },
@@ -324,5 +331,10 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true
+  "terminalProgressBarEnabled": true,
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh"
+    }
+  }
 }

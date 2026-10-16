@@ -390,5 +390,16 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true
+  "terminalProgressBarEnabled": true,
+  "enabledPlugins": {
+    "next-steps@claude-community": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
+      }
+    }
+  }
 }

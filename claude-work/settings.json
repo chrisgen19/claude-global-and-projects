@@ -347,7 +347,8 @@
     "code-review@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "next-steps@claude-community": true
   },
   "effortLevel": "high",
   "tui": "fullscreen",
@@ -402,5 +403,18 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true
+  "terminalProgressBarEnabled": true,
+  "extraKnownMarketplaces": {
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
+      }
+    }
+  },
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh"
+    }
+  }
 }
