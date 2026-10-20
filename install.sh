@@ -5,7 +5,7 @@
 #
 #   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex hooks, agy plugin
 #   ./install.sh --check    report where the live profiles differ (exit 1 on drift)
-#   ./install.sh --pull     copy live settings and Codex hooks back (autoMode stripped)
+#   ./install.sh --pull     copy live settings and Codex hooks back (machine-local keys stripped)
 #   ./install.sh --help
 #
 # Direction matters. Deploying a stale repo silently reverts real live state -
@@ -78,11 +78,37 @@ backup() {
   cp "$1" "$1.bak-$STAMP" || die "cannot back up $1 — refusing to overwrite it"
 }
 
-# Compare tracked vs live settings, ignoring the deliberately stripped autoMode
-# block. Keys are sorted so formatting differences never read as drift.
+# Settings keys that belong to one machine and never go into the repo: autoMode
+# holds client context, and skipDangerousModePermissionPrompt records consent to
+# bypass-permissions mode, which each machine should ask for itself. --check
+# ignores them, --pull strips them and a deploy keeps the live values.
+LOCAL_KEYS='["autoMode","skipDangerousModePermissionPrompt"]'
+
+# Print a settings file without its machine-local keys; -S sorts the keys.
+strip_local() { # file [-S]
+  jq ${2:+"$2"} --argjson local "$LOCAL_KEYS" 'del(.[$local[]])' "$1"
+}
+
+# Compare tracked vs live settings, ignoring the machine-local keys. Keys are
+# sorted so formatting differences never read as drift.
 settings_differ() { # repo_file live_file
   [ -f "$2" ] || return 0
-  ! diff -q <(jq -S 'del(.autoMode)' "$2") <(jq -S . "$1") > /dev/null
+  ! diff -q <(strip_local "$2" -S) <(strip_local "$1" -S) > /dev/null
+}
+
+# Write tracked settings over live ones, keeping the live values of the
+# machine-local keys. A live file jq cannot read is replaced as before.
+deploy_settings() { # repo_file live_file
+  local tmp="$2.deploy.$$" status
+  if [ -f "$2" ] && jq -s --argjson local "$LOCAL_KEYS" \
+      '.[0] + (.[1] | with_entries(select(.key | IN($local[]))))' "$1" "$2" > "$tmp"; then
+    cp "$tmp" "$2"   # onto the existing file, so it keeps its mode
+  else
+    cp "$1" "$2"
+  fi
+  status=$?
+  rm -f "$tmp"
+  [ "$status" = 0 ] || die "cannot write $2"
 }
 
 skills_for() { # skill set -> prints source skill dirs
@@ -168,7 +194,7 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
     install)
       mkdir -p "$live_dir" || die "cannot create $live_dir"
       backup "$live_dir/settings.json"
-      cp "$repo_dir/settings.json" "$live_dir/settings.json" || die "cannot write $live_dir/settings.json"
+      deploy_settings "$repo_dir/settings.json" "$live_dir/settings.json"
       note "settings.json  (previous saved as settings.json.bak-$STAMP)"
       ;;
     pull)
@@ -177,9 +203,9 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
         # file (or a missing jq) would empty the tracked one and, with no
         # set -e, still report success. Stage it and only replace on success.
         tmp="$repo_dir/.settings.json.pull.$$"
-        if jq 'del(.autoMode)' "$live_dir/settings.json" > "$tmp"; then
+        if strip_local "$live_dir/settings.json" > "$tmp"; then
           mv "$tmp" "$repo_dir/settings.json" || die "could not replace $repo_dir/settings.json"
-          note "settings.json  <- live (autoMode stripped)"
+          note "settings.json  <- live (machine-local keys stripped)"
         else
           rm -f "$tmp"
           die "$live_dir/settings.json is not valid JSON — tracked copy left untouched"
@@ -191,7 +217,7 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
     check)
       if settings_differ "$repo_dir/settings.json" "$live_dir/settings.json"; then
         differ "settings.json"
-        diff <(jq -S . "$repo_dir/settings.json") <(jq -S 'del(.autoMode)' "$live_dir/settings.json") \
+        diff <(strip_local "$repo_dir/settings.json" -S) <(strip_local "$live_dir/settings.json" -S) \
           | grep -E '^[<>]' | head -6 | sed 's/^/           /'
       else
         note "settings.json  ok"
