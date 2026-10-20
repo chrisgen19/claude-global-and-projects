@@ -347,6 +347,11 @@ if [ "$MODE" != "pull" ]; then
   if [ ! -d "$AGY_ROOT/antigravity-cli" ]; then
     note "not installed, skipped"
   elif [ "$MODE" = "install" ]; then
+    # Validate first, so a broken settings.json stops the deploy before the
+    # plugin is replaced rather than halfway through.
+    if [ -f "$AGY_SETTINGS" ] && ! jq empty "$AGY_SETTINGS" > /dev/null; then
+      die "$AGY_SETTINGS is not valid JSON - left untouched"
+    fi
     mkdir -p "$AGY_PLUGINS" || die "cannot create $AGY_PLUGINS"
     rm -rf "${AGY_PLUGINS:?}/next-steps"
     cp -R agy/next-steps "$AGY_PLUGINS/" || die "cannot copy the next-steps agy plugin"
