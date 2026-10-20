@@ -334,7 +334,12 @@
   "terminalProgressBarEnabled": true,
   "modelSettings": {
     "claude-opus-5-5": {
+      "effortLevel": "high"
+    },
+    "claude-opus-5": {
       "effortLevel": "xhigh"
     }
-  }
+  },
+  "enableWorkflows": true,
+  "skipWorkflowUsageWarning": true
 }

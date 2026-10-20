@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh activity claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh activity claude_code",
             "statusMessage": "vibemon: activity"
           }
         ]
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh bash claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh bash claude_code",
             "statusMessage": "vibemon: bash"
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh prompt claude_code",
             "statusMessage": "vibemon: prompt"
           }
         ]
@@ -99,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh stop claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh stop claude_code",
             "statusMessage": "vibemon: stop"
           }
         ]
@@ -167,7 +167,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh permission claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh permission claude_code",
             "statusMessage": "vibemon: permission"
           }
         ]
@@ -204,7 +204,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh session_start claude_code",
             "statusMessage": "vibemon: session_start"
           }
         ]
@@ -241,7 +241,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_end claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh session_end claude_code",
             "statusMessage": "vibemon: session_end"
           }
         ]
@@ -279,7 +279,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh tool_failure claude_code",
             "statusMessage": "vibemon: tool_failure"
           }
         ]
@@ -289,7 +289,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
+            "command": "[ -f ~/.vibemon/notify.sh ] || exit 0; bash ~/.vibemon/notify.sh tool_failure claude_code",
             "statusMessage": "vibemon: tool_failure"
           }
         ]
@@ -345,9 +345,13 @@
     "frontend-design@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
-    "next-steps@claude-community": true
+    "next-steps@claude-community": true,
+    "figma@claude-plugins-official": true,
+    "modern-web-guidance@googlechrome": true,
+    "atlassian@claude-plugins-official": true,
+    "vercel@claude-plugins-official": true
   },
-  "effortLevel": "xhigh",
+  "effortLevel": "high",
   "tui": "fullscreen",
   "agentPushNotifEnabled": true,
   "footerLinksRegexes": [
@@ -407,11 +411,23 @@
         "source": "github",
         "repo": "anthropics/claude-plugins-community"
       }
+    },
+    "googlechrome": {
+      "source": {
+        "source": "github",
+        "repo": "GoogleChrome/modern-web-guidance"
+      }
     }
   },
   "modelSettings": {
     "claude-opus-5-5": {
       "effortLevel": "xhigh"
+    },
+    "claude-opus-5": {
+      "effortLevel": "xhigh"
     }
-  }
+  },
+  "enableWorkflows": true,
+  "alwaysThinkingEnabled": true,
+  "skipWorkflowUsageWarning": true
 }
