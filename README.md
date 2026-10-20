@@ -730,7 +730,7 @@ and adds the pick at the cursor, keeping that text. Add the binding you want:
 ```toml
 # ~/.config/herdr/config.toml
 [[keys.command]]
-key = "prefix+shift+s"
+key = "alt+n"
 type = "popup"
 command = "next-steps popup herdr"
 width = "90%"
@@ -739,12 +739,18 @@ height = 15
 
 ```
 # ~/.tmux.conf
-bind-key S display-popup -E -w 90% -h 15 'next-steps popup tmux'
+bind-key -n M-n display-popup -E -w 90% -h 15 'next-steps popup tmux'
 ```
 
-Then press the prefix and `S` (`ctrl+b` `shift+s` with the default prefixes, a key neither
-binds by default).
+Then press `alt+n`, no prefix. Codex and agy don't use it (agy's alt keys are `alt+enter`,
+`alt+m` and `alt+j`). The binding takes it in every pane, shells included, where zsh would
+otherwise use it for history search.
 
+- **Ready toast (herdr):** when suggestions are saved for a CLI running inside herdr, the
+  hook also shows a herdr notification, `next steps ready: alt+n`. herdr only draws it with
+  `delivery = "herdr"` under `[ui.toast]` in its config; with the default `off` it accepts
+  the notification and shows nothing. That setting also turns on herdr's own pop-ups for
+  agents in background workspaces. tmux gets no toast.
 - **Which CLI:** the CLI does not start the popup, so the popup takes the one whose
   suggestions for the pane's folder changed last. Codex and agy running in the same folder
   at once can show each other's.

@@ -11,7 +11,7 @@
 // to edit and send. Nothing is ever submitted. agy also shows them in its
 // status line; Codex has no custom status line. Inside herdr or tmux, a key
 // binding can open the same menu in a popup instead, which types the pick
-// into the pane.
+// into the pane, and herdr also shows a toast when suggestions are ready.
 //
 //   next-steps codex-prompt     Codex UserPromptSubmit hook (async)
 //   next-steps codex-stop       Codex Stop hook (async)
@@ -67,6 +67,8 @@ const CODEX_MODEL = process.env.NEXT_STEPS_CODEX_MODEL || ''
 const CODEX_EFFORT = process.env.NEXT_STEPS_CODEX_EFFORT || ''
 const AGY_MODEL = process.env.NEXT_STEPS_AGY_MODEL || ''
 const RUN_TIMEOUT_MS = 150_000
+// Names the popup key from the README's herdr binding.
+const HERDR_READY = 'next steps ready: alt+n'
 
 const HOME = os.homedir()
 const STATE_DIR = path.join(process.env.XDG_CACHE_HOME || path.join(HOME, '.cache'), 'next-steps')
@@ -265,6 +267,24 @@ const childEnv = () => {
   return env
 }
 
+/** The herdr session the CLI runs in, from its hook's environment; '' outside herdr. */
+const herdrSocket = () => (process.env.HERDR_ENV === '1' ? (process.env.HERDR_SOCKET_PATH ?? '') : '')
+
+/**
+ * Inside herdr, a toast says the suggestions are ready: the popup that shows
+ * them opens only on its key. Best effort, since herdr may be gone by now.
+ * @param {string} socket from herdrSocket(), '' outside herdr
+ */
+const notifyHerdr = socket => {
+  if (socket === '') return
+  const run = spawnSync('herdr', ['notification', 'show', HERDR_READY, '--sound', 'none'], {
+    env: { ...process.env, HERDR_SOCKET_PATH: socket },
+    stdio: 'ignore',
+    timeout: 5000,
+  })
+  if (run.status !== 0) log(`herdr notification failed (${run.status ?? run.signal ?? run.error})`)
+}
+
 /** A private working directory per CLI, so side runs never see a project. @param {Tool} tool */
 const helperDir = tool => {
   const dir = path.join(STATE_DIR, `${tool}-helper`)
@@ -328,6 +348,7 @@ const codexStop = () => {
   if (now?.status !== 'pending' || now.turnId !== turnId) return
   const found = items ?? []
   writeState('codex', cwd, { ...base, model: used, status: found.length > 0 ? 'ready' : 'empty', items: found })
+  if (found.length > 0) notifyHerdr(herdrSocket())
 }
 
 /**
@@ -413,7 +434,9 @@ const agyStop = () => {
   fs.mkdirSync(STATE_DIR, { recursive: true })
   const job = path.join(STATE_DIR, `agy-job-${process.pid}-${Date.now()}.json`)
   const model = AGY_MODEL || str(e.modelName)
-  fs.writeFileSync(job, JSON.stringify({ cwd, transcriptPath, conversationId: str(e.conversationId), model }))
+  // childEnv() drops the herdr variables, so the job carries the session.
+  const task = { cwd, transcriptPath, conversationId: str(e.conversationId), model, herdr: herdrSocket() }
+  fs.writeFileSync(job, JSON.stringify(task))
   spawn(process.execPath, [SELF, 'agy-generate', job], {
     detached: true,
     stdio: 'ignore',
@@ -463,7 +486,7 @@ const agyGenerate = job => {
   } finally {
     fs.rmSync(job, { force: true })
   }
-  const { cwd, transcriptPath, conversationId, model = '' } = task
+  const { cwd, transcriptPath, conversationId, model = '', herdr = '' } = task
   const turn = readAgyTranscript(transcriptPath)
   const base = { conversationId, transcriptPath, userCount: turn.userCount, model, items: [] }
   if (turn.answer.trim().length < MIN_CHARS) return writeState('agy', cwd, { ...base, status: 'skipped' })
@@ -474,6 +497,7 @@ const agyGenerate = job => {
   const moved = readAgyTranscript(transcriptPath).userCount !== turn.userCount
   if (moved || now?.status !== 'pending' || now.conversationId !== conversationId) return
   writeState('agy', cwd, { ...base, status: items.length > 0 ? 'ready' : 'empty', items })
+  if (items.length > 0) notifyHerdr(herdr)
 }
 
 // A print run gets the person's own agy permissions and MCP servers, and there
