@@ -828,7 +828,7 @@ ended up untracked, with an empty `CLAUDE.md` and one of the eight skills.
 ```bash
 ./install.sh            # deploy repo -> ~/.claude, ~/.claude-{dev,personal,work}, ~/.local/bin
 ./install.sh --check    # report where the live profiles differ; exit 1 on drift
-./install.sh --pull     # copy live settings back into the repo (autoMode stripped)
+./install.sh --pull     # copy live settings back into the repo (machine-local keys stripped)
 ```
 
 **Direction matters.** Deploying a stale repo silently reverts real live state — a plugin
@@ -843,9 +843,10 @@ and the shared tab scripts are generated from the repo, so `--pull` leaves them 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
 the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
 `wt-dev` and the two `next-steps` names), and the agy plugin and status line. Settings are
-compared with sorted keys and with
-`autoMode` removed, so formatting noise and the deliberately stripped block never read as
-drift. Run it before editing a live file by hand, and after.
+compared with sorted keys and without the machine-local keys (`autoMode` and
+`skipDangerousModePermissionPrompt`, see [Account settings](#account-settings)), so
+formatting noise and those keys never read as drift. Run it before editing a live file by
+hand, and after.
 
 `install.sh` covers macOS and Linux. The Windows profile is copied by hand — see below.
 CI checks both: besides the Ubuntu job, a `macos-latest` job deploys into a scratch
@@ -993,7 +994,7 @@ Its status line is a 24-line **router** rather than a copy of the template: it r
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
 ```
 
-> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own.
+> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own. `skipDangerousModePermissionPrompt` stays out too: it records that you accepted the bypass-permissions dialog, which also lets bypass mode start without asking (background sessions, launches that request it), and that consent should be given on each machine rather than carried to another by a deploy. `--pull` strips both keys, `--check` ignores them, and a deploy keeps each live file's own values.
 
 Restore with:
 ```bash
