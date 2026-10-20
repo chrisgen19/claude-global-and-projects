@@ -16,3 +16,10 @@ codex() {
       ;;
   esac
 }
+
+# Restore terminal modes after TUIs: codex can exit (e.g. on ctrl+c) without
+# turning off kitty keyboard protocol and mouse tracking, which leaves `9;5u`
+# and `35;142;16M` garbage at the prompt. Turn both off before every prompt.
+_reset_tui_modes() { printf '\e[<u\e[?1000l\e[?1002l\e[?1003l\e[?1006l' }
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _reset_tui_modes

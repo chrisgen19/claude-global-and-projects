@@ -10,7 +10,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 .
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
-├── .zshrc-codex                           # Codex Auto-review launcher (copy to ~/.zshrc)
+├── .zshrc-codex                           # Codex Auto-review launcher + terminal-mode reset hook (copy to ~/.zshrc)
 ├── .zshrc-agy                             # agy launcher for next-steps (copy to ~/.zshrc)
 ├── .tmux.conf                             # tmux mouse scrolling, history, next-steps alt+n (copy to ~/.tmux.conf)
 ├── statusline.sh                          # Status line template (copy to each account dir)
@@ -951,6 +951,8 @@ Use a Codex CLI version whose `codex --help` lists both `--approve-for-me` and `
 This launcher applies to terminal sessions that load `~/.zshrc`. The desktop app and IDE extension have their own active permission selection; select **Approve for me** there when needed. See the [official permissions instructions](https://learn.chatgpt.com/docs/permission-modes).
 
 To remove the terminal override, delete the `codex` function from `~/.zshrc` and open a new tab. The settings in `~/.codex/config.toml` still apply as defaults.
+
+The block also adds a `_reset_tui_modes` precmd hook. Quitting Codex with ctrl+c can leave the kitty keyboard protocol and mouse tracking switched on, so the prompt fills with text like `9;5u` and `35;142;16M` when you type or move the mouse. The hook turns both off before every prompt and does nothing when they are already off. Without the hook, run `reset` to fix an affected terminal.
 
 #### Tab status hooks
 
