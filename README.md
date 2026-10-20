@@ -11,11 +11,14 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── CLAUDE.md                              # Global preferences (all projects)
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── .zshrc-codex                           # Codex Auto-review launcher (copy to ~/.zshrc)
+├── .zshrc-agy                             # agy launcher for next-steps (copy to ~/.zshrc)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
 ├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
 ├── wt-dev.sh                               # dev server per git worktree in one tmux session, stable ports
+├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g
+├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
@@ -33,7 +36,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   └── settings.json                      #   sanitized — see note below
 ├── codex/
 │   ├── config.toml                        # Codex CLI config + TUI status line
-│   ├── hooks.json                         # Codex tab-status hooks (deployed by install.sh)
+│   ├── hooks.json                         # Codex tab-status and next-steps hooks (deployed by install.sh)
 │   └── hooks-trust.txt                    #   their /hooks trust hashes, pre-seeded by install.sh
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
@@ -653,6 +656,100 @@ Inside the session every tmux key starts with `Ctrl-b`:
 - While a session is running, `wt-dev <branch>` only re-attaches: it does not add that
   worktree. Kill the session and start it again with the branches you want.
 
+### next-steps for Codex and agy
+
+A port of Claude Code's `next-steps` plugin (`next-steps@claude-community`) to Codex and
+the Antigravity CLI (`agy`). After each turn the session's own model suggests up to three
+likely next prompts; press `ctrl+g` on an empty prompt to pick one:
+
+```
+  next steps
+
+  1  Handle codes in the API
+     Update the checkout API route to accept and apply the discount code from the form...
+  2  Add tests for discount codes
+     Add tests for DiscountField validation and for submitting a discount code through...
+
+  0 / esc  dismiss    e  open the editor
+```
+
+`1`-`3` puts that prompt in the prompt box as a draft to edit and send yourself; nothing is
+ever submitted for you. `0` or `esc` closes the menu, `e` opens your real editor.
+
+**Why `ctrl+g`.** The Claude plugin draws buttons above the prompt and fills the box through
+Claude Code's function-hooks API. Neither Codex (0.162) nor agy (1.4) has anything like
+it: their hooks are shell commands that can only inject context or block a turn, and cannot
+draw UI or touch the prompt box. What both do have is `ctrl+g`, which opens the prompt in
+`$VISUAL` / `$EDITOR` and puts the file's text back in the box when the editor exits. The
+launchers point that at `next-steps-editor`: an empty prompt shows the menu, anything else
+opens `NEXT_STEPS_EDITOR` (your previous `VISUAL` / `EDITOR`, else `nano`).
+
+| | Codex | agy |
+|---|---|---|
+| Hooks | `UserPromptSubmit` keeps the prompt and hides old suggestions; `Stop` generates. Both `async` in `codex/hooks.json` | `Stop` in the `agy/next-steps` plugin. agy waits on hooks, so it answers `{}` at once and generates in a detached process |
+| Side run | `codex exec --ephemeral` with no user config, hooks or shell tool, read-only sandbox | `agy -p --sandbox` in a folder whose own `PreToolUse` hook denies every tool but `finish`; its throwaway conversation is deleted afterwards |
+| Model | the session's: `model` from the `Stop` hook, reasoning effort from the rollout file's latest `turn_context`. If that model fails, one retry on Codex's default | the session's: `modelName` from the `Stop` hook, an id that carries the effort (`gemini-4-argon-medium`) |
+| Shown | only on `ctrl+g` (the status line takes built-in items only, [openai/codex#17827](https://github.com/openai/codex/issues/17827)) | also in the status line, under agy's own (`stack_with_default`) |
+| Typical wait | about 10 s per answered turn on `gpt-6.1-sol` medium | about 17 s on `gemini-4-argon-medium` |
+
+The side run gets the turn as quoted data (your prompt, head kept, and the reply, tail
+kept) with the same instruction text as the plugin, and a JSON schema for the answer.
+Suggestions are cleaned like the plugin's (escape sequences, control and invisible
+characters stripped, tag characters refused) before they reach the screen or the prompt.
+
+#### Setup
+
+1. `./install.sh` deploys `next-steps` and `next-steps-editor` to `~/.local/bin`, the Codex
+   hooks, the agy plugin to `~/.gemini/config/plugins/next-steps`, and agy's `statusLine`
+   when none is set (an existing one is left alone and the suggestions only show on
+   `ctrl+g`). Needs `node` on `PATH` (tested with Node 24).
+2. Trust the two new Codex hooks once in `codex` `/hooks`, then `./install.sh --pull` and
+   commit `codex/hooks-trust.txt` (see [Tab status hooks](#tab-status-hooks)).
+3. Use the launchers: the `codex` function in `.zshrc-codex` sets `VISUAL`, and `.zshrc-agy`
+   adds an `agy` one that sets `EDITOR`. Both also set `NEXT_STEPS_TOOL`, which tells the
+   editor which CLI opened it; without it, `next-steps-editor` is a plain editor.
+
+Knobs (environment, read by the hooks and the editor):
+
+| Variable | Default |
+|----------|---------|
+| `NEXT_STEPS_CODEX_MODEL` | the session's model; set it (e.g. `gpt-6-luna`) for a cheaper, faster side run |
+| `NEXT_STEPS_CODEX_EFFORT` | the session's reasoning effort |
+| `NEXT_STEPS_AGY_MODEL` | the session's model; e.g. `gemini-3.8-flash-low` for a cheaper, faster side run |
+| `NEXT_STEPS_MIN_CHARS` | `80`: shorter answers get no suggestions |
+| `NEXT_STEPS_EDITOR` | set by the launchers from your `VISUAL` / `EDITOR`; else `nano`, else `vi` |
+
+#### Notes
+
+- **State is per CLI and directory,** in `~/.cache/next-steps/`. Two sessions of the same
+  CLI in one directory share it, so the latest turn wins. Errors go to
+  `~/.cache/next-steps/log`.
+- **Stale suggestions are dropped.** Codex clears them on the next prompt; for agy the
+  editor checks the transcript for a newer prompt. A side run that finishes after you
+  have moved on is discarded.
+- **The agy side run cannot use tools.** `agy -p` gets your own agy permissions and MCP
+  servers (pre-approved commands, MCP tools, URL reads), there is no flag to turn tools off,
+  and the prompt quotes untrusted text from the last reply. So the side run starts in
+  `~/.cache/next-steps/agy-helper`, whose `.agents/hooks.json` (rewritten on every run)
+  holds a `PreToolUse` hook, `next-steps agy-guard`. It allows only `finish`, the tool
+  `--json-schema` makes the model answer with, and denies everything else, unreadable input
+  included; if node itself fails, a shell fallback still denies. `--sandbox` confines any
+  shell command on top of that.
+- **A session model the side run can't reach** (Codex: one defined only by a custom provider
+  or profile in `config.toml`, which the side run skips) gets one retry on Codex's default
+  model, unless `NEXT_STEPS_CODEX_MODEL` is set. Timeouts are not retried.
+- **agy has no ephemeral print mode**, so each `agy -p` is a conversation that would show in
+  `/resume`. The generator deletes that conversation's files (only the ID its own run
+  returned); a row stays in agy's summary cache but is never listed.
+- **agy's status line reruns on agent-state changes and typing,** not on a timer. The turn
+  ends a few seconds before the suggestions are ready, so it first shows
+  `next steps: ctrl+g` and switches to the labels on your next keystroke. `ctrl+g` always
+  reads the latest.
+- **No skills in suggestions yet.** The plugin also lists the session's skills so a
+  suggestion can be `/skill args`; this port does not.
+- The side runs use your Codex and Google plans. Raise `NEXT_STEPS_MIN_CHARS` to make them
+  rarer.
+
 ### Install and drift check
 
 The copy commands throughout this README are the manual equivalent of `install.sh`.
@@ -675,8 +772,9 @@ Only `settings.json` flows in both directions. `CLAUDE.md`, the skills, the stat
 and the shared tab scripts are generated from the repo, so `--pull` leaves them alone.
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
-the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard` and
-`wt-dev`). Settings are compared with sorted keys and with
+the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
+`wt-dev` and the two `next-steps` names), and the agy plugin and status line. Settings are
+compared with sorted keys and with
 `autoMode` removed, so formatting noise and the deliberately stripped block never read as
 drift. Run it before editing a live file by hand, and after.
 
@@ -795,6 +893,9 @@ To remove the terminal override, delete the `codex` function from `~/.zshrc` and
 | `PermissionRequest` | waiting | Codex has no `Notification` event; this is the closest |
 | `Stop` | done | `async` |
 | `Interrupt`, `SessionEnd` | reset | Codex caps these at 3 s |
+
+The same file carries the [next-steps](#next-steps-for-codex-and-agy) hooks, as the second
+group of `UserPromptSubmit` and `Stop`.
 
 **Needs `--no-daemon`.** Since Codex 0.157 the TUI is a thin client of a shared `codex app-server` daemon, and hooks run inside that daemon: its parent is init, it has no tty, and its environment belongs to whichever tab started it first. The scripts find their tab by walking up the process tree to a process that owns a tty, so under the daemon they silently exit. Launch Codex with `--no-daemon` (put it in the `codex` launcher from `.zshrc-codex`, including the `resume` / `fork` branch) and hooks run under the tab's own `codex` process. OpenAI treats the daemon behaviour as by design ([openai/codex#37537](https://github.com/openai/codex/issues/37537), [#48500](https://github.com/openai/codex/issues/48500)). `features.daemon_auto_start = false` is not a substitute: it stops Codex starting a daemon but still attaches to one that is running ([#48778](https://github.com/openai/codex/issues/48778)).
 

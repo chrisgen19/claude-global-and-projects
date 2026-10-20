@@ -3,7 +3,7 @@
 # Install this repo's configuration into the live Claude Code profiles, check
 # the live profiles against it, or pull live changes back into the repo.
 #
-#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex hooks
+#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex hooks, agy plugin
 #   ./install.sh --check    report where the live profiles differ (exit 1 on drift)
 #   ./install.sh --pull     copy live settings and Codex hooks back (autoMode stripped)
 #   ./install.sh --help
@@ -33,11 +33,14 @@ claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 
 # repo file : live file. Shared by every profile. The tab-status scripts each exit
 # on the wrong terminal; the Prisma guard is inert without its local hosts file;
-# wt-dev is a command you run yourself, never a hook.
+# wt-dev is a command you run yourself, never a hook. next-steps is one file
+# under two names: the hooks call next-steps, $VISUAL/$EDITOR is next-steps-editor.
 SHARED_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
 wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh
 prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard
-wt-dev.sh:$HOME/.local/bin/wt-dev"
+wt-dev.sh:$HOME/.local/bin/wt-dev
+next-steps.mjs:$HOME/.local/bin/next-steps
+next-steps.mjs:$HOME/.local/bin/next-steps-editor"
 
 # Codex runs hooks from hooks.json only once each is trusted in /hooks, and
 # records that in config.toml as [hooks.state."<abs path>:<event>:<group>:<n>"].
@@ -331,6 +334,58 @@ else
   esac
 fi
 echo
+
+# --- Antigravity (agy): the next-steps plugin, repo -> live only ---
+# User plugins load from ~/.gemini/config/plugins/. The status line belongs to
+# the person, so a deploy only fills it in when none is set.
+AGY_ROOT="$HOME/.gemini"
+AGY_PLUGINS="$AGY_ROOT/config/plugins"
+AGY_SETTINGS="$AGY_ROOT/antigravity-cli/settings.json"
+AGY_STATUSLINE='{"type":"command","command":"~/.local/bin/next-steps agy-statusline","stack_with_default":true}'
+if [ "$MODE" != "pull" ]; then
+  echo "agy  ->  ${AGY_ROOT/#$HOME/$TILDE}"
+  if [ ! -d "$AGY_ROOT/antigravity-cli" ]; then
+    note "not installed, skipped"
+  elif [ "$MODE" = "install" ]; then
+    # Validate first, so a broken settings.json stops the deploy before the
+    # plugin is replaced rather than halfway through.
+    if [ -f "$AGY_SETTINGS" ] && ! jq empty "$AGY_SETTINGS" > /dev/null; then
+      die "$AGY_SETTINGS is not valid JSON - left untouched"
+    fi
+    mkdir -p "$AGY_PLUGINS" || die "cannot create $AGY_PLUGINS"
+    rm -rf "${AGY_PLUGINS:?}/next-steps"
+    cp -R agy/next-steps "$AGY_PLUGINS/" || die "cannot copy the next-steps agy plugin"
+    note "plugins/next-steps"
+    if [ -f "$AGY_SETTINGS" ] && jq -e 'has("statusLine")' "$AGY_SETTINGS" > /dev/null; then
+      note "statusLine  already set, left alone"
+    else
+      tmp="$AGY_SETTINGS.next-steps.$$"
+      # umask: settings.json is 0600 and mv keeps the temp file's mode.
+      if (umask 077; { [ -f "$AGY_SETTINGS" ] && cat "$AGY_SETTINGS" || echo '{}'; } \
+          | jq --argjson line "$AGY_STATUSLINE" '.statusLine = $line' > "$tmp"); then
+        backup "$AGY_SETTINGS"
+        mv "$tmp" "$AGY_SETTINGS" || die "cannot write $AGY_SETTINGS"
+        note "statusLine  next-steps"
+      else
+        rm -f "$tmp"; die "$AGY_SETTINGS is not valid JSON - left untouched"
+      fi
+    fi
+  else
+    if diff -rq agy/next-steps "$AGY_PLUGINS/next-steps" > /dev/null 2>&1; then
+      note "plugins/next-steps  ok"
+    else
+      differ "agy plugins/next-steps"
+    fi
+    if [ ! -f "$AGY_SETTINGS" ] || ! jq -e 'has("statusLine")' "$AGY_SETTINGS" > /dev/null; then
+      differ "agy statusLine not set"
+    elif jq -e --argjson line "$AGY_STATUSLINE" '.statusLine == $line' "$AGY_SETTINGS" > /dev/null; then
+      note "statusLine  ok"
+    else
+      note "statusLine  your own (next-steps suggestions not shown there)"
+    fi
+  fi
+  echo
+fi
 
 if [ "$MODE" = "check" ]; then
   if [ "$drift" -gt 0 ]; then
