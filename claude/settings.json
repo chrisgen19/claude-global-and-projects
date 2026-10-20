@@ -11,26 +11,6 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh activity claude_code",
-            "statusMessage": "vibemon: activity"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh bash claude_code",
-            "statusMessage": "vibemon: bash"
-          }
-        ]
-      },
-      {
         "hooks": [
           {
             "type": "command",
@@ -64,15 +44,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh prompt claude_code",
-            "statusMessage": "vibemon: prompt"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
             "async": true,
             "statusMessage": "tab status: busy"
@@ -99,15 +70,6 @@
       }
     ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh stop claude_code",
-            "statusMessage": "vibemon: stop"
-          }
-        ]
-      },
       {
         "hooks": [
           {
@@ -167,16 +129,6 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh permission claude_code",
-            "statusMessage": "vibemon: permission"
-          }
-        ]
-      },
-      {
         "hooks": [
           {
             "type": "command",
@@ -204,15 +156,6 @@
       }
     ],
     "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_start claude_code",
-            "statusMessage": "vibemon: session_start"
-          }
-        ]
-      },
       {
         "hooks": [
           {
@@ -245,15 +188,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.vibemon/notify.sh session_end claude_code",
-            "statusMessage": "vibemon: session_end"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh reset",
             "statusMessage": "tab status: reset"
           }
@@ -273,28 +207,6 @@
           {
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
             "type": "command"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Edit|Write|NotebookEdit|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
-            "statusMessage": "vibemon: tool_failure"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.vibemon/notify.sh tool_failure claude_code",
-            "statusMessage": "vibemon: tool_failure"
           }
         ]
       }
