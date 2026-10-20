@@ -10,3 +10,12 @@ function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
 function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
+
+# Restore terminal modes after TUIs: claude, like codex and agy, can exit
+# without turning off kitty keyboard protocol and mouse tracking, which leaves
+# `9;5u` and `35;142;16M` garbage at the prompt. Turn both off before every
+# prompt. Same hook as .zshrc-codex and .zshrc-agy; add-zsh-hook skips the
+# duplicate if more than one block is added.
+_reset_tui_modes() { printf '\e[<u\e[?1000l\e[?1002l\e[?1003l\e[?1006l' }
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _reset_tui_modes

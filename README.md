@@ -9,7 +9,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ```
 .
 ├── CLAUDE.md                              # Global preferences (all projects)
-├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
+├── .zshrc-claude                          # Multi-account shell setup + terminal-mode reset hook (copy to ~/.zshrc)
 ├── .zshrc-codex                           # Codex Auto-review launcher + terminal-mode reset hook (copy to ~/.zshrc)
 ├── .zshrc-agy                             # agy launcher for next-steps + terminal-mode reset hook (copy to ~/.zshrc)
 ├── .tmux.conf                             # tmux mouse scrolling, history, next-steps alt+n (copy to ~/.tmux.conf)
@@ -143,6 +143,8 @@ Or append the file directly:
 cat .zshrc-claude >> ~/.zshrc
 source ~/.zshrc
 ```
+
+The file also adds the `_reset_tui_modes` precmd hook described under [Always use Auto-review from the terminal](#always-use-auto-review-from-the-terminal), which clears escape-sequence garbage (`9;5u`, `35;142;16M`) left at the prompt when a TUI exits without restoring the terminal. It is the same hook as in `.zshrc-codex`; `add-zsh-hook` skips the duplicate when both blocks are in `~/.zshrc`.
 
 **Usage:**
 
