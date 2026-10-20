@@ -350,7 +350,8 @@
     "modern-web-guidance@googlechrome": true,
     "atlassian@claude-plugins-official": true,
     "vercel@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
   },
   "effortLevel": "high",
   "tui": "fullscreen",
