@@ -12,6 +12,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── .zshrc-claude                          # Multi-account shell setup (copy to ~/.zshrc)
 ├── .zshrc-codex                           # Codex Auto-review launcher (copy to ~/.zshrc)
 ├── .zshrc-agy                             # agy launcher for next-steps (copy to ~/.zshrc)
+├── .tmux.conf                             # tmux mouse scrolling, history, next-steps alt+n (copy to ~/.tmux.conf)
 ├── statusline.sh                          # Status line template (copy to each account dir)
 ├── iterm-tab-status.sh                     # iTerm2 tab indicator (copy to ~/.local/bin/)
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
@@ -637,7 +638,7 @@ Inside the session every tmux key starts with `Ctrl-b`:
 |------|------|
 | `Ctrl-b` `w` | Pick a window, with a live preview of its output |
 | `Ctrl-b` `0`-`9` / `n` / `p` | Jump to a window / next / previous |
-| `Ctrl-b` `[` | Scroll mode (`q` to leave). Or add `set -g mouse on` to `~/.tmux.conf` |
+| `Ctrl-b` `[` | Scroll mode (`q` to leave). With the repo's [`.tmux.conf`](#tmux-config-tmuxconf), the mouse wheel scrolls too |
 | `Ctrl-b` `d` | Detach. The servers keep running; `wt-dev` re-attaches |
 | `Ctrl-c` | Stop that server. The shell stays, so up-arrow + Enter restarts it |
 
@@ -655,6 +656,31 @@ Inside the session every tmux key starts with `Ctrl-b`:
   checking, not every worktree.
 - While a session is running, `wt-dev <branch>` only re-attaches: it does not add that
   worktree. Kill the session and start it again with the branches you want.
+
+### tmux config (`.tmux.conf`)
+
+`.tmux.conf` holds the tmux settings used with this setup. tmux reads `~/.tmux.conf`, so
+copy it there (or merge it into an existing one) and reload a running tmux. `install.sh`
+does not deploy it.
+
+```bash
+cp .tmux.conf ~/.tmux.conf
+tmux source-file ~/.tmux.conf
+```
+
+- **`set -g mouse on`:** tmux runs on the terminal's alternate screen, which has no
+  scrollback of its own. With the mouse off, Windows Terminal turns the wheel into Up/Down
+  keys there, and tmux passes them to the program in the pane; agy and Codex read those as
+  prompt history, so the wheel flips through old prompts. With it on, tmux takes the wheel.
+  In a pane whose program does not ask for mouse events (agy, Codex, a shell), wheel up
+  opens tmux's scroll view: scroll back to the bottom or press `q` to leave. A program that
+  does ask (Claude Code) gets the wheel and scrolls itself. Dragging now selects in tmux:
+  hold `Shift` to select with the terminal. Right-click opens tmux's menu.
+- **`set -g history-limit 50000`:** lines kept per pane for that scroll view (tmux's default
+  is 2000). It applies to panes created after the reload.
+- **`alt+n`:** opens the next-steps menu in a popup and pastes the pick into the pane, see
+  [herdr and tmux popups](#herdr-and-tmux-popups-optional). It needs a `next-steps` with the
+  `popup` command; an older one exits with its usage message and the popup closes.
 
 ### next-steps for Codex and agy
 
