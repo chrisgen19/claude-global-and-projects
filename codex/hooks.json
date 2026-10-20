@@ -1,5 +1,5 @@
 {
-  "description": "Tab status indicator (iTerm2 / Windows Terminal). Only works under `codex --no-daemon`: daemon-spawned hooks have no tty to find (openai/codex#37537).",
+  "description": "Tab status indicator (iTerm2 / Windows Terminal). Only works under `codex --no-daemon`: daemon-spawned hooks have no tty to find (openai/codex#37537). Plus next-steps: suggested next prompts, picked with ctrl+g (see README \"next-steps for Codex and agy\").",
   "hooks": {
     "Interrupt": [
       {
@@ -109,6 +109,16 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "~/.local/bin/next-steps codex-stop",
+            "timeout": 180,
+            "type": "command"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -123,6 +133,16 @@
           {
             "async": true,
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "~/.local/bin/next-steps codex-prompt",
             "timeout": 10,
             "type": "command"
           }

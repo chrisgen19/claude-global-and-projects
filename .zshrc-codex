@@ -4,6 +4,9 @@
 # Add this block to ~/.zshrc before the Powerlevel10k theme, if present.
 # Pass the flags to resume/fork too, overriding a saved manual approval mode.
 codex() {
+  # next-steps: ctrl+g on an empty prompt offers the suggested next prompts.
+  local -x NEXT_STEPS_EDITOR="${NEXT_STEPS_EDITOR:-${VISUAL:-$EDITOR}}"
+  local -x VISUAL=next-steps-editor NEXT_STEPS_TOOL=codex
   case "${1-}" in
     resume|fork)
       command codex "$1" --approve-for-me --no-daemon "${@:2}"

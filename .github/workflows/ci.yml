@@ -15,9 +15,10 @@ jobs:
       # file, with no error at startup. These are hand-edited, so parse them.
       - name: settings.json parses
         run: |
-          for f in claude*/settings.json windows/settings.json codex/hooks.json; do
+          for f in claude*/settings.json windows/settings.json codex/hooks.json agy/next-steps/*.json; do
             jq -e . "$f" > /dev/null && echo "ok    $f"
           done
+          node --check next-steps.mjs && echo "ok    next-steps.mjs"
 
       # The autoMode block holds client context (org names, CI secret names,
       # protected branches, internal hostnames) and must never be committed.
@@ -86,14 +87,15 @@ jobs:
           done
           exit $fail
 
-      # Deploy into a scratch HOME (with ~/.codex, so the hook trust is seeded
-      # too), then --check must find no drift. awk reports errors without
-      # failing the script, so anything on stderr fails the step as well.
+      # Deploy into a scratch HOME (with ~/.codex and agy's directory, so the
+      # hook trust is seeded and the agy plugin and status line are set too),
+      # then --check must find no drift. awk reports errors without failing the
+      # script, so anything on stderr fails the step as well.
       - name: install.sh deploys and checks clean with BSD tools
         run: |
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           export HOME="$RUNNER_TEMP/home"
-          mkdir -p "$HOME/.codex"
+          mkdir -p "$HOME/.codex" "$HOME/.gemini/antigravity-cli"
           awk --version
           err="$RUNNER_TEMP/stderr.txt"
           fail=0

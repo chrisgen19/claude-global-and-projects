@@ -1,0 +1,9 @@
+# Antigravity CLI (agy): ctrl+g on an empty prompt offers the next-steps
+# suggestions; any other text opens NEXT_STEPS_EDITOR (your own VISUAL/EDITOR,
+# else nano). agy reads EDITOR; VISUAL is set too in case it ever prefers it.
+# Add this block to ~/.zshrc. See README "next-steps for Codex and agy".
+agy() {
+  local -x NEXT_STEPS_EDITOR="${NEXT_STEPS_EDITOR:-${VISUAL:-$EDITOR}}"
+  local -x VISUAL=next-steps-editor EDITOR=next-steps-editor NEXT_STEPS_TOOL=agy
+  command agy "$@"
+}

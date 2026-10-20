@@ -1,0 +1,11 @@
+{
+  "next-steps": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "~/.local/bin/next-steps agy-stop",
+        "timeout": 10
+      }
+    ]
+  }
+}
