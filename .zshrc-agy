@@ -7,3 +7,11 @@ agy() {
   local -x VISUAL=next-steps-editor EDITOR=next-steps-editor NEXT_STEPS_TOOL=agy
   command agy "$@"
 }
+
+# Restore terminal modes after TUIs: agy, like codex, can exit without turning
+# off kitty keyboard protocol and mouse tracking, which leaves `9;5u` and
+# `35;142;16M` garbage at the prompt. Turn both off before every prompt.
+# Same hook as .zshrc-codex; add-zsh-hook skips the duplicate if both are added.
+_reset_tui_modes() { printf '\e[<u\e[?1000l\e[?1002l\e[?1003l\e[?1006l' }
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _reset_tui_modes
