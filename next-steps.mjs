@@ -9,13 +9,16 @@
 // with $VISUAL/$EDITOR set to next-steps-editor and the prompt box empty, it
 // shows the suggestions, and the chosen one goes back into the box as a draft
 // to edit and send. Nothing is ever submitted. agy also shows them in its
-// status line; Codex has no custom status line.
+// status line; Codex has no custom status line. Inside herdr or tmux, a key
+// binding can open the same menu in a popup instead, which types the pick
+// into the pane, and a notice there says when suggestions are ready.
 //
 //   next-steps codex-prompt     Codex UserPromptSubmit hook (async)
 //   next-steps codex-stop       Codex Stop hook (async)
 //   next-steps agy-stop         agy Stop hook (agy/next-steps/hooks.json)
 //   next-steps agy-statusline   agy statusLine command
 //   next-steps agy-guard        PreToolUse in the agy side run's folder
+//   next-steps popup herdr|tmux the menu from a herdr or tmux popup key binding
 //   next-steps-editor <file>    $VISUAL / $EDITOR (same file, second name)
 //
 // Environment:
@@ -64,6 +67,8 @@ const CODEX_MODEL = process.env.NEXT_STEPS_CODEX_MODEL || ''
 const CODEX_EFFORT = process.env.NEXT_STEPS_CODEX_EFFORT || ''
 const AGY_MODEL = process.env.NEXT_STEPS_AGY_MODEL || ''
 const RUN_TIMEOUT_MS = 150_000
+// Names the popup key from the README's herdr and tmux bindings.
+const READY_NOTICE = 'next steps ready: alt+n'
 
 const HOME = os.homedir()
 const STATE_DIR = path.join(process.env.XDG_CACHE_HOME || path.join(HOME, '.cache'), 'next-steps')
@@ -262,6 +267,38 @@ const childEnv = () => {
   return env
 }
 
+/** @typedef {{ herdr?: string, tmux?: string, tmuxPane?: string }} NoticeTarget */
+
+/**
+ * Where the CLI runs, from its hook's environment, for the ready notice. herdr
+ * wins when both are set: its panes inherit $TMUX when herdr runs inside tmux.
+ * @returns {NoticeTarget}
+ */
+const noticeTarget = () => {
+  const herdr = process.env.HERDR_ENV === '1' ? (process.env.HERDR_SOCKET_PATH ?? '') : ''
+  if (herdr !== '') return { herdr }
+  return { tmux: process.env.TMUX ?? '', tmuxPane: process.env.TMUX_PANE ?? '' }
+}
+
+/**
+ * Say the suggestions are ready, since the popup that shows them opens only on
+ * its key: a herdr toast, or 4 s in the tmux status line (a key press closes
+ * it sooner). Best effort, since the session may be gone by now.
+ * @param {NoticeTarget} target
+ */
+const notifyReady = ({ herdr = '', tmux = '', tmuxPane = '' }) => {
+  /** @param {string} command @param {string[]} args @param {Record<string, string>} env */
+  const show = (command, args, env) => {
+    const run = spawnSync(command, args, { env: { ...process.env, ...env }, stdio: 'ignore', timeout: 5000 })
+    if (run.status !== 0) log(`${command} ready notice failed (${run.status ?? run.signal ?? run.error})`)
+  }
+  if (herdr !== '') {
+    show('herdr', ['notification', 'show', READY_NOTICE, '--sound', 'none'], { HERDR_SOCKET_PATH: herdr })
+  } else if (tmux !== '' && tmuxPane !== '') {
+    show('tmux', ['display-message', '-l', '-d', '4000', '-t', tmuxPane, READY_NOTICE], { TMUX: tmux })
+  }
+}
+
 /** A private working directory per CLI, so side runs never see a project. @param {Tool} tool */
 const helperDir = tool => {
   const dir = path.join(STATE_DIR, `${tool}-helper`)
@@ -325,6 +362,7 @@ const codexStop = () => {
   if (now?.status !== 'pending' || now.turnId !== turnId) return
   const found = items ?? []
   writeState('codex', cwd, { ...base, model: used, status: found.length > 0 ? 'ready' : 'empty', items: found })
+  if (found.length > 0) notifyReady(noticeTarget())
 }
 
 /**
@@ -410,7 +448,9 @@ const agyStop = () => {
   fs.mkdirSync(STATE_DIR, { recursive: true })
   const job = path.join(STATE_DIR, `agy-job-${process.pid}-${Date.now()}.json`)
   const model = AGY_MODEL || str(e.modelName)
-  fs.writeFileSync(job, JSON.stringify({ cwd, transcriptPath, conversationId: str(e.conversationId), model }))
+  // childEnv() drops the herdr variables, so the job carries the notice target.
+  const task = { cwd, transcriptPath, conversationId: str(e.conversationId), model, notice: noticeTarget() }
+  fs.writeFileSync(job, JSON.stringify(task))
   spawn(process.execPath, [SELF, 'agy-generate', job], {
     detached: true,
     stdio: 'ignore',
@@ -460,7 +500,7 @@ const agyGenerate = job => {
   } finally {
     fs.rmSync(job, { force: true })
   }
-  const { cwd, transcriptPath, conversationId, model = '' } = task
+  const { cwd, transcriptPath, conversationId, model = '', notice = {} } = task
   const turn = readAgyTranscript(transcriptPath)
   const base = { conversationId, transcriptPath, userCount: turn.userCount, model, items: [] }
   if (turn.answer.trim().length < MIN_CHARS) return writeState('agy', cwd, { ...base, status: 'skipped' })
@@ -471,6 +511,7 @@ const agyGenerate = job => {
   const moved = readAgyTranscript(transcriptPath).userCount !== turn.userCount
   if (moved || now?.status !== 'pending' || now.conversationId !== conversationId) return
   writeState('agy', cwd, { ...base, status: items.length > 0 ? 'ready' : 'empty', items })
+  if (items.length > 0) notifyReady(notice)
 }
 
 // A print run gets the person's own agy permissions and MCP servers, and there
@@ -602,10 +643,10 @@ const realEditor = file => {
  * Suggestions still worth offering: generated for the person's latest prompt.
  * Codex clears them itself on UserPromptSubmit; agy has no such hook, so its
  * transcript is checked for a newer prompt.
- * @param {Tool} tool @returns {State | null}
+ * @param {Tool} tool @param {string} [cwd] @returns {State | null}
  */
-const freshState = tool => {
-  const state = readState(tool, process.cwd())
+const freshState = (tool, cwd = process.cwd()) => {
+  const state = readState(tool, cwd)
   if (state === null || (state.status !== 'ready' && state.status !== 'pending')) return null
   if (tool === 'agy' && state.transcriptPath) {
     if (readAgyTranscript(state.transcriptPath).userCount !== state.userCount) return null
@@ -613,18 +654,21 @@ const freshState = tool => {
   return state
 }
 
-/** Draw the menu on the alternate screen. @param {State} state */
-const drawMenu = state => {
+/**
+ * Draw the menu on the alternate screen. A popup has no editor to open.
+ * @param {State} state @param {boolean} [withEditor]
+ */
+const drawMenu = (state, withEditor = true) => {
   const width = Math.max(20, (process.stdout.columns || 80) - 6)
   const lines = ['', `  ${BOLD}next steps${RESET}`, '']
   if (state.status === 'pending') {
-    lines.push(`  ${DIM}still being written, try ctrl+g again in a moment${RESET}`, '')
+    lines.push(`  ${DIM}still being written, try again in a moment${RESET}`, '')
   }
   state.items.forEach((item, index) => {
     lines.push(`  ${BOLD}${index + 1}${RESET}  ${item.label}`)
     lines.push(`     ${DIM}${truncate(item.prompt, width)}${RESET}`)
   })
-  lines.push('', `  ${DIM}0 / esc  dismiss    e  open the editor${RESET}`, '')
+  lines.push('', `  ${DIM}0 / esc  dismiss${withEditor ? '    e  open the editor' : ''}${RESET}`, '')
   process.stdout.write(`\x1b[?1049h\x1b[H\x1b[2J${lines.join('\r\n')}`)
 }
 
@@ -671,6 +715,87 @@ const editor = async file => {
   writeState(/** @type {Tool} */ (tool), process.cwd(), { ...state, status: 'empty', items: [] })
 }
 
+// --- herdr / tmux popups -----------------------------------------------------
+
+// The same menu from a herdr or tmux key binding, in a popup over the CLI's
+// pane. The CLI did not start the popup, so it does not say which CLI runs
+// there: the one whose state for the pane's folder changed last is taken. The
+// pick is typed into the pane at the cursor and never sent: suggestions hold
+// no newline or control character (clean()), so typing one cannot press Enter.
+
+/** @typedef {{ cwd: string, type: (text: string) => boolean }} PopupTarget */
+
+/** herdr tells popup commands which pane they opened over. @returns {PopupTarget | null} */
+const herdrTarget = () => {
+  const pane = process.env.HERDR_ACTIVE_PANE_ID ?? ''
+  if (pane === '') return null
+  return {
+    cwd: process.env.HERDR_ACTIVE_PANE_CWD || process.cwd(),
+    // Typed as keystrokes: herdr has no paste. Everything after the pane id is
+    // literal text, leading dashes included, so there is no `--` to add.
+    type: text => spawnSync('herdr', ['pane', 'send-text', pane, text], { stdio: 'ignore' }).status === 0,
+  }
+}
+
+/**
+ * tmux (3.4) expands no formats in a popup's command, but tmux run inside the
+ * popup sees the pane under it as the current one. Outside tmux it would answer
+ * for whichever session was used last, so $TMUX (set in popups) is required.
+ * @returns {PopupTarget | null}
+ */
+const tmuxTarget = () => {
+  if (!process.env.TMUX) return null
+  const run = spawnSync('tmux', ['display-message', '-p', '#{pane_id}\n#{pane_current_path}'], { encoding: 'utf8' })
+  const [pane = '', ...rest] = str(run.stdout).replace(/\n$/, '').split('\n')
+  if (run.status !== 0 || !pane.startsWith('%')) return null
+  // Through a buffer read from stdin, so the text is never parsed as tmux
+  // arguments; -p makes it a bracketed paste when the CLI asks for those.
+  const type = (/** @type {string} */ text) =>
+    spawnSync('tmux', ['load-buffer', '-b', 'next-steps', '-'], { input: text, stdio: ['pipe', 'ignore', 'ignore'] })
+      .status === 0 &&
+    spawnSync('tmux', ['paste-buffer', '-p', '-d', '-b', 'next-steps', '-t', pane], { stdio: 'ignore' }).status === 0
+  return { cwd: rest.join('\n') || process.cwd(), type }
+}
+
+/** The CLI in use in a folder: the one whose state there changed last. @param {string} cwd */
+const latestTool = cwd => {
+  /** @type {Tool | null} */
+  let latest = null
+  let latestAt = ''
+  for (const tool of /** @type {Tool[]} */ (['codex', 'agy'])) {
+    const updatedAt = readState(tool, cwd)?.updatedAt ?? ''
+    if (updatedAt > latestAt) [latest, latestAt] = [tool, updatedAt]
+  }
+  return latest
+}
+
+/** herdr / tmux popup entry point. @param {string} host */
+const popup = async host => {
+  const target = host === 'herdr' ? herdrTarget() : host === 'tmux' ? tmuxTarget() : null
+  if (target === null) {
+    process.stderr.write('next-steps popup herdr|tmux: run it from a herdr or tmux popup key binding\n')
+    process.exitCode = 2
+    return
+  }
+  if (!process.stdin.isTTY) return
+  const tool = latestTool(target.cwd)
+  const state = tool === null ? null : freshState(tool, target.cwd)
+  if (tool === null || state === null) {
+    process.stdout.write(`\x1b[?1049h\x1b[H\x1b[2J\r\n  ${DIM}no next steps for this folder yet${RESET}`)
+    await readChoice(0)
+    return
+  }
+  drawMenu(state, false)
+  const choice = await readChoice(state.items.length)
+  if (typeof choice !== 'number') return
+  if (!target.type(state.items[choice - 1].prompt)) {
+    log(`popup ${host}: could not type into the pane`)
+    process.exitCode = 1
+    return
+  }
+  writeState(tool, target.cwd, { ...state, status: 'empty', items: [] })
+}
+
 // --- entry -------------------------------------------------------------------
 
 const main = async () => {
@@ -683,9 +808,12 @@ const main = async () => {
     else if (command === 'agy-generate') agyGenerate(arg)
     else if (command === 'agy-statusline') agyStatusline()
     else if (command === 'agy-guard') agyGuard()
+    else if (command === 'popup') await popup(arg)
     else if (command === 'editor') await editor(arg ?? '')
     else {
-      process.stderr.write('usage: next-steps codex-prompt|codex-stop|agy-stop|agy-statusline, next-steps-editor <file>\n')
+      process.stderr.write(
+        'usage: next-steps codex-prompt|codex-stop|agy-stop|agy-statusline|popup herdr|popup tmux, next-steps-editor <file>\n',
+      )
       process.exitCode = 2
     }
   } catch (error) {

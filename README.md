@@ -17,7 +17,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
 ├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
 ├── wt-dev.sh                               # dev server per git worktree in one tmux session, stable ports
-├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g
+├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g or a herdr/tmux popup
 ├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── windows/                                # portable subset for a Windows machine
@@ -718,6 +718,49 @@ Knobs (environment, read by the hooks and the editor):
 | `NEXT_STEPS_AGY_MODEL` | the session's model; e.g. `gemini-3.8-flash-low` for a cheaper, faster side run |
 | `NEXT_STEPS_MIN_CHARS` | `80`: shorter answers get no suggestions |
 | `NEXT_STEPS_EDITOR` | set by the launchers from your `VISUAL` / `EDITOR`; else `nano`, else `vi` |
+
+#### herdr and tmux popups (optional)
+
+Inside [herdr](https://herdr.dev) or tmux, a key binding can open the same menu in a popup
+over the CLI's pane. The pick is typed into that pane's prompt box at the cursor and never
+sent. `ctrl+g` keeps working alongside; they differ when the box already holds text:
+`ctrl+g` then opens your editor instead of the menu, while the popup still shows the menu
+and adds the pick at the cursor, keeping that text. Add the binding you want:
+
+```toml
+# ~/.config/herdr/config.toml
+[[keys.command]]
+key = "alt+n"
+type = "popup"
+command = "next-steps popup herdr"
+width = "90%"
+height = 15
+```
+
+```
+# ~/.tmux.conf
+bind-key -n M-n display-popup -E -w 90% -h 15 'next-steps popup tmux'
+```
+
+Then press `alt+n`, no prefix. Codex and agy don't use it (agy's alt keys are `alt+enter`,
+`alt+m` and `alt+j`). The binding takes it in every pane, shells included, where zsh would
+otherwise use it for history search.
+
+- **Ready notice:** when suggestions are saved, the hook says `next steps ready: alt+n`
+  where the CLI runs. In herdr it is a notification, which herdr only draws with
+  `delivery = "herdr"` under `[ui.toast]` in its config; with the default `off` it accepts
+  the notification and shows nothing. That setting also turns on herdr's own pop-ups for
+  agents in background workspaces. In tmux it replaces the status line for 4 s (a key press
+  closes it sooner). When herdr runs inside tmux, only herdr shows it.
+- **Which CLI:** the CLI does not start the popup, so the popup takes the one whose
+  suggestions for the pane's folder changed last. Codex and agy running in the same folder
+  at once can show each other's.
+- **How the text gets in:** herdr's `pane send-text` types it as keystrokes; tmux pastes it
+  with `paste-buffer -p`, a bracketed paste when the CLI asks for one. Suggestions hold no
+  newline or control character, so neither can press Enter.
+- **No extra cost:** the popups and `ctrl+g` read the same saved suggestions, generated once
+  per answered turn. Picking from any of them clears the suggestions for all.
+- Tested with herdr 0.9.3 and tmux 3.4 (popups need tmux 3.2 or later).
 
 #### Notes
 
