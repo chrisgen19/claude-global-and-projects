@@ -15,6 +15,7 @@
 //   next-steps codex-stop       Codex Stop hook (async)
 //   next-steps agy-stop         agy Stop hook (agy/next-steps/hooks.json)
 //   next-steps agy-statusline   agy statusLine command
+//   next-steps agy-guard        PreToolUse in the agy side run's folder
 //   next-steps-editor <file>    $VISUAL / $EDITOR (same file, second name)
 //
 // Environment:
@@ -307,12 +308,23 @@ const codexStop = () => {
   if (answer.trim().length < MIN_CHARS) return writeState('codex', cwd, { ...base, status: 'skipped' })
 
   writeState('codex', cwd, { ...base, status: 'pending' })
+  const request = suggestionPrompt('Codex', prompt, answer)
   const effort = CODEX_EFFORT || codexEffort(str(e.transcript_path))
-  const items = runCodex(suggestionPrompt('Codex', prompt, answer), model, effort)
+  let used = model
+  let items = runCodex(request, model, effort)
+  // The side run skips the user's config, so a session model reachable only
+  // through it (a custom provider or profile) fails there. Retry once on
+  // Codex's default, unless the model was picked on purpose.
+  if (items === null && CODEX_MODEL === '' && model !== '') {
+    log(`retrying on Codex's default model instead of ${model}`)
+    used = ''
+    items = runCodex(request, '', CODEX_EFFORT)
+  }
   // A prompt submitted while we waited owns the state now: drop ours.
   const now = readState('codex', cwd)
   if (now?.status !== 'pending' || now.turnId !== turnId) return
-  writeState('codex', cwd, { ...base, status: items.length > 0 ? 'ready' : 'empty', items })
+  const found = items ?? []
+  writeState('codex', cwd, { ...base, model: used, status: found.length > 0 ? 'ready' : 'empty', items: found })
 }
 
 /**
@@ -344,7 +356,8 @@ const codexEffort = file => {
  * trust), no hooks, no shell tool, read-only sandbox, in an empty directory.
  * An empty model or effort leaves Codex's own default.
  * @param {string} prompt @param {string} model @param {string} effort
- * @returns {Suggestion[]}
+ * @returns {Suggestion[] | null} null when codex exits with an error (such as
+ *   an unknown model), so the caller can retry; [] for any other failure
  */
 const runCodex = (prompt, model, effort) => {
   const out = path.join(STATE_DIR, `codex-out-${process.pid}.json`)
@@ -367,7 +380,8 @@ const runCodex = (prompt, model, effort) => {
   try {
     if (run.status !== 0) {
       log(`codex exec failed (${run.status ?? run.signal}): ${str(run.stderr).slice(-400)}`)
-      return []
+      // A timeout or a missing codex would only fail again.
+      return run.status === null ? [] : null
     }
     return parseSuggestions(fs.readFileSync(out, 'utf8'))
   } catch (error) {
@@ -459,20 +473,70 @@ const agyGenerate = job => {
   writeState('agy', cwd, { ...base, status: items.length > 0 ? 'ready' : 'empty', items })
 }
 
+// A print run gets the person's own agy permissions and MCP servers, and there
+// is no flag to turn tools off, while the prompt quotes untrusted text. So the
+// helper folder carries its own hooks.json, which agy loads for runs started
+// there: a PreToolUse hook (agy-guard) that denies every tool call except
+// `finish`, the tool --json-schema makes the model answer with. If the guard
+// cannot even start, the shell fallback still denies. --sandbox also confines
+// any shell command.
+const AGY_DENY = { decision: 'deny', reason: 'next-steps side run: tools are disabled' }
+const shellQuote = (/** @type {string} */ text) => `'${text.replaceAll("'", `'\\''`)}'`
+const AGY_GUARD = {
+  'next-steps-guard': {
+    PreToolUse: [
+      {
+        matcher: '*',
+        hooks: [
+          {
+            type: 'command',
+            command:
+              `${shellQuote(process.execPath)} ${shellQuote(SELF)} agy-guard` +
+              ` || echo ${shellQuote(JSON.stringify(AGY_DENY))}`,
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  },
+}
+
+/** PreToolUse in the agy helper folder: anything unreadable is denied too. */
+const agyGuard = () => {
+  const call = /** @type {Record<string, unknown>} */ (readStdinJson().toolCall ?? {})
+  process.stdout.write(JSON.stringify(str(call.name) === 'finish' ? { decision: 'allow' } : AGY_DENY))
+}
+
+/** The agy helper folder with the guard rewritten, so it is never missing or stale. */
+const agyHelperDir = () => {
+  const dir = helperDir('agy')
+  fs.mkdirSync(path.join(dir, '.agents'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.agents', 'hooks.json'), `${JSON.stringify(AGY_GUARD, null, 2)}\n`)
+  return dir
+}
+
 /**
- * One `agy -p` with the schema enforced, then its conversation removed. The
- * hook's modelName is an id `--model` takes (gemini-4-argon-medium, even when
- * none was picked); agy's docs also show "auto", which gets agy's default.
+ * One `agy -p` with the schema enforced and tools denied, then its
+ * conversation removed. The hook's modelName is an id `--model` takes
+ * (gemini-4-argon-medium, even when none was picked); agy's docs also show
+ * "auto", which gets agy's default.
  * @param {string} prompt @param {string} model
  */
 const runAgy = (prompt, model) => {
+  let cwd
+  try {
+    cwd = agyHelperDir()
+  } catch (error) {
+    log(`agy guard not written, side run skipped: ${String(error)}`)
+    return []
+  }
   const args = [
-    '-p', prompt, '--output-format', 'json', '--disable-slash-commands',
+    '-p', prompt, '--output-format', 'json', '--disable-slash-commands', '--sandbox',
     '--print-timeout', '120s', '--json-schema', schemaFile(),
   ]
   if (model !== '' && model !== 'auto') args.push('--model', model)
   const run = spawnSync('agy', args, {
-    cwd: helperDir('agy'),
+    cwd,
     env: childEnv(),
     encoding: 'utf8',
     timeout: RUN_TIMEOUT_MS,
@@ -618,6 +682,7 @@ const main = async () => {
     else if (command === 'agy-stop') agyStop()
     else if (command === 'agy-generate') agyGenerate(arg)
     else if (command === 'agy-statusline') agyStatusline()
+    else if (command === 'agy-guard') agyGuard()
     else if (command === 'editor') await editor(arg ?? '')
     else {
       process.stderr.write('usage: next-steps codex-prompt|codex-stop|agy-stop|agy-statusline, next-steps-editor <file>\n')
@@ -625,8 +690,9 @@ const main = async () => {
     }
   } catch (error) {
     log(`${command}: ${error instanceof Error ? error.stack : String(error)}`)
-    // The editor must still hand back control with the file as it was.
-    if (command === 'editor') process.exitCode = 1
+    // The editor must still hand back control with the file as it was, and a
+    // failed guard must exit non-zero so its shell fallback denies.
+    if (command === 'editor' || command === 'agy-guard') process.exitCode = 1
   }
 }
 
