@@ -746,11 +746,12 @@ Then press `alt+n`, no prefix. Codex and agy don't use it (agy's alt keys are `a
 `alt+m` and `alt+j`). The binding takes it in every pane, shells included, where zsh would
 otherwise use it for history search.
 
-- **Ready toast (herdr):** when suggestions are saved for a CLI running inside herdr, the
-  hook also shows a herdr notification, `next steps ready: alt+n`. herdr only draws it with
+- **Ready notice:** when suggestions are saved, the hook says `next steps ready: alt+n`
+  where the CLI runs. In herdr it is a notification, which herdr only draws with
   `delivery = "herdr"` under `[ui.toast]` in its config; with the default `off` it accepts
   the notification and shows nothing. That setting also turns on herdr's own pop-ups for
-  agents in background workspaces. tmux gets no toast.
+  agents in background workspaces. In tmux it replaces the status line for 4 s (a key press
+  closes it sooner). When herdr runs inside tmux, only herdr shows it.
 - **Which CLI:** the CLI does not start the popup, so the popup takes the one whose
   suggestions for the pane's folder changed last. Codex and agy running in the same folder
   at once can show each other's.
