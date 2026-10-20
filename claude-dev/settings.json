@@ -16,7 +16,8 @@
     "modern-web-guidance@googlechrome": true,
     "atlassian@claude-plugins-official": true,
     "vercel@claude-plugins-official": true,
-    "next-steps@claude-community": true
+    "next-steps@claude-community": true,
+    "typescript-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "googlechrome": {
