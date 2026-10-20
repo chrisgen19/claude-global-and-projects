@@ -723,8 +723,9 @@ Knobs (environment, read by the hooks and the editor):
 
 Inside [herdr](https://herdr.dev) or tmux, a key binding can open the same menu in a popup
 over the CLI's pane. The pick is typed into that pane's prompt box at the cursor and never
-sent, so unlike `ctrl+g` it also works with text already in the box. `ctrl+g` keeps working
-alongside. Add the binding you want:
+sent. `ctrl+g` keeps working alongside; they differ when the box already holds text:
+`ctrl+g` then opens your editor instead of the menu, while the popup still shows the menu
+and adds the pick at the cursor, keeping that text. Add the binding you want:
 
 ```toml
 # ~/.config/herdr/config.toml
