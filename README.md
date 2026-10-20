@@ -659,8 +659,8 @@ Inside the session every tmux key starts with `Ctrl-b`:
 ### next-steps for Codex and agy
 
 A port of Claude Code's `next-steps` plugin (`next-steps@claude-community`) to Codex and
-the Antigravity CLI (`agy`). After each turn the CLI's own model suggests up to three likely
-next prompts; press `ctrl+g` on an empty prompt to pick one:
+the Antigravity CLI (`agy`). After each turn the session's own model suggests up to three
+likely next prompts; press `ctrl+g` on an empty prompt to pick one:
 
 ```
   next steps
@@ -687,9 +687,10 @@ opens `NEXT_STEPS_EDITOR` (your previous `VISUAL` / `EDITOR`, else `nano`).
 | | Codex | agy |
 |---|---|---|
 | Hooks | `UserPromptSubmit` keeps the prompt and hides old suggestions; `Stop` generates. Both `async` in `codex/hooks.json` | `Stop` in the `agy/next-steps` plugin. agy waits on hooks, so it answers `{}` at once and generates in a detached process |
-| Side run | `codex exec --ephemeral` on `gpt-6-luna`, low effort, no user config, hooks or shell tool, read-only sandbox | `agy -p` on `gemini-3.8-flash-low`; its throwaway conversation is deleted afterwards |
+| Side run | `codex exec --ephemeral` with no user config, hooks or shell tool, read-only sandbox | `agy -p`; its throwaway conversation is deleted afterwards |
+| Model | the session's: `model` from the `Stop` hook, reasoning effort from the rollout file's latest `turn_context` | the session's: `modelName` from the `Stop` hook, an id that carries the effort (`gemini-4-argon-medium`) |
 | Shown | only on `ctrl+g` (the status line takes built-in items only, [openai/codex#17827](https://github.com/openai/codex/issues/17827)) | also in the status line, under agy's own (`stack_with_default`) |
-| Typical cost | about 13k tokens and 7 s per answered turn | about 16k tokens and 5-8 s |
+| Typical wait | about 10 s per answered turn on `gpt-6.1-sol` medium | about 17 s on `gemini-4-argon-medium` |
 
 The side run gets the turn as quoted data (your prompt, head kept, and the reply, tail
 kept) with the same instruction text as the plugin, and a JSON schema for the answer.
@@ -712,8 +713,9 @@ Knobs (environment, read by the hooks and the editor):
 
 | Variable | Default |
 |----------|---------|
-| `NEXT_STEPS_CODEX_MODEL` | `gpt-6-luna` |
-| `NEXT_STEPS_AGY_MODEL` | `gemini-3.8-flash-low` |
+| `NEXT_STEPS_CODEX_MODEL` | the session's model; set it (e.g. `gpt-6-luna`) for a cheaper, faster side run |
+| `NEXT_STEPS_CODEX_EFFORT` | the session's reasoning effort |
+| `NEXT_STEPS_AGY_MODEL` | the session's model; e.g. `gemini-3.8-flash-low` for a cheaper, faster side run |
 | `NEXT_STEPS_MIN_CHARS` | `80`: shorter answers get no suggestions |
 | `NEXT_STEPS_EDITOR` | set by the launchers from your `VISUAL` / `EDITOR`; else `nano`, else `vi` |
 

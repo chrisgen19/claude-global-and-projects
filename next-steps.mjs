@@ -3,8 +3,8 @@
 //
 // next-steps for Codex and Antigravity (agy): a port of Claude Code's
 // next-steps plugin (claude-community). When a turn ends, a hook asks the
-// CLI's own model, in a separate non-interactive run, for up to three likely
-// next prompts and saves them. Neither CLI lets a hook draw UI or fill the
+// session's own model, in a separate non-interactive run, for up to three
+// likely next prompts and saves them. Neither CLI lets a hook draw UI or fill the
 // prompt box, so the pick happens in the external editor both open on ctrl+g:
 // with $VISUAL/$EDITOR set to next-steps-editor and the prompt box empty, it
 // shows the suggestions, and the chosen one goes back into the box as a draft
@@ -21,8 +21,10 @@
 //   NEXT_STEPS_TOOL         codex | agy, set by the shell wrappers so the editor
 //                           knows which CLI opened it. Unset: plain editor.
 //   NEXT_STEPS_EDITOR       the real editor for non-empty prompts (nano, else vi)
-//   NEXT_STEPS_CODEX_MODEL  default gpt-6-luna
-//   NEXT_STEPS_AGY_MODEL    default gemini-3.8-flash-low
+//   NEXT_STEPS_CODEX_MODEL  side-run model instead of the session's
+//   NEXT_STEPS_CODEX_EFFORT side-run reasoning effort instead of the session's
+//   NEXT_STEPS_AGY_MODEL    side-run model instead of the session's (agy model
+//                           ids carry the effort, e.g. gemini-4-argon-medium)
 //   NEXT_STEPS_MIN_CHARS    skip answers shorter than this (default 80)
 //
 // State lives in ~/.cache/next-steps, one file per CLI and working directory,
@@ -46,6 +48,7 @@ import path from 'node:path'
  * @property {string} [conversationId]  agy conversation
  * @property {string} [transcriptPath]  agy transcript, to spot a newer prompt
  * @property {number} [userCount]       agy: user messages when generated
+ * @property {string} [model]           the session model the side run used
  * @property {string} [updatedAt]
  */
 
@@ -55,8 +58,10 @@ const PROMPT_MAX = 600
 const USER_TEXT_MAX = 4000
 const ANSWER_MAX = 8000
 const MIN_CHARS = Number(process.env.NEXT_STEPS_MIN_CHARS) || 80
-const CODEX_MODEL = process.env.NEXT_STEPS_CODEX_MODEL || 'gpt-6-luna'
-const AGY_MODEL = process.env.NEXT_STEPS_AGY_MODEL || 'gemini-3.8-flash-low'
+// Empty means the session's own model and effort, as the plugin's fork uses.
+const CODEX_MODEL = process.env.NEXT_STEPS_CODEX_MODEL || ''
+const CODEX_EFFORT = process.env.NEXT_STEPS_CODEX_EFFORT || ''
+const AGY_MODEL = process.env.NEXT_STEPS_AGY_MODEL || ''
 const RUN_TIMEOUT_MS = 150_000
 
 const HOME = os.homedir()
@@ -297,11 +302,13 @@ const codexStop = () => {
   const sessionId = str(e.session_id)
   const turnId = str(e.turn_id)
   const prompt = previous?.sessionId === sessionId ? (previous.prompt ?? '') : ''
-  const base = { sessionId, turnId, prompt, items: [] }
+  const model = CODEX_MODEL || str(e.model)
+  const base = { sessionId, turnId, prompt, model, items: [] }
   if (answer.trim().length < MIN_CHARS) return writeState('codex', cwd, { ...base, status: 'skipped' })
 
   writeState('codex', cwd, { ...base, status: 'pending' })
-  const items = runCodex(suggestionPrompt('Codex', prompt, answer))
+  const effort = CODEX_EFFORT || codexEffort(str(e.transcript_path))
+  const items = runCodex(suggestionPrompt('Codex', prompt, answer), model, effort)
   // A prompt submitted while we waited owns the state now: drop ours.
   const now = readState('codex', cwd)
   if (now?.status !== 'pending' || now.turnId !== turnId) return
@@ -309,18 +316,47 @@ const codexStop = () => {
 }
 
 /**
+ * The reasoning effort of the session's latest turn. The Stop hook is given
+ * the model but not the effort; the rollout file records both at each turn.
+ * @param {string} file @returns {string} empty when unknown
+ */
+const codexEffort = file => {
+  let lines = []
+  try {
+    lines = fs.readFileSync(file, 'utf8').split('\n')
+  } catch {
+    return ''
+  }
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (!lines[index].includes('"turn_context"')) continue
+    try {
+      const entry = JSON.parse(lines[index])
+      if (entry.type === 'turn_context') return str(entry.payload?.effort)
+    } catch {
+      // A line still being written, or quoted text: keep looking.
+    }
+  }
+  return ''
+}
+
+/**
  * One ephemeral `codex exec`: no user config (so no MCP servers or project
  * trust), no hooks, no shell tool, read-only sandbox, in an empty directory.
- * @param {string} prompt @returns {Suggestion[]}
+ * An empty model or effort leaves Codex's own default.
+ * @param {string} prompt @param {string} model @param {string} effort
+ * @returns {Suggestion[]}
  */
-const runCodex = prompt => {
+const runCodex = (prompt, model, effort) => {
   const out = path.join(STATE_DIR, `codex-out-${process.pid}.json`)
   const args = [
     'exec', '--ephemeral', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules',
     '--disable', 'hooks', '--disable', 'shell_tool', '--disable', 'unified_exec',
-    '-s', 'read-only', '-m', CODEX_MODEL, '-c', 'model_reasoning_effort="low"',
-    '--color', 'never', '--output-schema', schemaFile(), '-o', out, prompt,
+    '-s', 'read-only', '--color', 'never', '--output-schema', schemaFile(), '-o', out,
   ]
+  if (model !== '') args.push('-m', model)
+  // Checked, since it lands inside a TOML string.
+  if (/^[a-z]+$/.test(effort)) args.push('-c', `model_reasoning_effort="${effort}"`)
+  args.push(prompt)
   const run = spawnSync('codex', args, {
     cwd: helperDir('codex'),
     env: childEnv(),
@@ -359,7 +395,8 @@ const agyStop = () => {
   }
   fs.mkdirSync(STATE_DIR, { recursive: true })
   const job = path.join(STATE_DIR, `agy-job-${process.pid}-${Date.now()}.json`)
-  fs.writeFileSync(job, JSON.stringify({ cwd, transcriptPath, conversationId: str(e.conversationId) }))
+  const model = AGY_MODEL || str(e.modelName)
+  fs.writeFileSync(job, JSON.stringify({ cwd, transcriptPath, conversationId: str(e.conversationId), model }))
   spawn(process.execPath, [SELF, 'agy-generate', job], {
     detached: true,
     stdio: 'ignore',
@@ -409,25 +446,31 @@ const agyGenerate = job => {
   } finally {
     fs.rmSync(job, { force: true })
   }
-  const { cwd, transcriptPath, conversationId } = task
+  const { cwd, transcriptPath, conversationId, model = '' } = task
   const turn = readAgyTranscript(transcriptPath)
-  const base = { conversationId, transcriptPath, userCount: turn.userCount, items: [] }
+  const base = { conversationId, transcriptPath, userCount: turn.userCount, model, items: [] }
   if (turn.answer.trim().length < MIN_CHARS) return writeState('agy', cwd, { ...base, status: 'skipped' })
 
   writeState('agy', cwd, { ...base, status: 'pending' })
-  const items = runAgy(suggestionPrompt('Antigravity', turn.userText, turn.answer))
+  const items = runAgy(suggestionPrompt('Antigravity', turn.userText, turn.answer), model)
   const now = readState('agy', cwd)
   const moved = readAgyTranscript(transcriptPath).userCount !== turn.userCount
   if (moved || now?.status !== 'pending' || now.conversationId !== conversationId) return
   writeState('agy', cwd, { ...base, status: items.length > 0 ? 'ready' : 'empty', items })
 }
 
-/** One `agy -p` with the schema enforced, then its conversation removed. @param {string} prompt */
-const runAgy = prompt => {
+/**
+ * One `agy -p` with the schema enforced, then its conversation removed. The
+ * hook's modelName is an id `--model` takes (gemini-4-argon-medium, even when
+ * none was picked); agy's docs also show "auto", which gets agy's default.
+ * @param {string} prompt @param {string} model
+ */
+const runAgy = (prompt, model) => {
   const args = [
-    '-p', prompt, '--model', AGY_MODEL, '--output-format', 'json', '--disable-slash-commands',
+    '-p', prompt, '--output-format', 'json', '--disable-slash-commands',
     '--print-timeout', '120s', '--json-schema', schemaFile(),
   ]
+  if (model !== '' && model !== 'auto') args.push('--model', model)
   const run = spawnSync('agy', args, {
     cwd: helperDir('agy'),
     env: childEnv(),
