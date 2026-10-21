@@ -1,4 +1,13 @@
 {
+  "env": {
+    "SUPERPOWERS_DISABLE_TELEMETRY": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npx -y modern-web-guidance@latest:*)",
+      "Bash(pnpx modern-web-guidance@latest:*)"
+    ]
+  },
   "attribution": {
     "commit": "",
     "pr": ""
@@ -21,7 +30,11 @@
     "context7@claude-plugins-official": true,
     "commit-commands@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "googlechrome": {
