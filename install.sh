@@ -135,6 +135,52 @@ uninstalled_plugins() { # live_dir
      | select(any($inst.plugins[.][]?; .scope == "user") | not)] | sort[]' "$1/settings.json"
 }
 
+# Project templates whose skills get copied into real projects, and where those
+# projects live. Space-separated, so no spaces in the paths.
+TEMPLATES="nextjs-projects wp-projects"
+PROJECT_DIRS="${PROJECT_DIRS:-$HOME/projects $HOME/Sites}"
+
+# Every project's .claude directory, deep enough for a theme or plugin root
+# (site/wp-content/themes/<theme>/.claude). WordPress core and dependency trees
+# are pruned: walking them takes seconds on a Valet ~/Sites. This repo's own
+# directories are left out.
+project_claude_dirs() {
+  local d
+  for d in $PROJECT_DIRS; do
+    [ -d "$d" ] || continue
+    find "$d" -maxdepth 5 \( -name node_modules -o -name vendor -o -name uploads -o -name .git \
+      -o -name .next -o -name wp-admin -o -name wp-includes \) -prune -o -type d -name .claude -print
+  done | grep -vF "$REPO_ROOT/" | LC_ALL=C sort
+}
+
+# "<path> <blob hash>" for each file in a directory, as git hashes it.
+dir_blobs() { # dir
+  (cd "$1" && find . -type f ! -name .DS_Store | sed 's|^\./||' \
+    | while IFS= read -r f; do printf '%s %s\n' "$f" "$(git hash-object "$f")"; done) | LC_ALL=C sort
+}
+
+# The same listing for a repo directory as committed in <commit>.
+tree_blobs() { # commit dir
+  git ls-tree -r "$1" -- "$2/" \
+    | awk -F '\t' -v n=$((${#2} + 2)) '{ split($1, m, " "); print substr($2, n), m[3] }' | LC_ALL=C sort
+}
+
+# Where a project's copy of a template skill stands: current, a copy of an
+# older committed template (newest match wins), or edited in the project.
+template_status() { # template skill dir, project copy
+  local copy commit since
+  copy=$(dir_blobs "$2")
+  if [ "$copy" = "$(dir_blobs "$1")" ]; then echo "current"; return; fi
+  for commit in $(git rev-list HEAD -- "$1"); do
+    if [ "$copy" = "$(tree_blobs "$commit" "$1")" ]; then
+      since=$(git rev-list --count "$commit..HEAD" -- "$1")
+      echo "behind: copy of $(git log -1 --format='%h, %ad' --date=short "$commit"), $since template change(s) since"
+      return
+    fi
+  done
+  echo "differs: edited in the project, or copied from an uncommitted template"
+}
+
 # Trust key suffix of every handler in a hooks.json, as Codex builds them:
 # snake_case event, then the group and handler index within that event.
 codex_hook_keys() { # hooks.json
@@ -492,6 +538,28 @@ if [ "$MODE" != "pull" ]; then
       note "statusLine  your own (next-steps suggestions not shown there)"
     fi
   fi
+  echo
+fi
+
+# --- project templates: check only, and never drift ---
+# A project adapts the template to its own stack (auth, data layer), so an old
+# or edited copy is listed for review rather than counted, and nothing is copied.
+if [ "$MODE" = "check" ]; then
+  echo "project templates  (info only, not drift)"
+  found=0
+  claude_dirs=$(project_claude_dirs)
+  for t in $TEMPLATES; do
+    for s in "$t"/.claude/skills/*/; do
+      s=${s%/}
+      while IFS= read -r c; do
+        [ -d "$c/skills/$(basename "$s")" ] || continue
+        found=1
+        project=${c%/.claude}
+        note "${project/#$HOME/$TILDE}  $(basename "$s")  $(template_status "$s" "$c/skills/$(basename "$s")")"
+      done <<< "$claude_dirs"
+    done
+  done
+  [ "$found" = 1 ] || note "no project copies in ${PROJECT_DIRS//$HOME/$TILDE}"
   echo
 fi
 
