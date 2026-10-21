@@ -851,7 +851,11 @@ and the shared tab scripts are generated from the repo, so `--pull` leaves them 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
 the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
 `wt-dev` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
-the agy plugin and status line. The herdr hook is herdr's own file and a herdr update
+the agy plugin and status line. It also lists every plugin a profile's live
+`settings.json` enables that has no user-scope install: enabling a plugin there does not
+install it, so after a deploy that adds one, run
+`CLAUDE_CONFIG_DIR=~/.claude-<profile> claude plugin install <plugin>` for each one it
+lists. That part is skipped when the `claude` CLI is not on `PATH`. The herdr hook is herdr's own file and a herdr update
 rewrites it live: when `--check` flags it, copy the live file back into
 `claude/hooks/` instead of deploying over it. Settings are
 compared with sorted keys and without the machine-local keys (`autoMode` and

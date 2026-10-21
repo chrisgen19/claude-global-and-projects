@@ -90,7 +90,9 @@ jobs:
       # Deploy into a scratch HOME (with ~/.codex and agy's directory, so the
       # hook trust is seeded and the agy plugin and status line are set too),
       # then --check must find no drift. awk reports errors without failing the
-      # script, so anything on stderr fails the step as well.
+      # script, so anything on stderr fails the step as well. The runner has no
+      # claude CLI, so the plugin check skips itself instead of flagging every
+      # enabled plugin as not installed in the empty HOME.
       - name: install.sh deploys and checks clean with BSD tools
         run: |
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
