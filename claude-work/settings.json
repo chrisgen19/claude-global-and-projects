@@ -263,7 +263,9 @@
     "next-steps@claude-community": true,
     "vercel@claude-plugins-official": true,
     "figma@claude-plugins-official": true,
-    "modern-web-guidance@googlechrome": true
+    "modern-web-guidance@googlechrome": true,
+    "commit-commands@claude-plugins-official": true,
+    "atlassian@claude-plugins-official": true
   },
   "effortLevel": "high",
   "tui": "fullscreen",
