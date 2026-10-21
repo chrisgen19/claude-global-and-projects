@@ -1061,6 +1061,15 @@ Each project directory (`wp-projects/`, `nextjs-projects/`) has its own `CLAUDE.
 2. The project's own `CLAUDE.md` (project-specific standards)
 3. Skills from `.claude/skills/` (auto-discovered)
 
+A project gets the template by copying it in, so its copy stops tracking this repo.
+`./install.sh --check` ends with a **project templates** section listing every copy of a
+template skill (`nextjs`, `wordpress`) it finds under `~/projects` and `~/Sites`
+(override with `PROJECT_DIRS="dir1 dir2"`), each as `current`, `behind` (a copy of an
+older template commit, with how many template changes since) or `differs` (edited in the
+project). It is information only and never counts as drift: a project adapts the template
+to its own stack, so read the template's changes before copying it over. For example, a
+project on `next-auth` should not take the Better Auth patterns.
+
 ## Using Skills
 
 Skills provide scaffold and runtime code patterns that Claude loads on-demand.
