@@ -25,6 +25,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   └── settings.json                       #   no hooks, no bash-dependent status line
 ├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
 │   ├── statusline-command.sh              #   router -> delegates to the right account script
+│   ├── hooks/herdr-agent-state.sh         #   herdr SessionStart hook (herdr-managed, deployed by install.sh)
 │   └── settings.json                      #   sanitized — see note below
 ├── claude-personal/                       # Deployed copy of ~/.claude-personal
 │   ├── statusline.sh                      #   PERSONAL variant (cyan label)
@@ -849,7 +850,10 @@ and the shared tab scripts are generated from the repo, so `--pull` leaves them 
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
 the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
-`wt-dev` and the two `next-steps` names), and the agy plugin and status line. Settings are
+`wt-dev` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
+the agy plugin and status line. The herdr hook is herdr's own file and a herdr update
+rewrites it live: when `--check` flags it, copy the live file back into
+`claude/hooks/` instead of deploying over it. Settings are
 compared with sorted keys and without the machine-local keys (`autoMode` and
 `skipDangerousModePermissionPrompt`, see [Account settings](#account-settings)), so
 formatting noise and those keys never read as drift. Run it before editing a live file by
