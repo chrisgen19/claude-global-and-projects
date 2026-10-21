@@ -117,9 +117,10 @@ src/
   `z.record()` takes a key and a value schema.
 
 ## Environment variables
-- Feature code reads env only through `lib/env.ts` (`import "server-only"`,
-  Zod-validated). Exceptions: `next.config.ts`, `prisma.config.ts` and
-  `process.env.NODE_ENV`.
+- Feature code reads env only through `lib/env.ts` (Zod-validated). It has no
+  `import "server-only"`: the Better Auth CLI loads it through `auth.ts` and
+  `db.ts` and exits on that import. Exceptions: `next.config.ts`,
+  `prisma.config.ts` and `process.env.NODE_ENV`.
 - Validate secrets the build doesn't need lazily (a function, not top-level
   parse) so `next build` runs without them.
 - `NEXT_PUBLIC_*` values are inlined at build time only when written literally as
