@@ -91,6 +91,11 @@ src/
 - `lib/auth.ts`: `betterAuth({ database: prismaAdapter(db, { provider: "postgresql" }) })`,
   with `nextCookies()` as the last plugin so actions can set cookies.
 - Server session: `auth.api.getSession({ headers: await headers() })`.
+- Sign-up is off: `emailAndPassword: { enabled: true, disableSignUp: true }`.
+  That also blocks `auth.api.signUpEmail` on the server, so create accounts in a
+  seed script or an admin-only action (the admin plugin's `auth.api.createUser`
+  works server-side without a session). Turn sign-up on only when anyone may
+  register.
 - Schema: `pnpm dlx auth@<installed better-auth version> generate`, then a Prisma
   migration. Env: `BETTER_AUTH_SECRET` (32+ chars) and `BETTER_AUTH_URL`.
 

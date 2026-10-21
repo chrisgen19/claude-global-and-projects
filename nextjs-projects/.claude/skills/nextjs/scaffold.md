@@ -299,6 +299,8 @@ model Service {
 
 Generate the auth models with `pnpm dlx auth@<installed better-auth version> generate`, then run a Prisma migration. The env needs `BETTER_AUTH_SECRET` (32+ chars) and `BETTER_AUTH_URL`.
 
+Sign-up is off (`disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create accounts in a seed script or an admin-only action: with Better Auth's admin plugin, `auth.api.createUser` works server-side without a session. Remove the flag only on sites where anyone may register.
+
 ```ts
 // src/lib/auth.ts
 import { betterAuth } from "better-auth";
@@ -310,7 +312,7 @@ import { db } from "@/lib/db";
 // CLI looks for this `auth` export.
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
-  emailAndPassword: { enabled: true },
+  emailAndPassword: { enabled: true, disableSignUp: true }, // invite-only
   plugins: [nextCookies()], // must stay last
 });
 ```

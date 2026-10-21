@@ -68,6 +68,7 @@ src/
 5. Server Actions have built-in CSRF. API routes need manual checks for non-GET.
 6. Rate limit public API routes
 7. `proxy.ts` (keep `middleware.ts` on Next.js 15) does optimistic cookie checks only (`getSessionCookie`), no DB calls. Real authorization lives in the DAL and Server Actions.
+8. Sign-up is off (`emailAndPassword.disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create accounts from a seed script or an admin-only action; turn sign-up on only when anyone may register.
 
 ## Performance
 - `next/image` for images. `next/font` for fonts. `next/dynamic` for heavy client components.

@@ -99,7 +99,7 @@ import { db } from "@/lib/db";
 // CLI (`pnpm dlx auth@<version> generate`) looks for this `auth` export.
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
-  emailAndPassword: { enabled: true },
+  emailAndPassword: { enabled: true, disableSignUp: true }, // invite-only
   plugins: [nextCookies()], // must stay last
 });
 ```
