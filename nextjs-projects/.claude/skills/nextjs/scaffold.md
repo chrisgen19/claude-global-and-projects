@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```tsx
 // src/app/services/page.tsx
 import type { Metadata } from "next";
-import { getServices } from "@/lib/queries/services";
+import { getServices } from "@/lib/dal";
 import { ServiceList } from "@/components/services/service-list";
 
 export const metadata: Metadata = {
@@ -63,7 +63,7 @@ export default async function ServicesPage() {
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { getServiceBySlug, getServiceSlugs } from "@/lib/queries/services";
+import { getServiceBySlug, getServiceSlugs } from "@/lib/dal";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -114,10 +114,11 @@ async function ServiceContent({ params }: Props) {
 
 ## Cached Queries
 
-Reads that many requests share go through `"use cache"` functions. A page can then await them at the top and still prerender.
+Reads that many requests share go through `"use cache"` functions in the data access layer. A page can then await them at the top and still prerender. Public reads like these skip `requireUser()` (see Data Access Layer in `patterns.md`): a `"use cache"` function can't read cookies or headers.
 
 ```ts
-// src/lib/queries/services.ts
+// src/lib/dal.ts
+import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { db } from "@/lib/db";
 
@@ -183,43 +184,34 @@ export async function POST(request: NextRequest) {
 
 ## Proxy
 
-Next.js 16 renamed `middleware.ts` to `proxy.ts` (Node.js runtime only). On Next.js 15, keep `src/middleware.ts` exporting `middleware`. Use it for optimistic checks: read the cookie, no database calls. Real authorization happens in pages, Server Actions and the data layer.
+Next.js 16 renamed `middleware.ts` to `proxy.ts` (Node.js runtime only). On Next.js 15, keep `src/middleware.ts` exporting `middleware`. Use it for optimistic checks: is there a session cookie, no database calls. Real authorization happens in the data access layer and Server Actions.
 
 ```ts
 // src/proxy.ts
-import { NextRequest, NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
+import { type NextRequest, NextResponse } from "next/server";
 
-const protectedPaths = ["/dashboard", "/settings", "/admin"];
-
+// Optimistic only: checks that a session cookie exists. The DAL validates the
+// session on every read and action.
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
-
-  if (isProtected) {
-    const token = request.cookies.get("session")?.value;
-    if (!token) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
+  if (!getSessionCookie(request)) {
+    return NextResponse.redirect(new URL("/sign-in", request.url));
   }
-
   return NextResponse.next();
 }
 
-export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
-};
+export const config = { matcher: ["/dashboard/:path*", "/settings/:path*"] };
 ```
 
 ## Prisma Setup
 
 ### Client singleton
 
-Prisma 7 generates the client into the project and connects through a driver adapter (`@prisma/adapter-pg`). Run `prisma generate` after changing the schema.
+Prisma 7 generates the client into the project and connects through a driver adapter (`@prisma/adapter-pg`). Run `prisma generate` after changing the schema. Only the data access layer (`lib/dal.ts`) and the Better Auth adapter (`lib/auth.ts`) import `db`.
 
 ```ts
 // src/lib/db.ts
+import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/lib/env";
@@ -264,18 +256,8 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  role      Role     @default(USER)
-  posts     Post[]
-  sessions  Session[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@map("users")
-}
+// User, Session, Account and Verification come from the Better Auth CLI (see
+// Better Auth below). Add `posts Post[]` to the generated User model.
 
 model Post {
   id          String   @id @default(cuid())
@@ -308,24 +290,44 @@ model Service {
 
   @@map("services")
 }
-
-model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String   @map("user_id")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([userId])
-  @@map("sessions")
-}
-
-enum Role {
-  USER
-  ADMIN
-}
 ```
+
+## Better Auth
+
+Generate the auth models with `pnpm dlx auth@<installed better-auth version> generate`, then run a Prisma migration. The env needs `BETTER_AUTH_SECRET` (32+ chars) and `BETTER_AUTH_URL`.
+
+```ts
+// src/lib/auth.ts
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { nextCookies } from "better-auth/next-js";
+import { db } from "@/lib/db";
+
+// Reads BETTER_AUTH_SECRET and BETTER_AUTH_URL from the environment. The schema
+// CLI looks for this `auth` export.
+export const auth = betterAuth({
+  database: prismaAdapter(db, { provider: "postgresql" }),
+  emailAndPassword: { enabled: true },
+  plugins: [nextCookies()], // must stay last
+});
+```
+
+```ts
+// src/app/api/auth/[...all]/route.ts
+import { toNextJsHandler } from "better-auth/next-js";
+import { auth } from "@/lib/auth";
+
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+```ts
+// src/lib/auth-client.ts
+import { createAuthClient } from "better-auth/react";
+
+export const authClient = createAuthClient();
+```
+
+If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy `getAuth()` that builds the instance on first call.
 
 ## Env Validation
 
@@ -336,7 +338,8 @@ import { z } from "zod";
 const envSchema = z.object({
   DATABASE_URL: z.url(),
   NEXT_PUBLIC_SITE_URL: z.url(),
-  SESSION_SECRET: z.string().min(32),
+  BETTER_AUTH_SECRET: z.string().min(32),
+  BETTER_AUTH_URL: z.url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -504,5 +507,6 @@ src/generated/
 ```env
 DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"
-SESSION_SECRET="change-me-to-a-random-32-char-string"
+BETTER_AUTH_SECRET="change-me-to-a-random-32-char-string"
+BETTER_AUTH_URL="http://localhost:3000"
 ```
