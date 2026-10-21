@@ -263,7 +263,9 @@
     "atlassian@claude-plugins-official": true,
     "vercel@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "context7@claude-plugins-official": true
+    "context7@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true
   },
   "effortLevel": "high",
   "tui": "fullscreen",
