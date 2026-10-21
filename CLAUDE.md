@@ -64,6 +64,10 @@ Defaults for new code. In an existing project, its style wins.
 - UI changes: check the layout at mobile width, or say it was not checked
 - Suggest tests if logic is complex or critical
 
+## Superpowers Plugin
+- For small fixes, skip the superpowers `brainstorming` and `using-git-worktrees` skills: go straight to the fix on the current branch. A small fix is a bug fix, typo, copy/style tweak, config change or one-file change with a clear expected result.
+- Still use brainstorming and worktrees for new features, multi-file changes, or when the requirements are unclear. If unsure which this is, ask in one line.
+
 ## Things I Don't Want
 - Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page
 - Don't over-engineer simple features with complex design patterns

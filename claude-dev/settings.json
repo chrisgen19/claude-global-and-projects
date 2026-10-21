@@ -276,6 +276,16 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); if printf '%s' \"$cmd\" | grep -qF -e '2>&1' -e '2>/dev/null'; then printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Command contains 2>&1 or 2>/dev/null, which are disallowed per your global CLAUDE.md. Rewrite the command without stderr redirection.\"}}'; fi",
+            "statusMessage": "Checking for disallowed stderr redirection"
+          }
+        ]
       }
     ],
     "PermissionRequest": [

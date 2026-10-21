@@ -35,12 +35,15 @@ claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 # on the wrong terminal; the Prisma guard is inert without its local hosts file;
 # wt-dev is a command you run yourself, never a hook. next-steps is one file
 # under two names: the hooks call next-steps, $VISUAL/$EDITOR is next-steps-editor.
+# The herdr hook is herdr's own file (it exits outside a herdr pane): a herdr
+# update rewrites it live, so copy the new version back here when --check flags it.
 SHARED_SCRIPTS="iterm-tab-status.sh:$HOME/.local/bin/claude-iterm-tab-status.sh
 wt-tab-status.sh:$HOME/.local/bin/claude-wt-tab-status.sh
 prisma-prod-guard.sh:$HOME/.local/bin/prisma-prod-guard
 wt-dev.sh:$HOME/.local/bin/wt-dev
 next-steps.mjs:$HOME/.local/bin/next-steps
-next-steps.mjs:$HOME/.local/bin/next-steps-editor"
+next-steps.mjs:$HOME/.local/bin/next-steps-editor
+claude/hooks/herdr-agent-state.sh:$HOME/.claude/hooks/herdr-agent-state.sh"
 
 # Codex runs hooks from hooks.json only once each is trusted in /hooks, and
 # records that in config.toml as [hooks.state."<abs path>:<event>:<group>:<n>"].
