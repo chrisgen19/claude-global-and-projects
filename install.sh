@@ -31,6 +31,11 @@ claude-dev:$HOME/.claude-dev:statusline.sh:all
 claude-personal:$HOME/.claude-personal:statusline.sh:all
 claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
 
+# The one real CLAUDE.md, and the profiles whose CLAUDE.md can link to it
+# (README, Global config). Directory names under $HOME, space-separated.
+CLAUDE_MD_REAL="$HOME/.claude-personal/CLAUDE.md"
+CLAUDE_MD_LINKED=".claude .claude-work .claude-dev"
+
 # repo file : live file. Shared by every profile. The tab-status scripts each exit
 # on the wrong terminal; the Prisma guard is inert without its local hosts file;
 # wt-dev is a command you run yourself, never a hook. next-steps is one file
@@ -394,6 +399,31 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
 
   echo
 done <<< "$PROFILES"
+
+# --- CLAUDE.md links: check only, and never drift ---
+# Linking the other profiles' CLAUDE.md to one real file is optional (see the
+# README's Global config), so an own copy is listed rather than counted. -ef
+# compares the files the paths resolve to, so a relative link also reads as linked.
+if [ "$MODE" = "check" ]; then
+  echo "CLAUDE.md links  (info only, not drift)"
+  if [ ! -f "$CLAUDE_MD_REAL" ]; then
+    note "${CLAUDE_MD_REAL/#$HOME/$TILDE}  missing, nothing to link to"
+  else
+    for a in $CLAUDE_MD_LINKED; do
+      f="$HOME/$a/CLAUDE.md"
+      if [ -L "$f" ] && [ "$f" -ef "$CLAUDE_MD_REAL" ]; then
+        note "$TILDE/$a/CLAUDE.md  -> ${CLAUDE_MD_REAL/#$HOME/$TILDE}"
+      elif [ -L "$f" ]; then
+        note "$TILDE/$a/CLAUDE.md  links elsewhere: $(readlink "$f")"
+      elif [ -f "$f" ]; then
+        note "$TILDE/$a/CLAUDE.md  own copy, not linked"
+      else
+        note "$TILDE/$a/CLAUDE.md  missing"
+      fi
+    done
+  fi
+  echo
+fi
 
 # --- shared scripts: repo -> live only ---
 if [ "$MODE" != "pull" ]; then
