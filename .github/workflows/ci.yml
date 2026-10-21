@@ -92,12 +92,15 @@ jobs:
       # then --check must find no drift. awk reports errors without failing the
       # script, so anything on stderr fails the step as well. The runner has no
       # claude CLI, so the plugin check skips itself instead of flagging every
-      # enabled plugin as not installed in the empty HOME.
+      # enabled plugin as not installed in the empty HOME. config.toml is
+      # restored by hand (README "Codex config") rather than deployed, so do
+      # that first; the deploy then appends the hook trust tables to it.
       - name: install.sh deploys and checks clean with BSD tools
         run: |
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           export HOME="$RUNNER_TEMP/home"
           mkdir -p "$HOME/.codex" "$HOME/.gemini/antigravity-cli"
+          cp codex/config.toml "$HOME/.codex/config.toml"
           awk --version
           err="$RUNNER_TEMP/stderr.txt"
           fail=0

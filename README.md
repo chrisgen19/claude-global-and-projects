@@ -855,7 +855,8 @@ the agy plugin and status line. It also lists every plugin a profile's live
 `settings.json` enables that has no user-scope install: enabling a plugin there does not
 install it, so after a deploy that adds one, run
 `CLAUDE_CONFIG_DIR=~/.claude-<profile> claude plugin install <plugin>` for each one it
-lists. That part is skipped when the `claude` CLI is not on `PATH`. The herdr hook is herdr's own file and a herdr update
+lists. That part is skipped when the `claude` CLI is not on `PATH`. It also compares
+`codex/config.toml` with `~/.codex/config.toml`, see [Codex config](#codex-config-codex). The herdr hook is herdr's own file and a herdr update
 rewrites it live: when `--check` flags it, copy the live file back into
 `claude/hooks/` instead of deploying over it. Settings are
 compared with sorted keys and without the machine-local keys (`autoMode` and
@@ -941,6 +942,14 @@ cp ~/.codex/config.toml ~/.codex/config.toml.bak
 ```
 
 The `awk` keeps a line only while the most recent table header was a `[projects...]` or `[hooks.state...]` one, so the trust entries come back and nothing else does. Order matters: the repo config has to come first, since every line after a table header belongs to that table.
+
+`./install.sh --check` compares the two files setting by setting and reports
+`codex config.toml` when they differ: switching models in Codex rewrites `model` live,
+which is how this copy went stale before. It ignores key order, comments and array layout,
+the machine-specific `[projects.*]` and `[hooks.state.*]` tables, and the keys Codex writes
+for itself (`[tui.model_availability_nux]`, `screen_reader_detection_done`; the list is
+`CODEX_MANAGED` in `install.sh`). Neither a deploy nor `--pull` copies this file, so bring a
+live change into the repo, or a repo change into live, by hand.
 
 Check the result before trusting it:
 ```bash

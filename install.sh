@@ -163,6 +163,41 @@ codex_live_trust() {
 
 codex_tracked_trust() { grep -v -e '^#' -e '^[[:space:]]*$' "$TRUST_FILE" | sort; }
 
+# Codex writes these itself (new-model announcement counters, a one-time
+# screen reader probe), so they differ per machine and never read as drift.
+# Space-separated: a whole "[table]", or "[table]key" for a single key.
+CODEX_MANAGED="[tui.model_availability_nux] [tui]screen_reader_detection_done"
+
+# One sorted "[table] key = value" line per setting, so key order, comments
+# and array layout (Codex writes arrays on one line, the repo spreads them over
+# several) never read as drift. Machine-specific [projects*] and [hooks.state*]
+# tables and the CODEX_MANAGED keys are left out. Full-line comments only:
+# config.toml has no trailing ones.
+codex_shared_config() { # config.toml
+  awk -v managed=" $CODEX_MANAGED " '
+    function emit() {
+      gsub(/[ \t]+/, " ", val); gsub(/, *\]/, "]", val)
+      gsub(/\[ /, "[", val); gsub(/ \]/, "]", val); gsub(/ *, */, ", ", val)
+      if (index(managed, " " tbl key " ") == 0) print (tbl == "" ? "" : tbl " ") key " = " val
+    }
+    { line = $0; sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line) }
+    line == "" || line ~ /^#/ { next }
+    inarr { val = val " " line; if (line ~ /^\]/) { inarr = 0; emit() }; next }
+    line ~ /^\[/ {
+      tbl = line
+      skip = line ~ /^\[(projects|hooks\.state)[].]/ || index(managed, " " tbl " ") > 0
+      next
+    }
+    skip || index(line, "=") == 0 { next }
+    {
+      eq = index(line, "=")
+      key = substr(line, 1, eq - 1); sub(/[ \t]+$/, "", key)
+      val = substr(line, eq + 1); sub(/^[ \t]+/, "", val)
+      if (val ~ /^\[/ && val !~ /\]$/) { inarr = 1; next }
+      emit()
+    }' "$1" | sort
+}
+
 # Give every tracked hook its tracked hash in config.toml. Other keys in those
 # tables (an "enabled = false" set in /hooks) and all other tables are kept;
 # hooks with no table yet get one appended.
@@ -371,6 +406,17 @@ else
         differ "codex hook trust: $untrusted hook(s) not trusted in config.toml"
       else
         note "hook trust  ok"
+      fi
+      # Neither a deploy nor --pull copies config.toml (live holds the trust
+      # tables), so drift here is merged by hand: see the README's Codex section.
+      if [ ! -f "$CODEX_CONFIG" ]; then
+        differ "codex config.toml missing"
+      elif ! diff -q <(codex_shared_config codex/config.toml) <(codex_shared_config "$CODEX_CONFIG") > /dev/null; then
+        differ "codex config.toml  (merge by hand, see README \"Codex config\")"
+        diff <(codex_shared_config codex/config.toml) <(codex_shared_config "$CODEX_CONFIG") \
+          | grep -E '^[<>]' | head -6 | sed 's/^/           /'
+      else
+        note "config.toml  ok"
       fi
       ;;
     pull)
