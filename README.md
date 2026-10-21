@@ -131,6 +131,9 @@ function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
 function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
 
+# Opt out of the superpowers plugin's version ping (brainstorming visual companion logo)
+export SUPERPOWERS_DISABLE_TELEMETRY=1
+
 # Launch VS Code with specific Claude account
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
@@ -161,6 +164,8 @@ Each account has its own `CLAUDE.md` and `skills/` directory:
 - `~/.claude-work/CLAUDE.md` + `~/.claude-work/skills/*`
 - `~/.claude-personal/CLAUDE.md` + `~/.claude-personal/skills/*`
 - `~/.claude-dev/CLAUDE.md` + `~/.claude-dev/skills/*`
+
+The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy to edit. See [Global config](#global-config).
 
 > **Note:** `code-work` / `code-personal` / `code-dev` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
@@ -1016,6 +1021,17 @@ cp CLAUDE.md ~/.claude-personal/CLAUDE.md
 cp CLAUDE.md ~/.claude-work/CLAUDE.md
 cp CLAUDE.md ~/.claude-dev/CLAUDE.md
 ```
+
+Or keep one live copy and symlink the rest to it, so an edit reaches every account at once. On WSL the real file is `~/.claude-personal/CLAUDE.md`:
+```bash
+cp CLAUDE.md ~/.claude-personal/CLAUDE.md
+for a in .claude .claude-work .claude-dev; do
+  ln -sfn ~/.claude-personal/CLAUDE.md ~/$a/CLAUDE.md
+done
+ls -l ~/.claude*/CLAUDE.md   # three should show -> ~/.claude-personal/CLAUDE.md
+```
+
+`install.sh` and `--check` work with the symlinks: `cp` writes through a link to the real file. Edit the real file, not a link: `sed -i` (without `--follow-symlinks`) and editors that save by replacing the file turn a link back into a regular copy, and that account silently stops getting updates. Live edits to `CLAUDE.md` still have to be copied back into the repo by hand, since `--pull` only handles `settings.json`.
 
 ### Global skills
 Copy skills to every account directory:

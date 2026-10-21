@@ -6,6 +6,9 @@ function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
 function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
 
+# Opt out of the superpowers plugin's version ping (brainstorming visual companion logo)
+export SUPERPOWERS_DISABLE_TELEMETRY=1
+
 # Launch VS Code with specific Claude account
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
