@@ -590,12 +590,17 @@ async function Welcome() {
 ```tsx
 // src/app/posts/page.tsx
 import { Suspense } from "react";
+import { z } from "zod";
 import { getPublishedPosts } from "@/lib/dal";
 import { Pagination } from "@/components/ui/pagination";
 
 type Props = {
   searchParams: Promise<{ page?: string; q?: string }>;
 };
+
+// Anything but a positive integer (2.25, -3, Infinity, abc) falls back to page 1,
+// so Prisma's skip always gets a valid offset.
+const pageSchema = z.coerce.number().int().positive().catch(1);
 
 // searchParams is only known at request time. Pass the promise to a child
 // under <Suspense> instead of awaiting it here.
@@ -611,7 +616,7 @@ export default function PostsPage({ searchParams }: Props) {
 
 async function PostResults({ searchParams }: Props) {
   const { page } = await searchParams;
-  const currentPage = Math.max(1, Number(page) || 1);
+  const currentPage = pageSchema.parse(page);
   const { posts, totalPages } = await getPublishedPosts(currentPage, 10);
 
   return (

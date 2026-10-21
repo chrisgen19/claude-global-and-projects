@@ -32,7 +32,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```tsx
 // src/app/services/page.tsx
 import type { Metadata } from "next";
-import { getServices } from "@/lib/dal";
 import { ServiceList } from "@/components/services/service-list";
 
 export const metadata: Metadata = {
@@ -40,17 +39,12 @@ export const metadata: Metadata = {
   description: "Our services",
 };
 
-export default async function ServicesPage() {
-  const services = await getServices();
-
-  if (services.length === 0) {
-    return <p className="py-12 text-center text-gray-500">No services found.</p>;
-  }
-
+// ServiceList reads through the DAL and handles the empty state itself.
+export default function ServicesPage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-12">
       <h1 className="mb-8 text-3xl font-bold">Services</h1>
-      <ServiceList services={services} />
+      <ServiceList />
     </main>
   );
 }
