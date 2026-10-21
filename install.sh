@@ -121,6 +121,20 @@ skills_for() { # skill set -> prints source skill dirs
   done
 }
 
+# Plugins the live settings enable that have no user-scope install. Enabling a
+# plugin in settings.json does not install it, so a deploy that adds one leaves
+# it silently inactive until `claude plugin install` runs in that profile. A
+# project-scope install only applies inside that project, so it does not count.
+uninstalled_plugins() { # live_dir
+  local installed='{}'
+  if [ -f "$1/plugins/installed_plugins.json" ]; then
+    installed=$(cat "$1/plugins/installed_plugins.json") || return 1
+  fi
+  jq -r --argjson inst "$installed" '
+    [(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key
+     | select(any($inst.plugins[.][]?; .scope == "user") | not)] | sort[]' "$1/settings.json"
+}
+
 # Trust key suffix of every handler in a hooks.json, as Codex builds them:
 # snake_case event, then the group and handler index within that event.
 codex_hook_keys() { # hooks.json
@@ -274,6 +288,25 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
       differ "skills:$missing"
     else
       note "skills  ok"
+    fi
+
+    # --- plugins: check only, a deploy does not install them ---
+    # Skipped without the claude CLI, which is also what keeps CI's scratch
+    # HOME (no plugins installed) checking clean.
+    if [ "$MODE" = "check" ]; then
+      if ! command -v claude > /dev/null; then
+        note "plugins  claude CLI not found, skipped"
+      elif [ ! -f "$live_dir/settings.json" ]; then
+        note "plugins  live settings.json missing, skipped"
+      elif ! unplugged=$(uninstalled_plugins "$live_dir"); then
+        differ "plugins: cannot read settings.json or plugins/installed_plugins.json"
+      elif [ -n "$unplugged" ]; then
+        differ "plugins enabled but not installed:"
+        printf '%s\n' "$unplugged" | sed 's/^/           /'
+        note "  fix: CLAUDE_CONFIG_DIR=${live_dir/#$HOME/$TILDE} claude plugin install <plugin>"
+      else
+        note "plugins  ok"
+      fi
     fi
 
   fi
