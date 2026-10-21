@@ -2,19 +2,15 @@
 
 ## Server Component with Data Fetching
 
-This component reads at request time. Render it inside `<Suspense>` or below a `loading.tsx`, or read through a cached query (see Cached Queries in `scaffold.md`).
+Components read through the data access layer, never `db`. `getServices()` is a cached read (see Cached Queries in `scaffold.md`), so this component can prerender. A component that awaits an uncached DAL read, such as one that calls `requireUser()`, renders inside `<Suspense>` or below a `loading.tsx`.
 
 ```tsx
 // src/components/services/service-list.tsx
-import { db } from "@/lib/db";
+import { getServices } from "@/lib/dal";
 import { ServiceCard } from "./service-card";
 
 export async function ServiceList() {
-  const services = await db.service.findMany({
-    where: { published: true },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
+  const services = await getServices();
 
   if (services.length === 0) {
     return <p className="py-8 text-center text-gray-500">No services yet.</p>;
@@ -67,19 +63,29 @@ export function Counter({ initialCount = 0, className }: CounterProps) {
 }
 ```
 
-## Server Action with Zod Validation
+## Shared Zod Schema
+
+Forms, Server Actions and Route Handlers import the same schema, so client and server rules can't drift. Keep it out of the `"use server"` file: that file can only export async functions.
 
 ```ts
-// src/app/actions/contact.ts
-"use server";
-
+// src/schemas/contact.ts
 import { z } from "zod";
 
-const contactSchema = z.object({
+export const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   email: z.email("Invalid email"),
   message: z.string().min(10, "Message must be at least 10 characters").max(2000),
 });
+```
+
+## Server Action with Zod Validation
+
+```ts
+// src/actions/contact.ts
+"use server";
+
+import { z } from "zod";
+import { contactSchema } from "@/schemas/contact";
 
 type ContactState = {
   success: boolean;
@@ -91,6 +97,7 @@ export async function submitContact(
   _prevState: ContactState,
   formData: FormData
 ): Promise<ContactState> {
+  // A public form, so no requireUser(). Actions that touch user data call it first.
   const result = contactSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
@@ -117,7 +124,7 @@ export async function submitContact(
 "use client";
 
 import { useActionState } from "react";
-import { submitContact } from "@/app/actions/contact";
+import { submitContact } from "@/actions/contact";
 
 export function ContactFormAction() {
   const [state, formAction, isPending] = useActionState(submitContact, {
@@ -189,12 +196,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-
-const contactSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.email("Invalid email"),
-  message: z.string().min(10, "Message must be at least 10 characters"),
-});
+import { contactSchema } from "@/schemas/contact";
 
 type ContactFormData = z.infer<typeof contactSchema>;
 
@@ -334,12 +336,28 @@ export const useCartStore = create<CartStore>((set, get) => ({
 }));
 ```
 
-## Prisma CRUD Queries
+## Data Access Layer
+
+Every Prisma call lives in `src/lib/dal.ts`, which becomes `lib/dal/<domain>.ts` as it grows. Pages, components, Route Handlers and Server Actions call DAL functions, never `db`. The DAL authorizes: it gets the user from the session with `requireUser()` (Better Auth setup is in `scaffold.md`), never from client input, and scopes owned data by that user. It returns minimal DTOs through `select`, not raw rows. Public reads skip `requireUser()`.
 
 ```ts
-// src/lib/queries/posts.ts
-import { db } from "@/lib/db";
+// src/lib/dal.ts
+import "server-only";
+import { cacheLife, cacheTag } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
+import { Prisma } from "@/generated/prisma/client";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import type { CreatePostInput } from "@/schemas/posts";
+
+/** The signed-in user for this request; redirects to sign-in when there is none. */
+export const requireUser = cache(async () => {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/sign-in");
+  return session.user;
+});
 
 // React cache() deduplicates within a single render pass
 export const getPublishedPosts = cache(async (page = 1, perPage = 10) => {
@@ -359,45 +377,131 @@ export const getPublishedPosts = cache(async (page = 1, perPage = 10) => {
 
 export const getPostBySlug = cache(async (slug: string) => {
   return db.post.findUnique({
-    where: { slug },
-    include: { author: { select: { name: true } } },
+    where: { slug, published: true },
+    select: {
+      title: true,
+      content: true,
+      publishedAt: true,
+      author: { select: { name: true } },
+    },
   });
 });
 ```
 
-### Mutations
+### Writes
+
+DAL writes take an ID plus the change and check ownership in the query. Server Actions authenticate, validate with the shared schema, call the DAL, then update the cache.
 
 ```ts
-// src/lib/mutations/posts.ts
-import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-
-const createPostSchema = z.object({
-  title: z.string().min(1).max(200),
-  slug: z.string().min(1).max(200).regex(/^[a-z0-9-]+$/),
-  content: z.string().optional(),
-  authorId: z.cuid(),
-});
-
-export async function createPost(data: z.infer<typeof createPostSchema>) {
-  const post = await db.post.create({ data });
-  revalidatePath("/posts");
-  return post;
+// src/lib/dal.ts (continued)
+/** Creates a post owned by the user. Returns null when the slug is already taken. */
+export async function createPost(input: CreatePostInput) {
+  const user = await requireUser();
+  try {
+    return await db.post.create({
+      data: { ...input, authorId: user.id },
+      select: { id: true, slug: true },
+    });
+  } catch (error) {
+    // P2002: unique constraint (the slug). Anything else is unexpected.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
+    }
+    throw error;
+  }
 }
 
-export async function togglePublish(id: string) {
-  const post = await db.post.findUniqueOrThrow({ where: { id } });
-  const updated = await db.post.update({
-    where: { id },
+/** Publishes or unpublishes a post the user owns. Returns null when it is missing or not theirs. */
+export async function togglePublish(postId: string) {
+  const user = await requireUser();
+  const post = await db.post.findFirst({
+    where: { id: postId, authorId: user.id },
+    select: { published: true },
+  });
+  if (!post) return null;
+
+  return db.post.update({
+    where: { id: postId },
     data: {
       published: !post.published,
       publishedAt: post.published ? null : new Date(),
     },
+    select: { slug: true },
   });
+}
+```
+
+```ts
+// src/schemas/posts.ts
+import { z } from "zod";
+
+export const createPostSchema = z.object({
+  title: z.string().min(1).max(200),
+  slug: z.string().min(1).max(200).regex(/^[a-z0-9-]+$/),
+  content: z.string().optional(),
+});
+
+export type CreatePostInput = z.infer<typeof createPostSchema>;
+
+export type ActionResult =
+  | { ok: true }
+  | { ok: false; error: string; fieldErrors?: Partial<Record<string, string[]>> };
+```
+
+```ts
+// src/actions/posts.ts
+"use server";
+
+import { revalidatePath, updateTag } from "next/cache";
+import { z } from "zod";
+import { createPost, requireUser, setFeatured, togglePublish } from "@/lib/dal";
+import { type ActionResult, createPostSchema } from "@/schemas/posts";
+
+export async function createPostAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  await requireUser(); // cached: the DAL's own check reuses it
+
+  const parsed = createPostSchema.safeParse({
+    title: formData.get("title"),
+    slug: formData.get("slug"),
+    content: formData.get("content") ?? undefined,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+
+  const post = await createPost(parsed.data);
+  if (!post) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: { slug: ["That slug is already taken."] },
+    };
+  }
+
   revalidatePath("/posts");
-  revalidatePath(`/posts/${updated.slug}`);
-  return updated;
+  return { ok: true };
+}
+
+export async function togglePublishAction(postId: string): Promise<ActionResult> {
+  await requireUser();
+
+  const parsed = z.cuid().safeParse(postId);
+  if (!parsed.success) return { ok: false, error: "Invalid post." };
+
+  const post = await togglePublish(parsed.data);
+  if (!post) return { ok: false, error: "Post not found." };
+
+  updateTag("posts"); // getFeaturedPosts is tagged "posts"
+  revalidatePath("/posts");
+  revalidatePath(`/posts/${post.slug}`);
+  return { ok: true };
 }
 ```
 
@@ -406,11 +510,8 @@ export async function togglePublish(id: string) {
 `"use cache"` needs `cacheComponents: true`, which the scaffold `next.config.ts` sets. With the flag on, request data (`cookies()`, `params`, `searchParams`) must be read under `<Suspense>` or below a `loading.tsx`, and uncached reads need the same or `"use cache"`. In a project without the flag, keep `unstable_cache` for database reads.
 
 ```ts
-// Tag-based revalidation
-import { cacheLife, cacheTag, revalidateTag } from "next/cache";
-import { db } from "@/lib/db";
-
-// Cached query with tags
+// src/lib/dal.ts (continued)
+// Public cached read, tagged so a write can invalidate it
 export async function getFeaturedPosts() {
   "use cache";
   cacheLife("hours");
@@ -418,50 +519,43 @@ export async function getFeaturedPosts() {
 
   return db.post.findMany({
     where: { published: true, featured: true },
+    select: { id: true, title: true, slug: true, excerpt: true },
     take: 6,
   });
 }
 
-// Invalidate after mutation. Next.js 16 requires the second argument.
-// In a Server Action, use updateTag("posts") when the user must see their own write.
-export async function updatePost(id: string, data: Record<string, unknown>) {
-  await db.post.update({ where: { id }, data });
-  revalidateTag("posts", "max");
+/** Features or unfeatures a post the user owns. Returns false when it is missing or not theirs. */
+export async function setFeatured(postId: string, featured: boolean) {
+  const user = await requireUser();
+  const { count } = await db.post.updateMany({
+    where: { id: postId, authorId: user.id },
+    data: { featured },
+  });
+  return count === 1;
 }
 ```
 
-## Auth Session Helper
-
 ```ts
-// src/lib/auth.ts
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+// src/actions/posts.ts (continued)
+export async function setFeaturedAction(
+  postId: string,
+  featured: boolean
+): Promise<ActionResult> {
+  await requireUser();
 
-export async function getSession() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("session")?.value;
-  if (!token) return null;
+  const parsed = z
+    .object({ postId: z.cuid(), featured: z.boolean() })
+    .safeParse({ postId, featured });
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
 
-  const session = await db.session.findUnique({
-    where: { token },
-    include: { user: { select: { id: true, email: true, name: true, role: true } } },
-  });
+  const updated = await setFeatured(parsed.data.postId, parsed.data.featured);
+  if (!updated) return { ok: false, error: "Post not found." };
 
-  if (!session || session.expiresAt < new Date()) return null;
-  return session.user;
-}
-
-export async function requireAuth() {
-  const user = await getSession();
-  if (!user) redirect("/login");
-  return user;
-}
-
-export async function requireAdmin() {
-  const user = await requireAuth();
-  if (user.role !== "ADMIN") redirect("/unauthorized");
-  return user;
+  // updateTag(): the user sees their own write on the next render.
+  // revalidateTag("posts", "max") instead serves stale data while it refreshes
+  // (Next.js 16 requires the profile argument).
+  updateTag("posts");
+  return { ok: true };
 }
 ```
 
@@ -470,9 +564,9 @@ export async function requireAdmin() {
 ```tsx
 // src/app/dashboard/page.tsx
 import { Suspense } from "react";
-import { requireAuth } from "@/lib/auth";
+import { requireUser } from "@/lib/dal";
 
-// The page stays static. The cookie read happens in a child under <Suspense>
+// The page stays static. The session read happens in a child under <Suspense>
 // and streams in at request time.
 export default function DashboardPage() {
   return (
@@ -485,7 +579,7 @@ export default function DashboardPage() {
 }
 
 async function Welcome() {
-  const user = await requireAuth();
+  const user = await requireUser();
 
   return <h1 className="text-2xl font-bold">Welcome, {user.name}</h1>;
 }
@@ -496,7 +590,7 @@ async function Welcome() {
 ```tsx
 // src/app/posts/page.tsx
 import { Suspense } from "react";
-import { getPublishedPosts } from "@/lib/queries/posts";
+import { getPublishedPosts } from "@/lib/dal";
 import { Pagination } from "@/components/ui/pagination";
 
 type Props = {

@@ -6,7 +6,6 @@ feature; match the repo when it already has its own version of a file.
 ## Env: `src/lib/env.ts` and `src/lib/public-env.ts`
 ```ts
 // src/lib/env.ts
-import "server-only";
 import { z } from "zod";
 
 // Needed by the build and every request: checked when the module loads.
@@ -69,10 +68,12 @@ export default defineConfig({
 
 ```ts
 // src/lib/db.ts
-import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/lib/env";
+
+// No "server-only" here or in env.ts: the Better Auth CLI loads auth.ts -> db.ts
+// -> env.ts and exits when it meets that import. The DAL keeps the guard.
 
 // One client per process; dev hot reloads would otherwise open a new pool each time.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -98,7 +99,7 @@ import { db } from "@/lib/db";
 // CLI (`pnpm dlx auth@<version> generate`) looks for this `auth` export.
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
-  emailAndPassword: { enabled: true },
+  emailAndPassword: { enabled: true, disableSignUp: true }, // invite-only
   plugins: [nextCookies()], // must stay last
 });
 ```
