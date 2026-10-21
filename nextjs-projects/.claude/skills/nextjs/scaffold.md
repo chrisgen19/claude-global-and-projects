@@ -239,7 +239,7 @@ import { defineConfig } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
-  migrations: { path: "prisma/migrations" },
+  migrations: { path: "prisma/migrations", seed: "tsx prisma/seed.ts" },
   // process.env, not Prisma's env(): env() throws when the variable is unset,
   // which breaks `prisma generate` on CI and Docker installs.
   datasource: { url: process.env.DATABASE_URL },
@@ -299,7 +299,7 @@ model Service {
 
 Generate the auth models with `pnpm dlx auth@<installed better-auth version> generate`, then run a Prisma migration. The env needs `BETTER_AUTH_SECRET` (32+ chars) and `BETTER_AUTH_URL`.
 
-Sign-up is off (`disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create accounts in a seed script or an admin-only action: with Better Auth's admin plugin, `auth.api.createUser` works server-side without a session. Remove the flag only on sites where anyone may register.
+Sign-up is off (`disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create accounts in a seed script (see First Account below) or an admin-only action: with Better Auth's admin plugin, `auth.api.createUser` works server-side without a session. Remove the flag only on sites where anyone may register.
 
 ```ts
 // src/lib/auth.ts
@@ -333,6 +333,66 @@ export const authClient = createAuthClient();
 ```
 
 If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy `getAuth()` that builds the instance on first call and reads `authEnv()` (see Env Validation).
+
+### First Account
+
+`prisma db seed` runs `prisma/seed.ts` (wired in `prisma.config.ts`). It does what the admin plugin's `createUser` does, through Better Auth's adapter rather than Prisma: a user plus a `credential` account with a hashed password. Set `SEED_EMAIL` and `SEED_PASSWORD` in `.env`, then run `pnpm prisma db seed`. Re-running skips an account that already has a password and finishes one whose password link failed.
+
+```ts
+// prisma/seed.ts
+import "dotenv/config";
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+const { SEED_EMAIL, SEED_PASSWORD, SEED_NAME } = z
+  .object({
+    SEED_EMAIL: z.email(),
+    // Better Auth's default limits; this path skips its own checks
+    SEED_PASSWORD: z.string().min(8).max(128),
+    SEED_NAME: z.string().min(1).default("Owner"),
+  })
+  .parse(process.env);
+
+async function main() {
+  const ctx = await auth.$context;
+  const email = SEED_EMAIL.toLowerCase();
+  // Hash first, so a failure here leaves no half-created user behind
+  const password = await ctx.password.hash(SEED_PASSWORD);
+
+  const existing = await ctx.internalAdapter.findUserByEmail(email, {
+    includeAccounts: true,
+  });
+  if (existing?.accounts.some((account) => account.providerId === "credential")) {
+    console.info(`${email} already exists, skipped`);
+    return;
+  }
+
+  // A user without a credential account comes from a run that failed midway
+  const user =
+    existing?.user ??
+    (await ctx.internalAdapter.createUser({
+      email,
+      name: SEED_NAME,
+      emailVerified: true,
+    }));
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: "credential",
+    accountId: user.id,
+    password,
+  });
+  console.info(existing ? `Linked a password to ${email}` : `Created ${email}`);
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  // The pg pool would otherwise keep the process alive until its idle timeout
+  .finally(() => db.$disconnect());
+```
 
 ## Env Validation
 

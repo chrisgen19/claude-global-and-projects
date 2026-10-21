@@ -122,6 +122,68 @@ export const authClient = createAuthClient();
 If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy
 `getAuth()` that builds the instance on first call and reads `authEnv()`.
 
+## First account: `prisma/seed.ts`
+Sign-up is off, so `prisma db seed` creates the first account. It does what the
+admin plugin's `createUser` does, through Better Auth's adapter rather than
+Prisma: a user plus a `credential` account with a hashed password. Set
+`SEED_EMAIL` and `SEED_PASSWORD` in `.env`, then run `pnpm prisma db seed`.
+Re-running skips an account that already has a password and finishes one
+whose password link failed.
+```ts
+import "dotenv/config";
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+const { SEED_EMAIL, SEED_PASSWORD, SEED_NAME } = z
+  .object({
+    SEED_EMAIL: z.email(),
+    // Better Auth's default limits; this path skips its own checks
+    SEED_PASSWORD: z.string().min(8).max(128),
+    SEED_NAME: z.string().min(1).default("Owner"),
+  })
+  .parse(process.env);
+
+async function main() {
+  const ctx = await auth.$context;
+  const email = SEED_EMAIL.toLowerCase();
+  // Hash first, so a failure here leaves no half-created user behind
+  const password = await ctx.password.hash(SEED_PASSWORD);
+
+  const existing = await ctx.internalAdapter.findUserByEmail(email, {
+    includeAccounts: true,
+  });
+  if (existing?.accounts.some((account) => account.providerId === "credential")) {
+    console.info(`${email} already exists, skipped`);
+    return;
+  }
+
+  // A user without a credential account comes from a run that failed midway
+  const user =
+    existing?.user ??
+    (await ctx.internalAdapter.createUser({
+      email,
+      name: SEED_NAME,
+      emailVerified: true,
+    }));
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: "credential",
+    accountId: user.id,
+    password,
+  });
+  console.info(existing ? `Linked a password to ${email}` : `Created ${email}`);
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  // The pg pool would otherwise keep the process alive until its idle timeout
+  .finally(() => db.$disconnect());
+```
+
 ## Data access layer: `src/lib/dal.ts`
 ```ts
 import "server-only";
