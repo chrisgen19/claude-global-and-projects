@@ -1,6 +1,6 @@
 # Next.js Project Standards
 
-App Router + TypeScript + Tailwind. Shared conventions (naming, git) in global CLAUDE.md.
+App Router + TypeScript + Tailwind. Targets Next.js 16, Tailwind 4, Prisma 7, Zod 4; on older majors follow the project's code and don't upgrade unasked. Shared conventions (naming, git) in global CLAUDE.md.
 
 ## Structure
 ```
@@ -17,10 +17,12 @@ src/
 │   ├── ui/                  # Reusable primitives (button, input, card)
 │   └── [feature]/           # Feature-specific components
 ├── lib/                     # DB client, auth config, shared utilities
+├── generated/prisma/        # Prisma 7 client output (gitignored)
 ├── hooks/                   # Custom React hooks
 ├── types/                   # Shared TypeScript types/interfaces
 ├── schemas/                 # Zod validation schemas
-└── stores/                  # Zustand stores (if needed)
+├── stores/                  # Zustand stores (if needed)
+└── proxy.ts                 # Next.js 16 rename of middleware.ts (see Security)
 ```
 
 ## Components
@@ -29,45 +31,43 @@ src/
 - Co-locate types in same file unless shared across multiple components.
 
 ## Data Fetching
-- Fetch in Server Components — never `useEffect` for initial data.
-- Next.js 15+: `fetch` is not cached by default. Use `{ cache: 'force-cache' }` to cache, `{ next: { revalidate: N } }` for ISR.
+- Fetch in Server Components, never `useEffect` for initial data.
 - With `cacheComponents: true` (the scaffold default on Next.js 16): cache shared reads with `"use cache"` plus `cacheLife` and `cacheTag`, and read `cookies()`, `params` and `searchParams` inside `<Suspense>`.
+- Without the flag: `fetch` is not cached by default (15+). Use `{ cache: 'force-cache' }` to cache, `{ next: { revalidate: N } }` for ISR, `unstable_cache` for DB reads.
 - Server Actions (`'use server'`) for mutations. Validate with Zod before processing.
-- `revalidateTag()` / `revalidatePath()` for granular cache invalidation.
+- After a mutation: `updateTag(tag)` in a Server Action when the user must see their own write, else `revalidateTag(tag, 'max')` (profile arg required in 16) or `revalidatePath()`.
 - Parallel fetches with `Promise.all()` when data is independent.
 
 ## API Routes
 - Route Handlers (`app/api/*/route.ts`) for webhooks, external integrations, non-form mutations.
 - Return `NextResponse.json()` with proper status codes.
-- Validate request body with Zod at the boundary.
 
 ## Styling
 - Tailwind CSS only. `cn()` utility (clsx + twMerge) for conditional classes.
 - Mobile-first responsive (`sm:`, `md:`, `lg:`). Dark mode via `dark:` variant if needed.
 
 ## Forms
-- Zod for validation. React Hook Form only for complex client-side forms. Share the schema between client validation and the Server Action.
+- `<form action>` + `useActionState` by default; React Hook Form only for complex client-side forms. Share one Zod schema (in `schemas/`) between client validation and the Server Action.
 - Inline field errors. Handle submission loading + server error states.
 
 ## State
-- URL state (`useSearchParams`, `nuqs`) for filterable/shareable UI.
+- URL state (`searchParams` / `useSearchParams`, or `nuqs` if already installed) for filterable/shareable UI.
 - No client state for server-fetchable data.
 
 ## Database
-- Prisma + PostgreSQL. Single `PrismaClient` instance via `lib/db.ts`.
-- Migrations only (e.g. `prisma migrate dev`). Never edit prod DB manually.
-- Validate external data with Zod at the boundary.
+- Prisma 7 + PostgreSQL. Single `PrismaClient` instance via `lib/db.ts`. Import from `@/generated/prisma/client`, not `@prisma/client`; run `prisma generate` after schema changes.
+- Migrations only: `prisma migrate dev` locally, `prisma migrate deploy` for staging/prod. Never edit prod DB manually.
 
 ## Security
 1. Validate all inputs with Zod (Server Actions, API routes, params)
-2. Auth via `cookies()` / `headers()` from `next/headers` — never trust client-sent auth
+2. Auth via `cookies()` / `headers()` from `next/headers`, never trust client-sent auth
 3. Authenticate and authorize inside every Server Action. Each one is reachable by a direct POST, so a page-level check does not protect it.
-4. Avoid `dangerouslySetInnerHTML` — sanitize if unavoidable
+4. Avoid `dangerouslySetInnerHTML`: sanitize if unavoidable
 5. Server Actions have built-in CSRF. API routes need manual checks for non-GET.
 6. Rate limit public API routes
+7. `proxy.ts` (keep `middleware.ts` on Next.js 15) does optimistic cookie checks only, no DB calls. Real authorization lives in pages, Server Actions and the data layer.
 
 ## Performance
-- Server Components to reduce client JS bundle
 - `next/image` for images. `next/font` for fonts. `next/dynamic` for heavy client components.
 - Targets: LCP < 2.5s, CLS < 0.1, INP < 200ms
 
@@ -80,4 +80,4 @@ src/
 - [ ] Lint + type-check pass
 - [ ] Build succeeds
 - [ ] Env vars set for target environment
-- [ ] DB migrations applied
+- [ ] DB migrations applied (`prisma migrate deploy`)

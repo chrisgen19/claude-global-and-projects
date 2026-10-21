@@ -41,7 +41,7 @@ Defaults for new code. In an existing project, its style wins.
 
 ## Tech Preferences
 - Framework: Next.js App Router (primary), React + Vite when appropriate
-- Styling (Next.js/React): Tailwind CSS utility classes directly, avoid `@apply` unless necessary
+- Styling (Next.js/React): Tailwind CSS utility classes directly, avoid `@apply` unless necessary, no separate CSS/SCSS files when Tailwind can handle it
 - Forms: Zod validation. React Hook Form for complex client-side forms.
 - State: React state/context for simple cases, Zustand for complex state
 - Icons: Lucide React. Animation: Motion (`motion` package) when needed.
@@ -65,13 +65,12 @@ Defaults for new code. In an existing project, its style wins.
 - Suggest tests if logic is complex or critical
 
 ## Superpowers Plugin
-- For small fixes, skip the superpowers `brainstorming` and `using-git-worktrees` skills: go straight to the fix on the current branch. A small fix is a bug fix, typo, copy/style tweak, config change or one-file change with a clear expected result.
+- For small fixes, skip the superpowers `brainstorming` and `using-git-worktrees` skills: go straight to the fix on the current branch (if that is `main`/`master`, branch first per Git). A small fix is a bug fix, typo, copy/style tweak, config change or one-file change with a clear expected result.
 - Still use brainstorming and worktrees for new features, multi-file changes, or when the requirements are unclear. If unsure which this is, ask in one line.
 
 ## Things I Don't Want
 - Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page
 - Don't over-engineer simple features with complex design patterns
-- Don't create separate CSS/SCSS files when Tailwind can handle it
 - Don't use `index.ts` barrel files unless the project already uses them
 - Don't assume the project structure: check first, then follow existing conventions
 - Don't make changes across multiple unrelated files in one go without explaining the scope
