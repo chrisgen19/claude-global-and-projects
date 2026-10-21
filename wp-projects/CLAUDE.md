@@ -38,7 +38,7 @@ Plugins: `includes/{admin,public,api,models}/`
 
 ## JS
 - ES6+ modules. No jQuery in new code.
-- `wp_enqueue_script()` with `strategy => 'defer'`. `wp_localize_script()` for server data.
+- `wp_enqueue_script()` with `strategy => 'defer'`. Server data via `wp_add_inline_script()` + `wp_json_encode()` in the `'before'` position (an `'after'` inline script makes WP drop `defer`), not `wp_localize_script()`, which turns values into strings.
 - Conditional loading: `is_page()`, `is_singular()`, etc.
 
 ## SASS/CSS

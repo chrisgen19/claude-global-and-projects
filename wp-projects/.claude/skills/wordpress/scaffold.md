@@ -53,11 +53,17 @@ class Assets {
         wp_enqueue_style( 'theme-slug-style', get_theme_file_uri( 'assets/dist/css/main.css' ), [], $asset['version'] );
         wp_enqueue_script( 'theme-slug-main', get_theme_file_uri( 'assets/dist/js/main.js' ),
             $asset['dependencies'], $asset['version'], [ 'strategy' => 'defer', 'in_footer' => true ] );
-        wp_localize_script( 'theme-slug-main', 'themeSlugData', [
-            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-            'restUrl' => rest_url( 'theme-slug/v1/' ),
-            'nonce'   => wp_create_nonce( 'wp_rest' ),
-        ] );
+        // Same global as wp_localize_script(), but values keep their types. 'before', not
+        // the default 'after': WP won't defer a script that has an 'after' inline script.
+        wp_add_inline_script(
+            'theme-slug-main',
+            'var themeSlugData = ' . wp_json_encode( [
+                'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+                'restUrl' => rest_url( 'theme-slug/v1/' ),
+                'nonce'   => wp_create_nonce( 'wp_rest' ),
+            ], JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';',
+            'before'
+        );
     }
 }
 ```
