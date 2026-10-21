@@ -471,23 +471,28 @@ export async function createPost(input: CreatePostInput) {
   }
 }
 
-/** Publishes or unpublishes a post the user owns. Returns null when it is missing or not theirs. */
+/**
+ * Publishes or unpublishes a post the user owns. Returns null when it is missing,
+ * not theirs, or was toggled by another request in between.
+ */
 export async function togglePublish(postId: string) {
   const user = await requireUser();
   const post = await db.post.findFirst({
     where: { id: postId, authorId: user.id },
-    select: { published: true },
+    select: { published: true, slug: true },
   });
   if (!post) return null;
 
-  return db.post.update({
-    where: { id: postId },
+  // Prisma can't flip a boolean in place, so the write is conditional on the
+  // state just read: a concurrent toggle gets count 0 instead of a lost update.
+  const { count } = await db.post.updateMany({
+    where: { id: postId, authorId: user.id, published: post.published },
     data: {
       published: !post.published,
       publishedAt: post.published ? null : new Date(),
     },
-    select: { slug: true },
   });
+  return count === 1 ? { slug: post.slug } : null;
 }
 ```
 
@@ -556,7 +561,9 @@ export async function togglePublishAction(postId: string): Promise<ActionResult>
   if (!parsed.success) return { ok: false, error: "Invalid post." };
 
   const post = await togglePublish(parsed.data);
-  if (!post) return { ok: false, error: "Post not found." };
+  if (!post) {
+    return { ok: false, error: "Post not found or just changed. Reload and try again." };
+  }
 
   updateTag("posts"); // getFeaturedPosts is tagged "posts"
   revalidatePath("/posts");
