@@ -1,6 +1,6 @@
 # WordPress Project Standards
 
-Custom themes + plugins. Git and workflow rules are in the global CLAUDE.md; the naming below is WP-specific and replaces its JS/TS naming.
+Custom themes + plugins on PHP 8.2+ (the scaffold's plugin header, bootstrap check and CI require it). Git and workflow rules are in the global CLAUDE.md; the naming below is WP-specific and replaces its JS/TS naming.
 
 ## Conventions
 - Unique prefix per client (e.g., `ag_` for Access Group, `mmg_` for Magnetite)
