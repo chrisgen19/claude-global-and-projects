@@ -3,9 +3,9 @@
 # Machine-specific [projects."<path>"] trust_level entries are intentionally
 # omitted; Codex writes those itself the first time you trust a directory.
 
-model = "gpt-5.6-sol"
+model = "gpt-6.1-sol"
 personality = "pragmatic"
-model_reasoning_effort = "high"
+model_reasoning_effort = "medium"
 
 # Keep the sandbox enabled and route eligible approvals to Auto-review.
 approval_policy = "on-request"
