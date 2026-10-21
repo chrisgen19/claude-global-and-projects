@@ -347,6 +347,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { CreatePostInput } from "@/schemas/posts";
@@ -393,12 +394,21 @@ DAL writes take an ID plus the change and check ownership in the query. Server A
 
 ```ts
 // src/lib/dal.ts (continued)
+/** Creates a post owned by the user. Returns null when the slug is already taken. */
 export async function createPost(input: CreatePostInput) {
   const user = await requireUser();
-  return db.post.create({
-    data: { ...input, authorId: user.id },
-    select: { id: true, slug: true },
-  });
+  try {
+    return await db.post.create({
+      data: { ...input, authorId: user.id },
+      select: { id: true, slug: true },
+    });
+  } catch (error) {
+    // P2002: unique constraint (the slug). Anything else is unexpected.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** Publishes or unpublishes a post the user owns. Returns null when it is missing or not theirs. */
@@ -466,7 +476,15 @@ export async function createPostAction(
     };
   }
 
-  await createPost(parsed.data);
+  const post = await createPost(parsed.data);
+  if (!post) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: { slug: ["That slug is already taken."] },
+    };
+  }
+
   revalidatePath("/posts");
   return { ok: true };
 }
@@ -480,6 +498,7 @@ export async function togglePublishAction(postId: string): Promise<ActionResult>
   const post = await togglePublish(parsed.data);
   if (!post) return { ok: false, error: "Post not found." };
 
+  updateTag("posts"); // getFeaturedPosts is tagged "posts"
   revalidatePath("/posts");
   revalidatePath(`/posts/${post.slug}`);
   return { ok: true };

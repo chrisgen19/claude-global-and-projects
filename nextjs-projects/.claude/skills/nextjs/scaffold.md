@@ -130,6 +130,7 @@ export async function getServices() {
   return db.service.findMany({
     where: { published: true },
     orderBy: { createdAt: "desc" },
+    select: { id: true, title: true, slug: true, excerpt: true },
   });
 }
 
@@ -150,7 +151,10 @@ export async function getServiceBySlug(slug: string) {
   cacheLife("hours");
   cacheTag("services");
 
-  return db.service.findUnique({ where: { slug, published: true } });
+  return db.service.findUnique({
+    where: { slug, published: true },
+    select: { title: true, excerpt: true, content: true },
+  });
 }
 ```
 
@@ -207,11 +211,10 @@ export const config = { matcher: ["/dashboard/:path*", "/settings/:path*"] };
 
 ### Client singleton
 
-Prisma 7 generates the client into the project and connects through a driver adapter (`@prisma/adapter-pg`). Run `prisma generate` after changing the schema. Only the data access layer (`lib/dal.ts`) and the Better Auth adapter (`lib/auth.ts`) import `db`.
+Prisma 7 generates the client into the project and connects through a driver adapter (`@prisma/adapter-pg`). Run `prisma generate` after changing the schema. Only the data access layer (`lib/dal.ts`) and the Better Auth adapter (`lib/auth.ts`) import `db`. It has no `import "server-only"`: the Better Auth CLI loads `auth.ts` and `db.ts` and exits when it meets that import. `dal.ts` keeps the guard.
 
 ```ts
 // src/lib/db.ts
-import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/lib/env";
@@ -327,7 +330,7 @@ import { createAuthClient } from "better-auth/react";
 export const authClient = createAuthClient();
 ```
 
-If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy `getAuth()` that builds the instance on first call.
+If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy `getAuth()` that builds the instance on first call and reads `authEnv()` (see Env Validation).
 
 ## Env Validation
 
@@ -335,15 +338,27 @@ If `next build` must run without auth secrets, wrap `betterAuth()` in a lazy `ge
 // src/lib/env.ts
 import { z } from "zod";
 
+// Needed by the build and every request: checked when the module loads.
 const envSchema = z.object({
   DATABASE_URL: z.url(),
   NEXT_PUBLIC_SITE_URL: z.url(),
-  BETTER_AUTH_SECRET: z.string().min(32),
-  BETTER_AUTH_URL: z.url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
 export const env = envSchema.parse(process.env);
+
+// Request-time only: checked on first use, so `next build` runs without them.
+const authSchema = z.object({
+  BETTER_AUTH_SECRET: z.string().min(32),
+  BETTER_AUTH_URL: z.url(),
+});
+
+let authEnvCache: z.infer<typeof authSchema> | undefined;
+
+export function authEnv() {
+  authEnvCache ??= authSchema.parse(process.env);
+  return authEnvCache;
+}
 ```
 
 ## cn() Utility
