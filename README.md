@@ -1048,6 +1048,8 @@ done
 ls -l ~/.claude*/CLAUDE.md   # three should show -> ~/.claude-personal/CLAUDE.md
 ```
 
+`./install.sh --check` reports each of the three in a **CLAUDE.md links** section: `-> ~/.claude-personal/CLAUDE.md` when linked, `own copy, not linked`, `links elsewhere: <target>` or `missing`. It is information only and never counts as drift, since linking is optional. The content check above it still flags a `CLAUDE.md` that differs from the repo.
+
 `install.sh` and `--check` work with the symlinks: `cp` writes through a link to the real file. Edit the real file, not a link: `sed -i` (without `--follow-symlinks`) and editors that save by replacing the file turn a link back into a regular copy, and that account silently stops getting updates. Live edits to `CLAUDE.md` still have to be copied back into the repo by hand, since `--pull` only handles `settings.json`.
 
 ### Global skills
