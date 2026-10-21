@@ -315,6 +315,117 @@ export function RenamePostForm({ postId, title }: RenamePostFormProps) {
 }
 ```
 
+## Zustand: per-request store
+Client UI state only. Create the store per request with `createStore` and hand
+it out through a context provider: a module-level `create()` store is shared by
+every request on the server, so one user's state can end up in another user's
+HTML. Server Components never touch a store; they pass server data to the
+provider as props.
+```ts
+// src/stores/cart-store.ts
+import { createStore } from "zustand/vanilla";
+
+export type CartItem = {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+};
+
+export type CartStore = {
+  items: CartItem[];
+  addItem: (item: Omit<CartItem, "quantity">) => void;
+  removeItem: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void;
+  clearCart: () => void;
+  total: () => number;
+};
+
+// A factory, not a module-level store: each provider gets its own instance.
+export const createCartStore = (initialItems: CartItem[] = []) =>
+  createStore<CartStore>()((set, get) => ({
+    items: initialItems,
+    addItem: (item) =>
+      set((state) => {
+        const existing = state.items.find((i) => i.id === item.id);
+        if (existing) {
+          return {
+            items: state.items.map((i) =>
+              i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+            ),
+          };
+        }
+        return { items: [...state.items, { ...item, quantity: 1 }] };
+      }),
+    removeItem: (id) =>
+      set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
+    updateQuantity: (id, quantity) =>
+      set((state) => ({
+        items: quantity <= 0
+          ? state.items.filter((i) => i.id !== id)
+          : state.items.map((i) => (i.id === id ? { ...i, quantity } : i)),
+      })),
+    clearCart: () => set({ items: [] }),
+    total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
+  }));
+
+export type CartStoreApi = ReturnType<typeof createCartStore>;
+```
+
+```tsx
+// src/stores/cart-store-provider.tsx
+"use client";
+
+import { createContext, type ReactNode, useContext, useState } from "react";
+import { useStore } from "zustand";
+import {
+  type CartItem,
+  type CartStore,
+  type CartStoreApi,
+  createCartStore,
+} from "@/stores/cart-store";
+
+const CartStoreContext = createContext<CartStoreApi | null>(null);
+
+interface CartStoreProviderProps {
+  children: ReactNode;
+  initialItems?: CartItem[];
+}
+
+export function CartStoreProvider({ children, initialItems }: CartStoreProviderProps) {
+  // The initializer runs once, so re-renders keep the same store
+  const [store] = useState(() => createCartStore(initialItems));
+  return <CartStoreContext value={store}>{children}</CartStoreContext>;
+}
+
+export function useCartStore<T>(selector: (state: CartStore) => T): T {
+  const store = useContext(CartStoreContext);
+  if (!store) throw new Error("useCartStore must be used inside <CartStoreProvider>");
+  return useStore(store, selector);
+}
+```
+
+```tsx
+// src/app/(shop)/layout.tsx
+import { CartStoreProvider } from "@/stores/cart-store-provider";
+
+export default function ShopLayout({ children }: { children: React.ReactNode }) {
+  return <CartStoreProvider>{children}</CartStoreProvider>;
+}
+```
+
+```tsx
+// src/components/cart/cart-count.tsx
+"use client";
+
+import { useCartStore } from "@/stores/cart-store-provider";
+
+export function CartCount() {
+  const count = useCartStore((state) => state.items.length);
+  return <span>{count}</span>;
+}
+```
+
 ## Proxy: `src/proxy.ts`
 ```ts
 import { getSessionCookie } from "better-auth/cookies";
