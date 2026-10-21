@@ -65,7 +65,7 @@ Write this reviewer brief, with the scope from step 0 filled in, to `<scratch>/r
 - **Codex**: start it in the background, since it takes a few minutes:
   `codex exec -s read-only --ephemeral -o <scratch>/codex-review-r<N>.md "Read <scratch>/review-r<N>.md and follow it exactly." </dev/null`
 - **Codex with `--native`**: run Codex's own review instead, still in the background:
-  - Base mode: `codex review -c sandbox_mode='"read-only"' --base <base> </dev/null > <scratch>/codex-review-r<N>.md`
+  - Base mode: `codex review -c sandbox_mode='"read-only"' --base origin/<base> </dev/null > <scratch>/codex-review-r<N>.md` (the local `<base>` if there is no remote, as in step 0). Don't pass a bare local `<base>` when the remote exists: if it is behind and has no upstream, Codex diffs against it and reviews changes that came from `origin/<base>`.
   - Uncommitted mode: `codex review -c sandbox_mode='"read-only"' --uncommitted </dev/null > <scratch>/codex-review-r<N>.md`
 
   Only the final review goes to stdout; the progress log stays on stderr. `codex review` won't take the reviewer brief: a custom prompt can't be combined with `--base` or `--uncommitted`. So it uses its own format (one bullet per finding: a `[P0]` to `[P3]` tag, a title, then `<path>:<start>-<end>` on the same line, and an explanation below), and it ignores the 10-finding cap. In base mode it reviews the diff from the merge base to the working tree, so it does not see files that aren't in git yet: if that list from step 0 isn't empty, say in the report that only Claude reviewed those files. It also follows any `AGENTS.md` in the repo.
