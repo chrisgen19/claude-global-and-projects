@@ -54,10 +54,11 @@ src/
 ## State
 - URL state (`searchParams` / `useSearchParams`, or `nuqs` if already installed) for filterable/shareable UI.
 - No client state for server-fetchable data.
+- Zustand for client UI state only: create the store per request with `createStore` + a context provider (in `stores/`), never a module-level `create()` store, which the server shares across requests. Server Components never touch a store.
 
 ## Database
 - Every Prisma call lives in the DAL (`lib/dal.ts`, `import "server-only"`): it gets the user from `requireUser()`, scopes owned data by that user and returns minimal DTOs.
-- Prisma 7 + PostgreSQL. Single `PrismaClient` instance via `lib/db.ts`, imported only by the DAL and the Better Auth adapter. Import from `@/generated/prisma/client`, not `@prisma/client`; run `prisma generate` after schema changes.
+- Prisma 7 + PostgreSQL. Single `PrismaClient` instance via `lib/db.ts`, imported only by the DAL, the Better Auth adapter and `prisma/seed.ts`. `db.ts` and `env.ts` skip `import "server-only"`: the Better Auth CLI and `tsx prisma/seed.ts` load them outside Next, where that import throws. Import from `@/generated/prisma/client`, not `@prisma/client`; run `prisma generate` after schema changes.
 - Migrations only: `prisma migrate dev` locally, `prisma migrate deploy` for staging/prod. Never edit prod DB manually.
 
 ## Security
@@ -68,14 +69,14 @@ src/
 5. Server Actions have built-in CSRF. API routes need manual checks for non-GET.
 6. Rate limit public API routes
 7. `proxy.ts` (keep `middleware.ts` on Next.js 15) does optimistic cookie checks only (`getSessionCookie`), no DB calls. Real authorization lives in the DAL and Server Actions.
-8. Sign-up is off (`emailAndPassword.disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create accounts from a seed script or an admin-only action; turn sign-up on only when anyone may register.
+8. Sign-up is off (`emailAndPassword.disableSignUp: true`), which also blocks `auth.api.signUpEmail` on the server. Create the first account with `prisma/seed.ts` (`SEED_EMAIL`/`SEED_PASSWORD` in `.env`, then `pnpm prisma db seed`) and later ones from an admin-only action; turn sign-up on only when anyone may register.
 
 ## Performance
 - `next/image` for images. `next/font` for fonts. `next/dynamic` for heavy client components.
 - Targets: LCP < 2.5s, CLS < 0.1, INP < 200ms
 
 ## Environment
-- `.env.local` for dev (gitignored). Vercel/Coolify env vars for staging/prod.
+- `.env` for local dev (gitignored): Next.js, `prisma.config.ts` and `prisma/seed.ts` all read it. `dotenv/config` ignores `.env.local`, so DB and seed vars there are invisible to Prisma. Vercel/Coolify env vars for staging/prod.
 - Client-exposed vars: `NEXT_PUBLIC_` prefix.
 - Validate env vars with Zod via `lib/env.ts`. Better Auth needs `BETTER_AUTH_SECRET` (32+ chars) and `BETTER_AUTH_URL`.
 
@@ -84,3 +85,4 @@ src/
 - [ ] Build succeeds
 - [ ] Env vars set for target environment
 - [ ] DB migrations applied (`prisma migrate deploy`)
+- [ ] First account seeded on a fresh database (`pnpm prisma db seed`), since sign-up is off
