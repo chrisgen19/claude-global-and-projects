@@ -67,6 +67,21 @@ export function Counter({ initialCount = 0, className }: CounterProps) {
 }
 ```
 
+## Shared Zod Schema
+
+Forms, Server Actions and Route Handlers import the same schema, so client and server rules can't drift. Keep it out of the `"use server"` file: that file can only export async functions.
+
+```ts
+// src/schemas/contact.ts
+import { z } from "zod";
+
+export const contactSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  email: z.email("Invalid email"),
+  message: z.string().min(10, "Message must be at least 10 characters").max(2000),
+});
+```
+
 ## Server Action with Zod Validation
 
 ```ts
@@ -74,12 +89,7 @@ export function Counter({ initialCount = 0, className }: CounterProps) {
 "use server";
 
 import { z } from "zod";
-
-const contactSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100),
-  email: z.email("Invalid email"),
-  message: z.string().min(10, "Message must be at least 10 characters").max(2000),
-});
+import { contactSchema } from "@/schemas/contact";
 
 type ContactState = {
   success: boolean;
@@ -189,12 +199,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-
-const contactSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.email("Invalid email"),
-  message: z.string().min(10, "Message must be at least 10 characters"),
-});
+import { contactSchema } from "@/schemas/contact";
 
 type ContactFormData = z.infer<typeof contactSchema>;
 
