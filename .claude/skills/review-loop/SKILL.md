@@ -1,7 +1,7 @@
 ---
 name: review-loop
 description: Review the current changes with Claude and Codex (locally, or through the @codex and @claude PR bots), cross-verify every finding with the other model, auto-fix the confirmed ones, run checks, re-review the fixes, then stop with a report and a commit command. Runs only when the user types `/review-loop`.
-argument-hint: "[base-branch | --uncommitted] [--pr | --local] [--triage-only] [--rounds N] [pasted findings]"
+argument-hint: "[base-branch | --uncommitted] [--pr | --local] [--native] [--triage-only] [--rounds N] [pasted findings]"
 disable-model-invocation: true
 ---
 
@@ -26,6 +26,7 @@ Arguments: $ARGUMENTS
    - `--uncommitted`: review only the uncommitted changes.
    - Neither: take the base from the PR's `baseRefName` if there is one, otherwise `main`, `master` or `develop` (ask if it's unclear). Use base mode when `HEAD` has commits that `origin/<base>` doesn't, otherwise `--uncommitted`.
    - `--pr` / `--local`: who reviews (see item 4).
+   - `--native`: the local Codex reviewer runs Codex's built-in `codex review` instead of `codex exec` with the reviewer brief (see step 1). Implies `--local`. If `--pr` is also given, ask the user which one they meant.
    - `--triage-only`: stop after step 3 and report, with no edits.
    - `--rounds N`: maximum review and fix rounds, default 2.
    - Any other text is pasted findings: use them instead of running new reviews in round 1. Note which tool produced them if the user said so.
@@ -35,12 +36,12 @@ Arguments: $ARGUMENTS
    - Uncommitted mode: the diff command is `git diff HEAD`.
    - Both: add the new files that aren't in git yet, from `git ls-files --others --exclude-standard`.
 4. Pick the reviewers, unless findings were pasted:
-   - `--local` or `--pr` decides it.
+   - `--local`, `--native` or `--pr` decides it.
    - Otherwise run `gh pr view --json number,state,url,headRefOid,baseRefName`. With no open PR, use local mode without asking. With an open PR, ask the user with AskUserQuestion:
      - **PR bots**: post `@codex review` and `@claude review` on the PR and wait for them. Codex takes about 5 minutes; Claude Code Review about 20. Bots only see pushed commits.
      - **Local**: a Claude subagent and the Codex CLI in this terminal. Faster, and it sees unpushed and uncommitted work.
    - PR mode needs local `HEAD` to equal the PR's `headRefOid` and an empty `git status --porcelain`. With unpushed commits, ask once: push them and continue, or switch to local mode. With uncommitted or unadded files, the bots can't see them: ask whether to switch to local mode or stop. Never commit for the user here.
-5. Run `command -v codex`. If the Codex CLI is missing, fresh Claude subagents do the local Codex steps below, and step 3 only reports what they confirm (Claude checking Claude is not a cross-check).
+5. Run `command -v codex`. If the Codex CLI is missing, fresh Claude subagents do the local Codex steps below, and step 3 only reports what they confirm (Claude checking Claude is not a cross-check). `--native` then has no effect: say so in the report.
 6. Start step 1 now. Unless this is `--triage-only`, do items 7 and 8 while the reviews run; both must be done before step 4.
 7. Detect the project's checks: the package manager from the lockfile and the `lint`, `type-check`/`typecheck` and `test` scripts in `package.json`; for PHP, `composer` scripts or `phpcs`/`phpstan`/`phpunit` configs. Run them once and note anything that already fails, so it is not blamed on the fixes. Don't pipe their output (see CLAUDE.md).
 8. Record BASELINE, a snapshot of every file as it is now, taken after the checks so the cache files they write are part of it. A throwaway index keeps the user's staging area and files untouched; it includes unadded files and skips ignored ones:
@@ -63,6 +64,11 @@ Write this reviewer brief, with the scope from step 0 filled in, to `<scratch>/r
 
 - **Codex**: start it in the background, since it takes a few minutes:
   `codex exec -s read-only --ephemeral -o <scratch>/codex-review-r<N>.md "Read <scratch>/review-r<N>.md and follow it exactly." </dev/null`
+- **Codex with `--native`**: run Codex's own review instead, still in the background:
+  - Base mode: `codex review -c sandbox_mode='"read-only"' --base origin/<base> </dev/null > <scratch>/codex-review-r<N>.md` (the local `<base>` if there is no remote, as in step 0). Don't pass a bare local `<base>` when the remote exists: if it is behind and has no upstream, Codex diffs against it and reviews changes that came from `origin/<base>`.
+  - Uncommitted mode: `codex review -c sandbox_mode='"read-only"' --uncommitted </dev/null > <scratch>/codex-review-r<N>.md`
+
+  Only the final review goes to stdout; the progress log stays on stderr. `codex review` won't take the reviewer brief: a custom prompt can't be combined with `--base` or `--uncommitted`. So it uses its own format (one bullet per finding: a `[P0]` to `[P3]` tag, a title, then `<path>:<start>-<end>` on the same line, and an explanation below), and it ignores the 10-finding cap. In base mode it reviews the diff from the merge base to the working tree, so it does not see files that aren't in git yet: if that list from step 0 isn't empty, say in the report that only Claude reviewed those files. It also follows any `AGENTS.md` in the repo.
 - **Claude**: at the same time, spawn a `general-purpose` subagent with the same brief.
 
 ### PR mode
@@ -87,7 +93,7 @@ Write this reviewer brief, with the scope from step 0 filled in, to `<scratch>/r
 
 ### Both modes
 
-Merge everything into one list with IDs `C1..` (Claude) and `X1..` (Codex): priority, source, `file:line`, claim, failure scenario, pre-existing flag, and entry type and ID if any. When both sources flag the same root cause, merge them into one entry with source `both`.
+Merge everything into one list with IDs `C1..` (Claude) and `X1..` (Codex): priority, source, `file:line`, claim, failure scenario, pre-existing flag, and entry type and ID if any. When both sources flag the same root cause, merge them into one entry with source `both`. For `--native` Codex output, take the priority from the `[P0]` to `[P3]` tag, use the path relative to the repo root, and take the failure scenario from the explanation (leave it blank if there is none: the verifier fills in the evidence).
 
 ## 2. Cross-verify
 
@@ -157,7 +163,7 @@ Stop when any of these is true:
 
 Keep it short:
 
-1. **Summary**: mode, rounds run, a count per action, and which reviewers actually answered (including any bot that failed, was unavailable, timed out or fell back to local, and whether this ran without the Codex CLI).
+1. **Summary**: mode, rounds run, a count per action, and which reviewers actually answered (including any bot that failed, was unavailable, timed out or fell back to local, whether this ran without the Codex CLI, and whether Codex ran as `codex review` (`--native`)).
 2. **Findings table**: ID | P | source | verdict | action | `file:line` | one-line note.
 3. **Needs decision**: each item with its evidence and your recommended option.
 4. **Checks**: each command with pass or fail, compared with the baseline from step 0.
