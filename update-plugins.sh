@@ -3,8 +3,10 @@
 # Claude Code profile. Plugin versions live only in the profile, never in this
 # repo, so this changes nothing tracked here and needs no commit afterwards.
 #
-# Usage: ./update-plugins.sh                  # claude-dev, claude-personal, claude-work
-#        ./update-plugins.sh claude-work      # only these profiles (dir names under $HOME)
+# install.sh deploys it as ~/.local/bin/claude-update-plugins.
+#
+# Usage: claude-update-plugins                # claude-dev, claude-personal, claude-work
+#        claude-update-plugins claude-work    # only these profiles (dir names under $HOME)
 #
 # Project-scope installs are left alone: update those with /plugin inside the project.
 # A plugin whose marketplace declares an install command asks before running it;

@@ -21,7 +21,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g or a herdr/tmux popup
 ├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
-├── update-plugins.sh                       # refresh marketplaces + update every plugin in each profile
+├── update-plugins.sh                       # refresh marketplaces + update every plugin in each profile (claude-update-plugins)
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
 ├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
@@ -851,7 +851,7 @@ and the shared tab scripts are generated from the repo, so `--pull` leaves them 
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
 the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
-`wt-dev` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
+`wt-dev`, `claude-update-plugins` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
 the agy plugin and status line. It also lists every plugin a profile's live
 `settings.json` enables that has no user-scope install: enabling a plugin there does not
 install it, so after a deploy that adds one, run
@@ -876,11 +876,12 @@ Each profile keeps its own plugin installs, and `install.sh` never touches their
 versions: the tracked `settings.json` only says which plugins are enabled. A profile's
 local copy of a marketplace can lag behind the real one, and different profiles end up on
 different versions. `update-plugins.sh` refreshes every marketplace, then
-updates every user-scope plugin, in each profile:
+updates every user-scope plugin, in each profile. `install.sh` deploys it to
+`~/.local/bin/claude-update-plugins`:
 
 ```bash
-./update-plugins.sh                # claude-dev, claude-personal, claude-work
-./update-plugins.sh claude-work    # only these profiles
+claude-update-plugins                # claude-dev, claude-personal, claude-work
+claude-update-plugins claude-work    # only these profiles
 ```
 
 It changes nothing in this repo, so there is nothing to commit afterwards. Restart running
