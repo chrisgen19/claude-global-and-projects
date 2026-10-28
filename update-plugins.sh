@@ -38,8 +38,10 @@ for profile in $profiles; do
     continue
   fi
 
+  # name@skills-dir entries are plugins living in the profile's skills/ folder,
+  # not marketplace installs, so `plugin update` cannot update them.
   if ! ids=$(CLAUDE_CONFIG_DIR=$dir claude plugin list --json \
-    | jq -r '[.[] | select(.scope == "user") | .id] | unique | .[]'); then
+    | jq -r '[.[] | select(.scope == "user" and (.id | endswith("@skills-dir") | not)) | .id] | unique | .[]'); then
     failed+=" $profile:list"
     continue
   fi
