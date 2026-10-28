@@ -2,15 +2,15 @@
   "env": {
     "SUPERPOWERS_DISABLE_TELEMETRY": "1"
   },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "permissions": {
     "allow": [
       "Bash(npx -y modern-web-guidance@latest:*)",
       "Bash(pnpx modern-web-guidance@latest:*)"
     ]
-  },
-  "attribution": {
-    "commit": "",
-    "pr": ""
   },
   "model": "opus",
   "hooks": {
@@ -20,8 +20,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
           }
         ]
       },
@@ -30,8 +30,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
           }
         ]
       },
@@ -42,6 +42,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook PostToolUse",
+            "async": true
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -50,8 +59,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
           }
         ]
       },
@@ -60,8 +69,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh busy",
-            "async": true,
-            "statusMessage": "tab status: busy"
+            "statusMessage": "tab status: busy",
+            "async": true
           }
         ]
       },
@@ -80,8 +89,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-iterm-tab-status.sh done",
-            "async": true,
-            "statusMessage": "tab status: done"
+            "statusMessage": "tab status: done",
+            "async": true
           }
         ]
       },
@@ -90,8 +99,8 @@
           {
             "type": "command",
             "command": "bash ~/.local/bin/claude-wt-tab-status.sh done",
-            "async": true,
-            "statusMessage": "tab status: done"
+            "statusMessage": "tab status: done",
+            "async": true
           }
         ]
       },
@@ -100,6 +109,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook Stop",
+            "async": true
           }
         ]
       }
@@ -214,6 +232,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SessionEnd",
+            "async": true
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -264,6 +291,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SubagentStop",
+            "async": true
+          }
+        ]
       }
     ]
   },
@@ -272,28 +308,6 @@
     "command": "bash ~/.claude-work/statusline.sh",
     "refreshInterval": 60
   },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true,
-    "next-steps@claude-community": true,
-    "vercel@claude-plugins-official": true,
-    "figma@claude-plugins-official": true,
-    "modern-web-guidance@googlechrome": true,
-    "commit-commands@claude-plugins-official": true,
-    "atlassian@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
-    "ralph-loop@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true
-  },
-  "effortLevel": "high",
-  "tui": "fullscreen",
-  "agentPushNotifEnabled": true,
   "footerLinksRegexes": [
     {
       "type": "regex",
@@ -344,7 +358,29 @@
       "label": "run {id}"
     }
   ],
-  "terminalProgressBarEnabled": true,
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true,
+    "next-steps@claude-community": true,
+    "vercel@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "modern-web-guidance@googlechrome": true,
+    "commit-commands@claude-plugins-official": true,
+    "atlassian@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "design@knowledge-work-plugins": true,
+    "design-skills@design-skills": true,
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "remotion@remotion": true
+  },
   "extraKnownMarketplaces": {
     "claude-community": {
       "source": {
@@ -357,12 +393,40 @@
         "source": "github",
         "repo": "GoogleChrome/modern-web-guidance"
       }
+    },
+    "knowledge-work-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins"
+      }
+    },
+    "design-skills": {
+      "source": {
+        "source": "github",
+        "repo": "cuellarfr/design-skills"
+      }
+    },
+    "ui-ux-pro-max-skill": {
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
+      }
+    },
+    "remotion": {
+      "source": {
+        "source": "github",
+        "repo": "remotion-dev/claude-code-plugin"
+      }
     }
   },
+  "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
   "modelSettings": {
     "claude-opus-5-5": {
-      "effortLevel": "high"
+      "effortLevel": "medium"
     }
   },
-  "alwaysThinkingEnabled": true
+  "tui": "fullscreen",
+  "terminalProgressBarEnabled": true,
+  "agentPushNotifEnabled": true
 }
