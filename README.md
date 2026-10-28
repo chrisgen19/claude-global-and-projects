@@ -21,6 +21,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g or a herdr/tmux popup
 ├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
+├── update-plugins.sh                       # refresh marketplaces + update every plugin in each profile
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
 ├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
@@ -868,6 +869,24 @@ hand, and after.
 CI checks both: besides the Ubuntu job, a `macos-latest` job deploys into a scratch
 `HOME` with the stock `/bin/bash` 3.2 and BSD `awk`, then requires a clean `--check`
 and nothing on stderr.
+
+### Plugin updates (`update-plugins.sh`)
+
+Each profile keeps its own plugin installs, and `install.sh` never touches their
+versions: the tracked `settings.json` only says which plugins are enabled. A profile's
+local copy of a marketplace can lag behind the real one, and different profiles end up on
+different versions. `update-plugins.sh` refreshes every marketplace, then
+updates every user-scope plugin, in each profile:
+
+```bash
+./update-plugins.sh                # claude-dev, claude-personal, claude-work
+./update-plugins.sh claude-work    # only these profiles
+```
+
+It changes nothing in this repo, so there is nothing to commit afterwards. Restart running
+Claude sessions to load the new versions. Project-scope installs are skipped: update those
+with `/plugin` inside the project. It keeps going past a failure and lists every failed
+profile or plugin at the end, exiting 1. Run it on each machine.
 
 ### Windows
 
