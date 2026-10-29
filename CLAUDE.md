@@ -67,6 +67,10 @@ Defaults for new code. In an existing project, its style wins.
 ## Superpowers Plugin
 - For small fixes, skip the superpowers `brainstorming` and `using-git-worktrees` skills: go straight to the fix on the current branch (if that is `main`/`master`, branch first per Git). A small fix is a bug fix, typo, copy/style tweak, config change or one-file change with a clear expected result.
 - Still use brainstorming and worktrees for new features, multi-file changes, or when the requirements are unclear. If unsure which this is, ask in one line.
+- Visual design choices (a layout, a redesign, button or block variants, anything I'd pick by looking): before building, ask in one line whether I want browser mockups to compare, and wait for a yes. Never start the mockup server unasked.
+  - On yes, use the brainstorming visual companion (`scripts/start-server.sh --project-dir <repo root>` in the brainstorming skill): 2 to 4 clickable options, each with a desktop and a 375px phone preview, built from the project's real tokens (read colours, fonts and sizes from the running app, not guessed).
+  - Screenshot the page yourself to check it renders before sending me the link, and give the full URL including `?key=`.
+  - After I pick, push a waiting screen, then build the chosen option through the normal workflow.
 
 ## Things I Don't Want
 - Don't add new packages without asking first: prefer native APIs or existing dependencies. When suggesting a new package, verify it exists and link to its npm/packagist page

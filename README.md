@@ -97,12 +97,14 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 **Understanding & documenting**
 - **`/explain-code`** — Explains how code works using diagrams and analogies, with depth scaled to complexity
 - **`/deep-dive`** — Researches a system or integration thoroughly, then writes it up as both Markdown (mermaid) and a print-ready PDF (inline SVG)
+- **`/doc-coauthoring`** — Structured workflow for co-authoring documentation, proposals, specs and decision docs: transfers context, iterates on the draft, then verifies it works for its readers
 
 **Stack-specific**
 - **`/nextjs-conventions`** — Personal Next.js 16 conventions: App Router, strict TypeScript, Prisma 7, Better Auth, Zod 4, Server Actions, data access layer, Biome, pnpm
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
+- **`/mcp-builder`** — Guide to building MCP servers that expose an external API as well-designed tools, in Python (FastMCP) or Node/TypeScript (MCP SDK)
 
-> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other seven. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
+> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other ten. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -832,7 +834,7 @@ otherwise use it for history search.
 
 The copy commands throughout this README are the manual equivalent of `install.sh`.
 They are easy to run partially — which is exactly how the default `~/.claude` profile
-ended up untracked, with an empty `CLAUDE.md` and one of the eight skills.
+ended up untracked, with an empty `CLAUDE.md` and one of the eleven skills.
 
 ```bash
 ./install.sh            # deploy repo -> ~/.claude, ~/.claude-{dev,personal,work}, ~/.local/bin
