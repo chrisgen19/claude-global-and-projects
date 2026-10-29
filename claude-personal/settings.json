@@ -378,7 +378,9 @@
     "ralph-loop@claude-plugins-official": true,
     "feature-dev@claude-plugins-official": true,
     "ui-ux-pro-max@ui-ux-pro-max-skill": true,
-    "remotion@remotion": true
+    "remotion@remotion": true,
+    "design@knowledge-work-plugins": true,
+    "design-skills@design-skills": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -403,6 +405,18 @@
       "source": {
         "source": "github",
         "repo": "remotion-dev/claude-code-plugin"
+      }
+    },
+    "knowledge-work-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins"
+      }
+    },
+    "design-skills": {
+      "source": {
+        "source": "github",
+        "repo": "cuellarfr/design-skills"
       }
     }
   },

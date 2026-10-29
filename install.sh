@@ -16,7 +16,7 @@
 #
 # The README's copy commands are the manual equivalent. They are easy to run
 # partially - which is how the default ~/.claude profile ended up untracked,
-# with an empty CLAUDE.md and one of eight skills - so prefer this.
+# with an empty CLAUDE.md and one of eleven skills - so prefer this.
 #
 # Requires bash 3.2 (macOS stock), jq and diff. macOS/Linux only: the Windows
 # profile in windows/ is copied by hand, see the README.
