@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# Keep CodeRabbit off the vendored skill trees under .claude/skills/.
+#
+# Most skills in .claude/skills/ are hand-written and should stay under review.
+# The two listed below are unmodified Anthropic skill packages, byte-identical
+# to the copies that agy's anthropic-skills plugin and ~/.codex/skills already
+# carry. Tracking one of them is a git event, not a code change: the files were
+# already live in every profile beforehand.
+#
+# PR #76 showed what happens without this. Adopting those two skills put 4,690
+# lines of vendor content in front of the reviewer, which returned 19 findings,
+# none of them on the four files the PR actually changed, and spent the whole
+# hourly review allowance. Fixing such findings here would fork the vendor copy,
+# so install.sh would deploy a patched variant to all four profiles while the agy
+# and codex copies stayed as they were, and the next upstream refresh would
+# silently revert it.
+#
+# Adding a vendored skill later means adding a line here. Leave hand-written
+# skills out of this list so they keep getting reviewed.
+reviews:
+  path_filters:
+    - "!.claude/skills/doc-coauthoring/**"
+    - "!.claude/skills/mcp-builder/**"
