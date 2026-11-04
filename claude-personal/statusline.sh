@@ -119,9 +119,6 @@ JQ_FIELDS='
     ((opt(.prompt_cache.expires_at) | numbers | floor) // -1),
     (opt(.prompt_cache.ttl)                        // ""),
     ((opt(.prompt_cache.hit_ratio) | numbers | . * 100 | round) // -1),
-    ((opt(.context_window.current_usage
-          | [.input_tokens, .cache_creation_input_tokens, .cache_read_input_tokens]
-          | map(numbers) | add | floor)) // 0),
     (opt(.workspace.repo.host | strings)           // ""),
     (opt(.workspace.repo.owner | strings)          // ""),
     (opt(.workspace.repo.name | strings)           // ""),
@@ -167,13 +164,12 @@ claude_email="${F[19]}"
 session_name="${F[20]}"; worktree="${F[21]}"
 cache_warm="${F[22]}";  cache_observed="${F[23]}"
 cache_exp="${F[24]}";   cache_ttl="${F[25]}";    cache_hit="${F[26]}"
-cur_tokens="${F[27]}"
-repo_host="${F[28]}";   repo_owner="${F[29]}";   repo_name="${F[30]}"
-pr_url="${F[31]}"
-cu_input="${F[32]}";    cu_cache="${F[33]}"
-sl_pct="${F[34]}";      sl_at="${F[35]}"
-sl_used="${F[36]}";     sl_limit="${F[37]}";     sl_period="${F[38]}"
-pr_review="${F[39]}"
+repo_host="${F[27]}";   repo_owner="${F[28]}";   repo_name="${F[29]}"
+pr_url="${F[30]}"
+cu_input="${F[31]}";    cu_cache="${F[32]}"
+sl_pct="${F[33]}";      sl_at="${F[34]}"
+sl_used="${F[35]}";     sl_limit="${F[36]}";     sl_period="${F[37]}"
+pr_review="${F[38]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -188,7 +184,6 @@ _int rl_7d -1
 _int rl_7d_at -1
 _int cache_exp -1
 _int cache_hit -1
-_int cur_tokens 0
 _int cu_input 0
 _int cu_cache 0
 _int sl_pct -1
@@ -223,15 +218,10 @@ fi
 # below, which is the only place that still forks git. The Claude account email
 # arrives with the payload, from the single jq pass above.
 
-# -- Context fallback --
-# used_percentage reads 0 before the first reply and right after /compact, which
-# dropped the bar to 0% while the window still held tokens. Fall back to the
-# live current_usage total over the window size, as claude-hud's
-# getContextUsage does. A real 0 (no tokens either) still shows 0%.
-if [ "$pct" -le 0 ] && [ "$cur_tokens" -gt 0 ] && [ "$cw_size" -gt 0 ]; then
-  pct=$((cur_tokens * 100 / cw_size))
-  [ "$pct" -gt 100 ] && pct=100
-fi
+# No context fallback from current_usage: after /compact it is null too, and
+# used_percentage is computed from those same token counts, so the two arrive
+# together and a fallback between them never fires. claude-hud covers /compact
+# by reading the session transcript, which would cost a file read per render.
 
 # -- Wall clock and UTC offset, read once --
 # Shared by the git cache check, the reset countdowns, the usage pace and the
@@ -426,7 +416,8 @@ git_ahead="${git_ab%%/*}"; git_behind="${git_ab##*/}"
 # safeHyperlink. Only https URLs with no whitespace are linked; clean() already
 # stripped ESC and BEL from every payload value, so a URL cannot close the
 # sequence early and smuggle in its own. Terminals without OSC 8 support show
-# the text alone. If links show but do not click, launch with FORCE_HYPERLINK=1.
+# the text alone. If links show but do not click, Claude Code (not this script)
+# may have missed the terminal's support: launch it as `FORCE_HYPERLINK=1 claude`.
 OSC8_ST=$'\033\\'
 osc8() {  # $1=outvar  $2=url  $3=text
   if [[ "$2" =~ ^https://[^[:space:]]+$ ]]; then
@@ -670,7 +661,10 @@ if [ "$cache_observed" = "true" ]; then
     cache_info="${DIM}cache cold${RESET}"
   fi
 fi
-if [ "$cache_hit" -ge 0 ]; then
+# Gated on caching_observed like the expiry above: with caching off, or a
+# provider that does not report cache tokens, hit_ratio is a real 0, and
+# `hit 0%` would read as a cache doing badly rather than one not in play.
+if [ "$cache_observed" = "true" ] && [ "$cache_hit" -ge 0 ]; then
   [ "$cache_hit" -gt 100 ] && cache_hit=100
   _hit="${DIM}hit${RESET} ${cache_hit}%"
   cache_info="${cache_info:+${cache_info} }${_hit}"
