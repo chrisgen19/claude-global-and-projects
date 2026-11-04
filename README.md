@@ -962,7 +962,7 @@ the tab script cannot.
 
 ### Codex config (`codex/`)
 
-`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, and the Atlassian MCP server.
+`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, the hooks feature flag, four MCP servers (Atlassian Rovo, the OpenAI developer docs, chrome-devtools and the budget tracker) and the enabled plugin.
 
 Auto-review is enabled with these top-level settings:
 
@@ -1016,6 +1016,39 @@ live change into the repo, or a repo change into live, by hand.
 Check the result before trusting it:
 ```bash
 python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", len(d.get("hooks", {}).get("state", {})), "hook trust entries,", list(d))'
+```
+
+#### Two prerequisites the config cannot satisfy itself
+
+Restoring `config.toml` only *declares* these two. Neither is installed or set by copying the
+file, and `./install.sh --check` reports both sides as `ok` while either is missing, so check
+them by hand on a new machine.
+
+**The plugin is enabled, not installed.** `[plugins."superpowers@openai-curated"] enabled = true`
+switches the plugin on; it does not fetch it. Install it separately:
+
+```bash
+codex plugin add superpowers@openai-curated
+```
+
+Confirm the files landed (an enabled plugin with no cache entry is the failure mode):
+
+```bash
+ls ~/.codex/plugins/cache/openai-curated/superpowers
+```
+
+This is the same split as Claude's plugins, which `--check` *does* catch per profile
+("plugins enabled but not installed"). There is no equivalent check for Codex.
+
+**`BUDGET_MCP_TOKEN` must be set before Codex starts.** `[mcp_servers.budget]` holds only the
+variable *name* (`bearer_token_env_var`), never the token, so the value has to come from the
+environment. If it is unset when Codex launches, Codex sends no bearer token and the budget
+server fails to initialise or exposes no tools, with nothing in the config to explain why.
+`.zshrc` exports it; a shell that skips `.zshrc` (a bare `sh -c`, a cron job, some editor
+terminals) will not have it:
+
+```bash
+test -n "$BUDGET_MCP_TOKEN" && echo "set" || echo "MISSING: budget MCP will start without auth"
 ```
 
 #### Always use Auto-review from the terminal
