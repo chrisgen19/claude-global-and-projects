@@ -701,9 +701,13 @@ equals "the home directory is ~" "~" "$(home_line "$FIX/me")"
 # "tilde does not expand in quotes" is exactly the behaviour wanted here.
 # shellcheck disable=SC2088
 equals "a path under home starts with ~/" "~/p" "$(home_line "$FIX/me/p")"
-# The fixture path is over 30 characters, so an unshortened sibling falls back
-# to its last segment; the old bug would have rendered the 5-character ~-old.
-equals "a sibling of home is not shortened to ~-old" "me-old" "$(home_line "$FIX/me-old")"
+# How an unshortened sibling renders depends on the fixture path's length:
+# the full path when it fits in 30 characters (/tmp/tmp.X on Linux), its last
+# segment when it does not (/var/folders on macOS). Either way it must end in
+# me-old and carry no tilde; the old bug rendered ~-old.
+got=$(home_line "$FIX/me-old")
+contains "a sibling of home keeps its own name" "me-old" "$got"
+excludes "a sibling of home is not shortened to ~-old" "~" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- new segments: nothing on stderr --"
