@@ -50,7 +50,36 @@ jobs:
           # `printf -v "$1"` indirection, which shellcheck cannot follow, so it
           # reports them as referenced-but-unassigned. Verified false positives.
           shellcheck --severity=warning --exclude=SC2154 install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh wt-dev.sh update-plugins.sh claude-handoff.sh \
-            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh
+            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh \
+            statusline-tests/run.sh
+
+      # shellcheck above only proves statusline.sh parses and avoids known
+      # footguns. It cannot see that the rendered line is wrong, and the %b
+      # escape bug (#81) was shellcheck-clean for as long as it existed. These
+      # tests build fixture repos and assert on what the script actually prints.
+      - name: statusline behaviour tests
+        run: ./statusline-tests/run.sh
+
+      # statusline.sh prints its two lines with `printf '%s'`, so ACCOUNT_COLOR
+      # must already hold a real ESC byte: only $'\033[..m' does that. A
+      # plain-single-quoted '\033[..m' renders as the visible text
+      # "\033[36mPERSONAL". The template and the three copies are covered by the
+      # drift check below, but the README documents this assignment twice and
+      # nothing tied those to the code, so both went stale in #82.
+      - name: ACCOUNT_COLOR literals are ANSI-C quoted
+        run: |
+          # Scoped to ACCOUNT_COLOR lines: the README also quotes the broken
+          # form in prose, to say what it renders as.
+          #
+          # \\+ matches one OR MORE backslashes. The README's gen() helper
+          # passes the line inside a double-quoted shell string, where the same
+          # mistake reads '\\033[36m' with two of them, and a one-backslash
+          # pattern walked straight past it.
+          if grep -nP "ACCOUNT_COLOR.*(?<!\\\$)'\\\\+033\[" README.md statusline.sh claude*/statusline.sh; then
+            echo "FAIL  the lines above use '\\033[..m'; it must be \$'\\033[..m'"
+            exit 1
+          fi
+          echo "ok    every ACCOUNT_COLOR literal is ANSI-C quoted"
 
       # The three account status lines are generated from statusline.sh and
       # differ only in the config block on lines 14-15. Hand-editing one copy
@@ -82,10 +111,17 @@ jobs:
         run: |
           fail=0
           for f in install.sh iterm-tab-status.sh wt-tab-status.sh prisma-prod-guard.sh wt-dev.sh update-plugins.sh claude-handoff.sh \
-            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh; do
+            statusline.sh claude/statusline-command.sh claude*/statusline.sh .claude/skills/review-loop/pr-bots.sh \
+            statusline-tests/run.sh; do
             if /bin/bash -n "$f"; then echo "ok    $f"; else echo "FAIL  $f"; fail=1; fi
           done
           exit $fail
+
+      # Run the status line tests under the stock bash 3.2 and BSD sed as well.
+      # This is the only job that proves the script renders correctly there
+      # rather than merely parsing: the Ubuntu job runs bash 5.
+      - name: statusline behaviour tests under bash 3.2
+        run: /bin/bash ./statusline-tests/run.sh
 
       # Deploy into a scratch HOME (with ~/.codex and agy's directory, so the
       # hook trust is seeded and the agy plugin and status line are set too),
