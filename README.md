@@ -187,7 +187,7 @@ PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432 fix
 █░░░░░░░░░░░░░░ 7% | 5h 41% →196% (3h58m) 7d 3% (4d3h) | cache 14:30 hit 94% | $1.64 | 26m 57s | +273 -3
 ```
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), open PR number with its review state (`approved`, `changes`, `pending`, `draft`), and the dev servers running in the session's project (`▶ localhost:3000`, see the Notes at the end of [iTerm2 tab status](#iterm2-tab-status) for how they are found). The branch, PR number and dev servers are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
 
 **Line 2** — context usage bar (adds `(in: 12k, cache: 170k)` from 85%; reads 0% right after `/compact` until the next reply, because Claude Code sends no token counts until then), rate limit windows with reset countdowns and usage pace, the gateway spend limit when one is set (`spend 63% $314/$500`), prompt cache expiry and hit rate (both hidden until a response has reported cache tokens), session cost, elapsed wall clock, lines added/removed.
 
@@ -452,27 +452,30 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   cleanly when `$TERM_PROGRAM` is not `iTerm.app`, so it is harmless to install
   everywhere. For WSL in Windows Terminal, see
   [Windows Terminal tab status](#windows-terminal-tab-status-wsl) below.
-- Footer link badges (`footerLinksRegexes` in each account's `settings.json`) turn matched
-  dev-server URLs in turn output into clickable badges, so the server running in the
-  session is one click away. There is deliberately no GitHub Actions run badge: CI run
-  URLs from `gh pr checks` filled all five slots and pushed the dev server out.
-  The URL template's **origin must be literal** — a capture group in the host or port is
-  accepted at load but silently never renders, so the localhost entries are one fixed
-  port each rather than a `{port}` placeholder. Placeholders in the *path* are fine.
-  At most 5 badges render at once, oldest displaced, and `/clear` wipes them.
-- The cost of a literal origin is that **every port needs its own entry**. The list covers
-  3000/3001 (Next.js default and fallback), 5173 (Vite), 8080, and the ports pinned in
-  individual projects — 3020, 3111, 3821. A project on an unlisted port simply gets no
-  badge, so add one when you pin a new port:
-
-  ```bash
-  grep -h '"dev":' */package.json | grep -oE '\-\-?p(ort)?[= ]*[0-9]{2,5}'
-  ```
-
-  The entries are `http://` only, since nothing here serves dev over HTTPS. If you ever
-  enable it (`next dev --experimental-https`), the badge will silently not appear — add
-  an `https://` twin of the entry for that port, with an `https://` destination too, since
-  a literal origin cannot cover both schemes.
+- **Dev server links come from the status line, not footer badges.** No profile sets
+  `footerLinksRegexes`. Footer badges are regex matches on conversation text and never
+  check a port, so they showed whatever localhost URL was last printed, running or not
+  (printing the badge list itself once filled all five slots with dead links), and a
+  server started outside the session never got one. A GitHub Actions run badge had the
+  same problem: CI run URLs from `gh pr checks` filled every slot.
+- Instead, line 1 of the status line ends with `▶ localhost:3000` for each dev server
+  actually listening whose working directory is the session's project or inside it
+  (`workspace.project_dir`, else the cwd), each an OSC 8 link to `http://localhost:<port>`,
+  at most three, lowest port first. It works on any port with no list to maintain.
+  Details:
+  - Listeners come from `lsof` on macOS and `ss` on Linux, filtered to dev runtimes
+    (`node`, `bun`, `deno`, `php`, `python`, `ruby`; on Linux also `next-server`, which
+    is how Next.js retitles itself there). Postgres, MySQL, nginx and mailpit are not
+    shown. Docker-published ports and Herd/Valet `*.test` sites are out of scope.
+  - Not `netstat`, although it is ~3ms against `lsof`'s ~27ms: on this Mac it printed
+    nothing, exit 0, whenever an ancestor process was Homebrew's bash, which the
+    `bash` in the status line command can be.
+  - The listener list is cached for 10s in `/tmp/claude-statusline-devlisten-$UID`,
+    shared by all sessions; each server's working directory is cached per pid for 10
+    minutes (`devcwd-$UID-<pid>`). A warm render costs about 4ms more than without the
+    segment, a rescan about 30ms, and a never-seen server one ~21ms `lsof` the first time.
+    `CLAUDE_STATUSLINE_DEV_MAX_AGE=0` turns the listener cache off (the tests do).
+  - A session in the home directory shows none: every server under `~` would match.
 - For a cross-platform equivalent, Claude Code's built-in `"terminalProgressBarEnabled": true`
   emits `OSC 9;4`, which Windows Terminal renders as taskbar progress. It is emitted
   in-process, so it sidesteps the detached-terminal problem entirely.
@@ -957,9 +960,8 @@ Most of this setup is macOS-specific, and the split is not obvious from the sett
 
 | Key | Windows |
 |-----|---------|
-| `footerLinksRegexes` | works — Claude Code renders the footer itself, no shell or terminal codes |
 | `attribution`, `model`, `theme`, `tui`, `effortLevel`, `terminalProgressBarEnabled` | work — plain config values |
-| `statusLine` | needs Git Bash, and the script uses `ps` and `stat` |
+| `statusLine` | needs Git Bash, and the script uses `ps` and `stat`; the dev server links show nothing there (no `lsof` or `ss`) |
 | `hooks` | **do not copy** |
 
 The `hooks` block is the trap. On Windows, Claude Code runs hooks through PowerShell
@@ -1139,7 +1141,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 766-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 924-line template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
