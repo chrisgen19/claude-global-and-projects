@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Comprehensive developer statusline for Claude Code
-# Line 1: Account | Git user (Claude) | Model + flags + mode | Version | Session id + name | Dir | Git branch/sync/status | Worktree | PR
+# Line 1: Account | Git user (Claude) | Model + flags + mode | Version | Session id + name | Dir | Git branch/sync/status | Worktree | PR | Dev servers
 # Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache expiry + hit rate | Cost | Duration | Lines
 #
 # Setup: Copy to each account's config directory and set the account label:
@@ -135,7 +135,8 @@ JQ_FIELDS='
     (opt(.rate_limits.spend_limit.used_usd | numbers)  // ""),
     (opt(.rate_limits.spend_limit.limit_usd | numbers) // ""),
     (opt(.rate_limits.spend_limit.period | strings)    // ""),
-    (opt(.pr.review_state | strings)               // "")
+    (opt(.pr.review_state | strings)               // ""),
+    (opt(.workspace.project_dir | strings)         // "")
   ] | .[] | if type == "string" then clean else tostring end'
 # Numbers and booleans cannot hold control characters, so only strings go
 # through clean().
@@ -173,6 +174,7 @@ cu_input="${F[31]}";    cu_cache="${F[32]}"
 sl_pct="${F[33]}";      sl_at="${F[34]}"
 sl_used="${F[35]}";     sl_limit="${F[36]}";     sl_period="${F[37]}"
 pr_review="${F[38]}"
+project_dir="${F[39]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -424,9 +426,15 @@ git_ahead="${git_ab%%/*}"; git_behind="${git_ab##*/}"
 # sequence early and smuggle in its own. Terminals without OSC 8 support show
 # the text alone. If links show but do not click, Claude Code (not this script)
 # may have missed the terminal's support: launch it as `FORCE_HYPERLINK=1 claude`.
+#
+# A fourth argument `local` also admits exactly http://localhost:<port>, for
+# the dev server links, whose URL is built here from a port number netstat
+# reported. Payload URLs never pass it, so a pr.url of http://anything stays
+# plain text.
 OSC8_ST=$'\033\\'
-osc8() {  # $1=outvar  $2=url  $3=text
-  if [[ "$2" =~ ^https://[^[:space:]]+$ ]]; then
+osc8() {  # $1=outvar  $2=url  $3=text  [$4=local]
+  if [[ "$2" =~ ^https://[^[:space:]]+$ ]] \
+     || { [ "${4:-}" = "local" ] && [[ "$2" =~ ^http://localhost:[0-9]{1,5}$ ]]; }; then
     printf -v "$1" '%s' $'\033]8;;'"$2${OSC8_ST}$3"$'\033]8;;'"${OSC8_ST}"
   else
     printf -v "$1" '%s' "$3"
@@ -508,6 +516,156 @@ if [ -n "$pr_number" ]; then
     pending)           pr_info+=" ${YELLOW}pending${RESET}" ;;
     draft)             pr_info+=" ${DIM}draft${RESET}" ;;
   esac
+fi
+
+# -- Dev servers running in this session's project --
+# Footer badges (footerLinksRegexes) are text matches on the conversation: they
+# show a localhost URL whenever one is printed, running or not, and a server
+# started outside the session never gets one. This asks the OS instead.
+#
+# Listening sockets come from lsof on macOS and ss on Linux, filtered to dev
+# runtimes: postgres, mysqld, nginx, mailpit and macOS services listen as well.
+# Not netstat, although `netstat -anv` is 3ms against lsof's ~27ms: on the Mac
+# this was built on, netstat printed nothing at all and still exited 0 whenever
+# any ancestor process was Homebrew's bash (through env -i, /bin/sh -c and
+# /bin/bash -c too), while lsof answered under both. The status line command is
+# a bare `bash`, which can resolve to Homebrew's, so netstat would have failed
+# silently. The listener list is cached for 10s in one file shared by every
+# session, which absorbs the burst of renders in a turn the way the git cache
+# does; CLAUDE_STATUSLINE_DEV_MAX_AGE overrides that (the tests set 0).
+#
+# A server belongs to the session when its working directory is the project
+# (workspace.project_dir, else the cwd) or inside it, so apps/web in a monorepo
+# counts and a sibling such as app-old does not. Paths are compared both as
+# given and with symlinks resolved, since macOS reports /var/folders as
+# /private/var/folders. Looking up a pid's cwd is the slow part on macOS (lsof,
+# ~21ms), so it is cached per pid for 10 minutes: a running server does not
+# change directory, and the expiry bounds the damage if a pid is reused. Linux
+# reads /proc/PID/cwd, no lsof.
+#
+# A session in the home directory is not a project: every server under ~ would
+# match, so it shows none. Up to three ports show, lowest first, each linked to
+# http://localhost:<port>.
+# The Linux (ss) pattern. Next.js retitles its process, and on Linux that
+# reaches /proc/PID/comm, so ss reports "next-server (v…" rather than node;
+# macOS lsof still reports node. The macOS side is the -c list in _dev_scan.
+DEV_RUNTIMES='node|bun|deno|php|[Pp]ython[0-9.]*|ruby|next-server[^"]*'
+
+# Both dev caches store their own write time as the first word and compare it
+# with $now, instead of asking stat for the mtime: that is a fork per file per
+# render, and on a warm cache those forks were most of what this section cost.
+_dev_cwd() {  # $1=outvar  $2=pid
+  local _f="/tmp/claude-statusline-devcwd-${UID}-$2" _c="" _x _line="" _ts
+  [ -f "$_f" ] && IFS= read -r _line < "$_f"
+  _ts="${_line%% *}"
+  if [[ "$_ts" =~ ^[0-9]+$ ]] && [ $((now - _ts)) -le 600 ]; then
+    _c="${_line#* }"
+  else
+    case "$OSTYPE" in
+      darwin*|*bsd*|FreeBSD*)
+        while IFS= read -r _x; do
+          case "$_x" in n*) _c="${_x#n}"; break ;; esac
+        done < <(lsof -a -p "$2" -d cwd -Fn 2>/dev/null)
+        ;;
+      *) _c=$(readlink "/proc/$2/cwd" 2>/dev/null) ;;
+    esac
+    # Same atomic write as the git cache, so a concurrent render never reads a
+    # half-written entry. The cwd follows the first space, so one containing
+    # spaces survives the round trip. An empty answer is not cached: the
+    # listener list can be up to 10s old, so the pid may have just exited, and
+    # caching "no cwd" would hide a new server that reuses the pid for 10min.
+    [ -n "$_c" ] && printf '%s %s\n' "$now" "$_c" > "$_f.$$" 2>/dev/null \
+      && mv -f "$_f.$$" "$_f" 2>/dev/null
+  fi
+  printf -v "$1" '%s' "$_c"
+}
+
+dev_info=""
+_dev_proj="${project_dir:-$cwd}"
+_dev_proj="${_dev_proj%/}"
+case "$_dev_proj" in ""|"$HOME") _dev_proj="" ;; esac
+# Prints " port:pid" for every listening dev runtime, one entry per socket.
+_dev_scan() {
+  local _x _pid=""
+  case "$OSTYPE" in
+    darwin*|*bsd*|FreeBSD*)
+      # -c is a prefix match on the program name (python3.12 matches python,
+      # and the framework build on macOS is "Python"). -F output is one field
+      # per line: p<pid>, f<fd>, n<address> such as *:3000 or [::1]:3000.
+      while IFS= read -r _x; do
+        case "$_x" in
+          p*) _pid="${_x#p}" ;;
+          n*) [[ "$_x" =~ :([0-9]+)$ ]] && printf ' %s:%s' "${BASH_REMATCH[1]}" "$_pid" ;;
+        esac
+      done < <(lsof -nP -a -iTCP -sTCP:LISTEN -c node -c bun -c deno -c php \
+        -c python -c Python -c ruby -Fpn 2>/dev/null)
+      ;;
+    *)
+      # LISTEN 0 511 127.0.0.1:3000 0.0.0.0:* users:(("node",pid=4436,fd=21))
+      local _re="^LISTEN +[0-9]+ +[0-9]+ +[^ ]*:([0-9]+) +[^ ]+ +users:\\(\\(\"(${DEV_RUNTIMES})\",pid=([0-9]+),"
+      while IFS= read -r _x; do
+        [[ "$_x" =~ $_re ]] && printf ' %s:%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+      done < <(ss -ltnpH 2>/dev/null)
+      ;;
+  esac
+}
+
+_dev_list=""   # " port:pid", one entry per port (IPv4 and IPv6 sockets dedupe)
+if [ -n "$_dev_proj" ]; then
+  _dev_cache="/tmp/claude-statusline-devlisten-${UID}"
+  _dev_age="${CLAUDE_STATUSLINE_DEV_MAX_AGE:-10}"
+  [[ "$_dev_age" =~ ^[0-9]+$ ]] || _dev_age=10
+  _dev_raw=""; _dev_ts=""
+  # A max age of 0 bypasses the shared cache entirely, reading and writing:
+  # the tests run that way, and their fixture servers must never reach the
+  # file the developer's real sessions read.
+  [ "$_dev_age" -gt 0 ] && [ -f "$_dev_cache" ] && read -r _dev_ts _dev_raw < "$_dev_cache"
+  if ! { [[ "$_dev_ts" =~ ^[0-9]+$ ]] && [ $((now - _dev_ts)) -lt "$_dev_age" ]; }; then
+    _dev_raw=$(_dev_scan)
+    [ "$_dev_age" -gt 0 ] && printf '%s %s\n' "$now" "$_dev_raw" > "$_dev_cache.$$" 2>/dev/null \
+      && mv -f "$_dev_cache.$$" "$_dev_cache" 2>/dev/null
+  fi
+  for _e in $_dev_raw; do
+    [[ "$_e" =~ ^[0-9]+:[0-9]+$ ]] || continue
+    case "$_dev_list " in *" ${_e%%:*}:"*) continue ;; esac
+    _dev_list+=" $_e"
+  done
+fi
+if [ -n "$_dev_list" ]; then
+  # The symlink-resolved project path costs a subshell, so it is worked out
+  # only the first time a server's cwd fails to match the path as given.
+  _dev_real=""; _dev_resolved=0
+  _dev_ports=()
+  for _e in $_dev_list; do
+    _dev_cwd _dc "${_e#*:}"
+    case "$_dc" in
+      "") continue ;;
+      "$_dev_proj"|"$_dev_proj"/*) ;;
+      *)
+        if [ "$_dev_resolved" = 0 ]; then
+          _dev_real=$(cd "$_dev_proj" 2>/dev/null && pwd -P); _dev_resolved=1
+        fi
+        [ -n "$_dev_real" ] && [ "$_dev_real" != "$_dev_proj" ] || continue
+        case "$_dc" in "$_dev_real"|"$_dev_real"/*) ;; *) continue ;; esac
+        ;;
+    esac
+    # Insertion sort, lowest port first: bash 3.2 has no sort builtin, and a
+    # `sort` fork for a list this short would cost more than it saves.
+    _p="${_e%%:*}"; _i=${#_dev_ports[@]}; _dev_ports+=("$_p")
+    while [ "$_i" -gt 0 ] && [ "${_dev_ports[$((_i - 1))]}" -gt "$_p" ]; do
+      _dev_ports[$_i]="${_dev_ports[$((_i - 1))]}"; _i=$((_i - 1))
+    done
+    _dev_ports[$_i]="$_p"
+  done
+  if [ ${#_dev_ports[@]} -gt 0 ]; then
+    _dev_txt=""
+    for _p in "${_dev_ports[@]:0:3}"; do
+      osc8 _dl "http://localhost:${_p}" "${GREEN}localhost:${_p}${RESET}" local
+      _dev_txt+="${_dev_txt:+ }${_dl}"
+    done
+    [ ${#_dev_ports[@]} -gt 3 ] && _dev_txt+=" ${DIM}+$(( ${#_dev_ports[@]} - 3 ))${RESET}"
+    dev_info="  ${GREEN}▶${RESET} ${_dev_txt}"
+  fi
 fi
 
 # -- Session mode flags: fast mode, reasoning effort, extended thinking --
@@ -760,7 +918,7 @@ account_label="${BOLD}${ACCOUNT_COLOR}${ACCOUNT_NAME}${RESET}"
 # -- LINE 1: Account | Git user (Claude account) | Model + flags + mode | Version | Session id | Dir | Git | PR --
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}${dev_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
 printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info} | ${YELLOW}${cost_fmt}${RESET} | ${time_fmt}${lines_info}"
