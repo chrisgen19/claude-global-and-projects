@@ -637,6 +637,31 @@ git -C "$FIX/enc" remote add origin "$FIX/bare-enc"
 git -C "$FIX/enc" push -q -u origin "$enc_branch"
 contains "a branch name is percent-encoded byte by byte" \
   "tree/feat/%C3%BC%23x${ESC}\\" "$(raw "$FIX/enc" "$gh_repo")"
+# workspace.repo always describes origin, so only a branch whose upstream is on
+# origin can be linked, and the page is the upstream branch, not the local name.
+newrepo "$FIX/forked" || exit 1
+git init -q --bare "$FIX/bare-forked-origin"; git init -q --bare "$FIX/bare-forked-fork"
+git -C "$FIX/forked" remote add origin "$FIX/bare-forked-origin"
+git -C "$FIX/forked" remote add fork "$FIX/bare-forked-fork"
+git -C "$FIX/forked" push -q -u origin main
+git -C "$FIX/forked" switch -q -c feature
+git -C "$FIX/forked" push -q -u fork feature
+got=$(raw "$FIX/forked" "$gh_repo")
+contains "a branch tracking a fork still shows its name" "feature" "$(printf '%s' "$got" | strip_ansi)"
+excludes "a branch tracking a fork gets no origin link (it may 404)" "${ESC}]8;;" "$got"
+# A local name that differs from the origin branch it tracks.
+cp -R "$FIX/sync" "$FIX/renamed" || exit 1
+git -C "$FIX/renamed" switch -q -c local-name
+git -C "$FIX/renamed" branch -q --set-upstream-to=origin/main
+got=$(raw "$FIX/renamed" "$gh_repo")
+contains "a renamed branch links its upstream branch" \
+  "${ESC}]8;;https://github.com/acme/widgets/tree/main${ESC}\\" "$got"
+excludes "a renamed branch does not link its local name" "tree/local-name" "$got"
+# Its commit may never have been pushed, so a detached HEAD is not linked.
+got=$(raw "$FIX/detached" "$gh_repo")
+oid=$(git -C "$FIX/detached" rev-parse HEAD)
+contains "a detached HEAD still shows its short oid" "${oid%"${oid#???????}"}" "$(printf '%s' "$got" | strip_ansi)"
+excludes "a detached HEAD gets no branch link" "${ESC}]8;;" "$got"
 pr_link='"pr":{"number":42,"url":"https://github.com/acme/widgets/pull/42"}'
 contains "the PR number links to pr.url" \
   "${ESC}]8;;https://github.com/acme/widgets/pull/42${ESC}\\" "$(raw "$FIX/plain" "$pr_link")"
@@ -694,6 +719,14 @@ excludes "a BEL in a value is stripped" "$bel" "$got"
 contains "a BEL and a tab are removed, not spaced" "pqr" "$(printf '%s' "$got" | strip_ansi)"
 got=$(raw "$FIX/plain" '"model":{"display_name":"M\u001b[2J"}')
 excludes "a sequence in the model name is stripped too" "${ESC}[2J" "$got"
+# A NUL that reached `_fields=$(...)` made bash 5 warn "ignored null byte in
+# input" on stderr (3.2 dropped it silently). A shell variable cannot hold a
+# NUL, so the evidence is the stderr and the text either side surviving.
+nul_payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},session_name:"n\u0000ul"}')
+err=$(printf '%s' "$nul_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
+equals "a NUL in a value causes nothing on stderr" "" "$err"
+contains "the text around a NUL survives" "nul" \
+  "$(printf '%s' "$nul_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p')"
 
 # ---------------------------------------------------------------------------
 echo "-- home directory --"

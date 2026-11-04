@@ -84,6 +84,9 @@ config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # name or the free-text session name would still reach the terminal and could
 # recolour, move the cursor or plant a hyperlink. Order matters: whole
 # sequences go first so their parameter bytes do not survive as text.
+# The control range starts at U+0000, not U+0001: a NUL that reaches
+# `_fields=$(...)` makes bash 5 print "ignored null byte in input" on stderr
+# (3.2 drops it silently), and jq 1.8 handles \u0000 in a regex class fine.
 JQ_FIELDS='
   def opt(f): try f catch null;
   def clean:
@@ -91,7 +94,7 @@ JQ_FIELDS='
     | gsub("\u001b\\[[0-?]*[ -/]*[@-~]"; "")
     | gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)"; "")
     | gsub("\u001b[@-Z\\\\-_]"; "")
-    | gsub("[\u0001-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁯]"; "");
+    | gsub("[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁯]"; "");
   [ (opt(.model.display_name)                      // "?"),
     (opt(.workspace.current_dir) // opt(.cwd)      // ""),
     ((opt(.context_window.used_percentage) | numbers | floor) // 0),
@@ -254,11 +257,12 @@ safe_cwd="${safe_cwd//[^A-Za-z0-9_.-]/_}"
 # miss, so a collision costs a recompute and never shows another repo's branch
 # or git identity. Comparing a string costs no fork, unlike hashing the cwd.
 #
-# The -v4 is the cache *format* version. Each time the entry changes shape,
+# The -v5 is the cache *format* version. Each time the entry changes shape,
 # reading it back from a file written by the previous format would silently
 # shift every value after it, so the format gets a new name instead: v2 added
-# conflicts, upstream and ahead/behind, v3 the git email, v4 the cwd key line.
-CACHE_FILE="/tmp/claude-statusline-git-v4-${UID}-${safe_cwd}"
+# conflicts, upstream and ahead/behind, v3 the git email, v4 the cwd key line,
+# v5 the upstream ref itself (for the branch link), not just whether one exists.
+CACHE_FILE="/tmp/claude-statusline-git-v5-${UID}-${safe_cwd}"
 # The cache exists to absorb the burst of renders inside a single turn, not to
 # serve the scheduled refresh: with "refreshInterval": 60 in settings.json those
 # are 60s apart, so they always find a stale cache and always pay full price.
@@ -382,16 +386,18 @@ if cache_is_stale && [ -n "$cwd" ]; then
   # a tab delimiter would fix that but IFS collapses runs of whitespace, which
   # would break the all-empty line written outside a work tree.)
   # The cwd sits on its own line ahead of the fields, so a `|` in a path can
-  # never shift them.
-  printf '%s\n%s|%s|%s|%s|%s|%s|%s|%s\n' "$cwd" \
+  # never shift them. The upstream ref (e.g. origin/main) goes just before the
+  # email, so the email keeps its place as the catch-all last field; a `|` in
+  # the upstream name has the same caveat as one in the branch name.
+  printf '%s\n%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$cwd" \
     "$branch" "$staged" "$modified" "$untracked" \
-    "$conflicts" "$no_upstream" "${ahead}/${behind}" "$gh_email" > "$CACHE_FILE.$$"
+    "$conflicts" "$no_upstream" "${ahead}/${behind}" "$upstream" "$gh_email" > "$CACHE_FILE.$$"
   # Rename is atomic, so a concurrent reader never sees a half-written line.
   mv -f "$CACHE_FILE.$$" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE.$$"
 fi
 
 git_branch=""; git_staged=0; git_modified=0; git_untracked=0
-git_conflicts=0; git_no_upstream=0; git_ab=""; gh_email=""
+git_conflicts=0; git_no_upstream=0; git_ab=""; git_upstream=""; gh_email=""
 # The key is checked again here, not just in cache_is_stale: a colliding
 # session can rename its own entry into the slot between our write and this
 # read. If it does, this render shows no git info rather than the other repo's.
@@ -400,7 +406,7 @@ if [ -f "$CACHE_FILE" ]; then
     IFS= read -r _key
     if [ "$_key" = "$cwd" ]; then
       IFS='|' read -r git_branch git_staged git_modified git_untracked \
-        git_conflicts git_no_upstream git_ab gh_email
+        git_conflicts git_no_upstream git_ab git_upstream gh_email
     fi
   } < "$CACHE_FILE"
 fi
@@ -446,13 +452,21 @@ urlenc_path() {  # $1=outvar  $2=string
 
 # Branch page on the forge, from workspace.repo (parsed by Claude Code from the
 # origin remote, so no git fork). github.com and gitlab.com only, whose URL
-# shapes are known; gitlab owners may be nested group/subgroup paths. Only for
-# a branch that tracks an upstream: a local-only branch would link to a 404. A
-# detached HEAD shows a short sha, and both forges accept a sha in /tree/.
+# shapes are known; gitlab owners may be nested group/subgroup paths.
+#
+# Only for a branch whose upstream is on origin, and the page is the upstream
+# branch, not the local name. workspace.repo always describes origin, so a
+# branch tracking fork/feature would have linked origin's repo, where it may
+# not exist, and a local branch tracking origin/main under another name would
+# have linked a branch that is not on the remote at all. A local-only branch
+# has no upstream, and neither has a detached HEAD, whose commit may never have
+# been pushed: both show plain text rather than a link that can 404.
 branch_url=""
-if [ -n "$git_branch" ] && [ "$git_branch" != "detached" ] && [ "${git_no_upstream:-0}" != "1" ] \
+_up_branch=""
+case "$git_upstream" in origin/?*) _up_branch="${git_upstream#origin/}" ;; esac
+if [ -n "$_up_branch" ] \
    && [[ "$repo_owner" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ ]] && [[ "$repo_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
-  urlenc_path _enc_branch "$git_branch"
+  urlenc_path _enc_branch "$_up_branch"
   case "$repo_host" in
     github.com) branch_url="https://github.com/${repo_owner}/${repo_name}/tree/${_enc_branch}" ;;
     gitlab.com) branch_url="https://gitlab.com/${repo_owner}/${repo_name}/-/tree/${_enc_branch}" ;;
