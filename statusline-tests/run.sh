@@ -39,6 +39,12 @@ ESC=$(printf '\033')
 # urlenc_path passed. $BASH is the binary running this file.
 RUN_BASH="$BASH"
 
+# Every render scans listening sockets afresh and leaves the shared dev
+# listener cache alone (a max age of 0 neither reads nor writes it). Set for
+# the whole suite: a render from an earlier section reading a listener list
+# from a previous run looked up dead fixture pids.
+export CLAUDE_STATUSLINE_DEV_MAX_AGE=0
+
 pass=0
 fail=0
 
@@ -56,7 +62,19 @@ FIX=$(mktemp -d) || exit 1
 # The cache format version is globbed rather than named, so this keeps working
 # when the script bumps it. Naming v3 here would have quietly started leaking
 # again at v4, which is the same way the leak arrived in the first place.
+SERVER_PIDS=""
 cleanup() {
+  # Fixture dev servers first, then the per-pid cwd cache entries the script
+  # wrote for them. Only this run's pids: the cache is shared with the
+  # developer's real sessions.
+  # The wait reaps each one, so bash does not print a "Terminated: 15" job
+  # report for every fixture server on the way out.
+  local p
+  for p in $SERVER_PIDS; do
+    kill "$p" 2>/dev/null
+    wait "$p" 2>/dev/null
+    rm -f /tmp/claude-statusline-devcwd-"${UID}"-"$p"
+  done
   rm -rf "$FIX" "$CONFIG_DIR"
   # The variables stay quoted and only the * are bare, so the pattern expands
   # without word-splitting the path. With no match bash passes the pattern
@@ -67,6 +85,10 @@ cleanup() {
 trap cleanup EXIT
 
 strip_ansi() { sed "s/${ESC}\\[[0-9;]*m//g"; }
+# Also drops OSC 8 link wrappers (ESC ] 8 ;; URL ESC \), for asserting on the
+# visible text alone: with them in place a linked port appears twice, once in
+# the URL and once in the label.
+strip_links() { strip_ansi | sed "s/${ESC}]8;;[^${ESC}]*${ESC}\\\\//g"; }
 
 # render <dir> [extra-json] -- full output of the script, colours stripped
 render() {
@@ -749,6 +771,220 @@ equals "a path under home starts with ~/" "~/p" "$(home_line "$FIX/me/p")"
 got=$(home_line "$FIX/me-old")
 contains "a sibling of home keeps its own name" "me-old" "$got"
 excludes "a sibling of home is not shortened to ~-old" "~" "$got"
+
+# ---------------------------------------------------------------------------
+echo "-- dev servers in the session's project --"
+# Real listeners: node servers on OS-assigned ports, each started in a fixture
+# directory so its cwd says which project it belongs to. The listener cache is
+# off for the whole suite (see RUN_BASH), so every render sees current sockets.
+
+# start_server <dir> [node|perl] [port] [host] -- sets SRV_PORT and SRV_PID, or
+# returns 1. Port 0 (the default) lets the OS pick; a fixed port that is taken,
+# or a host that cannot be bound (::1 with IPv6 off), makes the server exit,
+# which shows up here as no port file. host applies to plain node servers and
+# defaults to 127.0.0.1. perl stands for a listener that is not a dev runtime:
+# a renamed copy of node did too, until CI's macOS node turned out to load
+# libnode from a path relative to its binary.
+start_server() {
+  local dir="$1" kind="${2:-node}" port="${3:-0}" host="${4:-127.0.0.1}" pf waited=0
+  pf="$FIX/port.$$.$RANDOM"
+  # exec, so the listening process is the server itself, with $dir as its cwd.
+  if [ "$kind" = perl ]; then
+    ( cd "$dir" && exec perl -MIO::Socket::INET -e '
+        my $s = IO::Socket::INET->new(Listen => 5, LocalAddr => "127.0.0.1",
+          LocalPort => $ARGV[1]) or exit 1;
+        open(my $f, ">", $ARGV[0]) or exit 1; print $f $s->sockport; close $f;
+        sleep 120;' "$pf" "$port" ) &
+  elif [ "$kind" = node-mainthread ]; then
+    # Linux only: what the official Node 24 builds do, naming the main thread
+    # (and so /proc/PID/comm, which ss reports) MainThread.
+    ( cd "$dir" && exec node -e '
+        require("fs").writeFileSync("/proc/self/comm", "MainThread");
+        const s = require("net").createServer();
+        s.on("error", () => process.exit(1));
+        s.listen(Number(process.argv[2]), "127.0.0.1", () =>
+          require("fs").writeFileSync(process.argv[1], String(s.address().port)));
+        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" ) &
+  else
+    ( cd "$dir" && exec node -e '
+        const s = require("net").createServer();
+        s.on("error", () => process.exit(1));
+        s.listen(Number(process.argv[2]), process.argv[3], () =>
+          require("fs").writeFileSync(process.argv[1], String(s.address().port)));
+        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" "$host" ) &
+  fi
+  SRV_PID=$!
+  SERVER_PIDS="$SERVER_PIDS $SRV_PID"
+  # Up to 5s (100 x 0.05s) for node to start and write its port.
+  while [ "$waited" -lt 100 ]; do
+    [ -s "$pf" ] && { SRV_PORT=$(cat "$pf"); return 0; }
+    kill -0 "$SRV_PID" 2>/dev/null || return 1
+    sleep 0.05
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+# start_low_server <dir> -- a server on a free fixed port in 20000-20999, below
+# the OS's ephemeral range, so a later process holds a lower port. Retries a
+# few ports on a collision.
+start_low_server() {
+  local tries=0
+  while [ "$tries" -lt 5 ]; do
+    start_server "$1" node $((20000 + RANDOM % 1000)) && return 0
+    tries=$((tries + 1))
+  done
+  return 1
+}
+
+if ! command -v node > /dev/null; then
+  echo "SKIP  node is not installed, so no fixture server can listen"
+else
+  mkdir -p "$FIX/devproj/apps/web" "$FIX/otherproj" "$FIX/devproj-old"
+  start_server "$FIX/devproj"          || bad "server in the project started"; P_ROOT=$SRV_PORT; PID_ROOT=$SRV_PID
+  start_server "$FIX/devproj/apps/web" || bad "server in a subdirectory started"; P_SUB=$SRV_PORT
+  start_server "$FIX/otherproj"        || bad "server in another project started"; P_OTHER=$SRV_PORT; PID_OTHER=$SRV_PID
+  start_server "$FIX/devproj-old"      || bad "server in a sibling started"; P_SIB=$SRV_PORT
+  if command -v perl > /dev/null; then
+    start_server "$FIX/devproj" perl || bad "non-dev listener started"; P_NODEV=$SRV_PORT
+  else
+    echo "SKIP  perl is not installed, so no non-dev listener can be started"; P_NODEV=0
+  fi
+
+  dev_proj="\"workspace\":{\"project_dir\":\"$FIX/devproj\"}"
+  got=$(raw "$FIX/devproj" "$dev_proj")
+  line=$(printf '%s' "$got" | strip_links | sed -n '1p')
+  contains "a server in the project is shown" "localhost:$P_ROOT" "$line"
+  # When detection fails outright, say what the OS tools see for the fixture
+  # server, so a CI log shows the cause rather than just the missing port.
+  case "$line" in
+    *"localhost:$P_ROOT"*) ;;
+    *)
+      echo "        diagnostics for pid $PID_ROOT (port $P_ROOT), OSTYPE=$OSTYPE:"
+      {
+        case "$OSTYPE" in
+          darwin*|*bsd*|FreeBSD*)
+            lsof -nP -a -iTCP -sTCP:LISTEN -p "$PID_ROOT" -Fpcn
+            echo "comm (ps): $(ps -o comm= -p "$PID_ROOT")"
+            lsof -a -p "$PID_ROOT" -d cwd -Fn ;;
+          *)
+            echo "ss: $(command -v ss || echo 'not found')"
+            ss -ltnpH | grep -F ":$P_ROOT "
+            echo "comm: $(cat "/proc/$PID_ROOT/comm")"
+            echo "cwd:  $(readlink "/proc/$PID_ROOT/cwd")" ;;
+        esac
+        echo "project_dir: $FIX/devproj"
+      } 2>&1 | sed 's/^/          /'
+      ;;
+  esac
+  contains "a server in a project subdirectory is shown" "localhost:$P_SUB" "$line"
+  excludes "a server in another project is not shown" "localhost:$P_OTHER" "$line"
+  excludes "a server in a sibling such as devproj-old is not shown" "localhost:$P_SIB" "$line"
+  excludes "a listener that is not a dev runtime is not shown" "localhost:$P_NODEV" "$line"
+  contains "a dev server links to http://localhost" \
+    "${ESC}]8;;http://localhost:${P_ROOT}${ESC}\\" "$got"
+  # Lowest port first, whichever order the OS lists them in.
+  lo=$P_ROOT; hi=$P_SUB; [ "$lo" -gt "$hi" ] && { lo=$P_SUB; hi=$P_ROOT; }
+  contains "dev servers are listed lowest port first" "localhost:$lo localhost:$hi" "$line"
+
+  # The same with project_dir already resolved. On macOS $FIX is under
+  # /var/folders, which lsof reports as /private/var/folders, so the checks
+  # above only reach the resolved-path comparison; these reach the plain one.
+  real_proj=$(cd "$FIX/devproj" && pwd -P)
+  got=$(raw "$real_proj" "\"workspace\":{\"project_dir\":\"$real_proj\"}" | strip_links | sed -n '1p')
+  contains "a resolved project_dir shows its own server" "localhost:$P_ROOT" "$got"
+  contains "a resolved project_dir shows a subdirectory server" "localhost:$P_SUB" "$got"
+  excludes "a resolved project_dir does not show a sibling's server" "localhost:$P_SIB" "$got"
+
+  dev_proj_slash="\"workspace\":{\"project_dir\":\"$FIX/devproj/\"}"
+  got=$(seg "$FIX/devproj" "$dev_proj_slash")
+  contains "a trailing slash on project_dir still matches" "localhost:$P_ROOT" "$got"
+
+  # Without project_dir the cwd is the project: from apps/ only apps/web counts.
+  got=$(seg "$FIX/devproj/apps" "")
+  contains "without project_dir the cwd is used" "localhost:$P_SUB" "$got"
+  excludes "without project_dir a server above the cwd is not shown" "localhost:$P_ROOT" "$got"
+
+  got=$(seg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  contains "each session sees its own project's server" "localhost:$P_OTHER" "$got"
+  excludes "and not the servers of another project" "localhost:$P_ROOT" "$got"
+
+  # A home-directory session is not a project: everything under ~ would match.
+  got=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
+    | HOME="$FIX/devproj" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p')
+  contains "a home-directory session still renders" "[M]" "$got"
+  excludes "a home-directory session shows no dev servers" "localhost:" "$got"
+
+  # More than three: the lowest three by port, then a count. The extra two are
+  # started last on fixed low ports, so they hold the lowest ports from the
+  # newest pids and the listing order has to be sorted to come out right.
+  start_low_server "$FIX/devproj" || bad "third project server started"; P_LO1=$SRV_PORT
+  start_low_server "$FIX/devproj" || bad "fourth project server started"; P_LO2=$SRV_PORT
+  got=$(raw "$FIX/devproj" "$dev_proj" | strip_links | sed -n '1p')
+  contains "more than three servers show a +N count" "+1" "$got"
+  n_links=$(printf '%s' "$got" | grep -o 'localhost:[0-9]*' | wc -l | tr -d ' ')
+  equals "more than three servers show three links" "3" "$n_links"
+  a=$P_LO1; b=$P_LO2; [ "$a" -gt "$b" ] && { a=$P_LO2; b=$P_LO1; }
+  contains "the lowest ports come first, whatever order the processes started in" \
+    "▶ localhost:$a localhost:$b localhost:$lo +1" "$got"
+
+  # Two projects on one port, one on each loopback address: both can bind, and
+  # each session must see its own. Ports used to be deduplicated before the
+  # project check, keeping whichever socket the OS listed first, so one of the
+  # two sessions always lost its server; checking both catches that whatever
+  # order lsof or ss lists them in.
+  mkdir -p "$FIX/samea" "$FIX/sameb"
+  if start_server "$FIX/samea" node 0 127.0.0.1; then
+    P_SAME=$SRV_PORT
+    if start_server "$FIX/sameb" node "$P_SAME" ::1; then
+      got=$(raw "$FIX/samea" "\"workspace\":{\"project_dir\":\"$FIX/samea\"}" | strip_links | sed -n '1p')
+      contains "two projects on one port: the 127.0.0.1 one sees its server" "localhost:$P_SAME" "$got"
+      got=$(raw "$FIX/sameb" "\"workspace\":{\"project_dir\":\"$FIX/sameb\"}" | strip_links | sed -n '1p')
+      contains "two projects on one port: the ::1 one sees its server" "localhost:$P_SAME" "$got"
+      n_links=$(printf '%s' "$got" | grep -o "localhost:$P_SAME" | wc -l | tr -d ' ')
+      equals "two projects on one port: the port is listed once" "1" "$n_links"
+    else
+      echo "SKIP  ::1 cannot be bound here (IPv6 off), so two projects cannot share a port"
+    fi
+  else
+    bad "a 127.0.0.1 server for the same-port case started"
+  fi
+
+  # Linux reads the runtime from /proc/PID/exe, because the process name ss
+  # reports can be anything: CI's official Node 24 build says MainThread.
+  case "$OSTYPE" in
+    darwin*|*bsd*|FreeBSD*) ;;
+    *)
+      mkdir -p "$FIX/retitled"
+      if start_server "$FIX/retitled" node-mainthread; then
+        P_RT=$SRV_PORT
+        equals "the fixture node really reports MainThread" "MainThread" "$(cat "/proc/$SRV_PID/comm")"
+        got=$(seg "$FIX/retitled" "\"workspace\":{\"project_dir\":\"$FIX/retitled\"}")
+        contains "a node whose process name is MainThread is still shown" "localhost:$P_RT" "$(printf '%s' "$got" | strip_links)"
+      else
+        bad "a node server that retitles itself started"
+      fi
+      ;;
+  esac
+
+  # A stopped server disappears on the next scan.
+  kill "$PID_OTHER" 2>/dev/null; wait "$PID_OTHER" 2>/dev/null
+  got=$(seg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  excludes "a stopped server is no longer shown" "localhost:$P_OTHER" "$got"
+
+  err=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
+  equals "no stderr: dev servers detected" "" "$err"
+fi
+
+# The http://localhost exception is for the links the script builds itself; a
+# payload URL never gets it.
+got=$(raw "$FIX/plain" '"pr":{"number":5,"url":"http://localhost:1234"}')
+excludes "a pr.url of http://localhost is not linked" "${ESC}]8;;" "$got"
+contains "a session with no dev server shows no marker" "#5" "$(printf '%s' "$got" | strip_ansi)"
+excludes "a session with no dev server shows no ▶" "▶" "$(printf '%s' "$got" | strip_ansi)"
+got=$(seg "$FIX/plain" '"workspace":{"project_dir":{"a":1}}')
+contains "a wrongly typed project_dir falls back to the cwd" "plain" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- new segments: nothing on stderr --"

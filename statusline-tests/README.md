@@ -37,6 +37,21 @@ Two things worth knowing before editing:
 `CLAUDE_CONFIG_DIR` is pointed at an empty directory so the `(account)` suffix
 does not vary with whatever is installed on the machine running the tests.
 
+The dev server tests start real listeners: `node` servers on OS-assigned (and
+two fixed, 20000-20999) ports, each in a fixture directory, plus one `perl`
+socket server to stand for a listener that is not a dev runtime. (A renamed
+copy of `node` did that first, until CI's macOS `node` failed to start from
+another directory: it loads `libnode` by a path relative to its own binary.)
+They need `node` and `perl` on `PATH` and print `SKIP` without them; both CI
+runners have both. If the first detection check fails, the suite prints what
+`lsof` or `ss` sees for that server, with its `comm` and cwd.
+The exit trap stops them and removes only their own `devcwd` cache entries.
+`CLAUDE_STATUSLINE_DEV_MAX_AGE=0` is exported for the whole suite, which makes
+the script neither read nor write the shared listener cache: an earlier render
+reading a previous run's list looked up dead fixture pids. Assertions on the
+visible text of linked output use `strip_links`, since with the OSC 8 wrapper in
+place a linked port appears twice.
+
 ## Portability
 
 CI runs this on Ubuntu and on macOS with the stock `/bin/bash` 3.2 and BSD
@@ -80,3 +95,18 @@ only, as the bug is), restoring `${cwd/#$HOME/\~}`, ignoring the `%z` sign,
 linking branches without an upstream, dropping a review state, raising the
 token breakdown threshold, uncapping the session name, and pacing a monthly
 spend limit.
+
+For the dev server links, each caught under both: dropping the runtime filter,
+matching the project as a bare prefix (so `devproj-old` counts), skipping
+symlink resolution, not excluding the home directory, dropping the three-port
+limit, skipping the sort, letting `osc8` link `http://` for any caller, not
+linking the ports, and deduplicating ports before the project check (two
+projects on one port, on `127.0.0.1` and `::1`: one session lost its server).
+That case prints `SKIP` where `::1` cannot be bound, as in a Docker container
+with IPv6 off. On Linux (an `ubuntu:26.04` container, as root and as a
+normal user), matching the runtime by `/proc/PID/comm` instead of
+`/proc/PID/exe` is caught by the `MainThread` case: that is what CI's official
+Node 24 build reports as its process name, which the first version matched on
+and missed. Not trimming a trailing slash from `project_dir` survives,
+and should: the resolved-path comparison strips it anyway, so the trim only
+saves a subshell.
