@@ -778,13 +778,15 @@ echo "-- dev servers in the session's project --"
 # directory so its cwd says which project it belongs to. The listener cache is
 # off for the whole suite (see RUN_BASH), so every render sees current sockets.
 
-# start_server <dir> [node|perl] [port] -- sets SRV_PORT and SRV_PID, or
-# returns 1. Port 0 (the default) lets the OS pick; a fixed port that is taken
-# makes the server exit, which shows up here as no port file. perl stands for a
-# listener that is not a dev runtime: a renamed copy of node did too, until CI's
-# macOS node turned out to load libnode from a path relative to its binary.
+# start_server <dir> [node|perl] [port] [host] -- sets SRV_PORT and SRV_PID, or
+# returns 1. Port 0 (the default) lets the OS pick; a fixed port that is taken,
+# or a host that cannot be bound (::1 with IPv6 off), makes the server exit,
+# which shows up here as no port file. host applies to plain node servers and
+# defaults to 127.0.0.1. perl stands for a listener that is not a dev runtime:
+# a renamed copy of node did too, until CI's macOS node turned out to load
+# libnode from a path relative to its binary.
 start_server() {
-  local dir="$1" kind="${2:-node}" port="${3:-0}" pf waited=0
+  local dir="$1" kind="${2:-node}" port="${3:-0}" host="${4:-127.0.0.1}" pf waited=0
   pf="$FIX/port.$$.$RANDOM"
   # exec, so the listening process is the server itself, with $dir as its cwd.
   if [ "$kind" = perl ]; then
@@ -807,9 +809,9 @@ start_server() {
     ( cd "$dir" && exec node -e '
         const s = require("net").createServer();
         s.on("error", () => process.exit(1));
-        s.listen(Number(process.argv[2]), "127.0.0.1", () =>
+        s.listen(Number(process.argv[2]), process.argv[3], () =>
           require("fs").writeFileSync(process.argv[1], String(s.address().port)));
-        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" ) &
+        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" "$host" ) &
   fi
   SRV_PID=$!
   SERVER_PIDS="$SERVER_PIDS $SRV_PID"
@@ -925,6 +927,28 @@ else
   a=$P_LO1; b=$P_LO2; [ "$a" -gt "$b" ] && { a=$P_LO2; b=$P_LO1; }
   contains "the lowest ports come first, whatever order the processes started in" \
     "▶ localhost:$a localhost:$b localhost:$lo +1" "$got"
+
+  # Two projects on one port, one on each loopback address: both can bind, and
+  # each session must see its own. Ports used to be deduplicated before the
+  # project check, keeping whichever socket the OS listed first, so one of the
+  # two sessions always lost its server; checking both catches that whatever
+  # order lsof or ss lists them in.
+  mkdir -p "$FIX/samea" "$FIX/sameb"
+  if start_server "$FIX/samea" node 0 127.0.0.1; then
+    P_SAME=$SRV_PORT
+    if start_server "$FIX/sameb" node "$P_SAME" ::1; then
+      got=$(raw "$FIX/samea" "\"workspace\":{\"project_dir\":\"$FIX/samea\"}" | strip_links | sed -n '1p')
+      contains "two projects on one port: the 127.0.0.1 one sees its server" "localhost:$P_SAME" "$got"
+      got=$(raw "$FIX/sameb" "\"workspace\":{\"project_dir\":\"$FIX/sameb\"}" | strip_links | sed -n '1p')
+      contains "two projects on one port: the ::1 one sees its server" "localhost:$P_SAME" "$got"
+      n_links=$(printf '%s' "$got" | grep -o "localhost:$P_SAME" | wc -l | tr -d ' ')
+      equals "two projects on one port: the port is listed once" "1" "$n_links"
+    else
+      echo "SKIP  ::1 cannot be bound here (IPv6 off), so two projects cannot share a port"
+    fi
+  else
+    bad "a 127.0.0.1 server for the same-port case started"
+  fi
 
   # Linux reads the runtime from /proc/PID/exe, because the process name ss
   # reports can be anything: CI's official Node 24 build says MainThread.

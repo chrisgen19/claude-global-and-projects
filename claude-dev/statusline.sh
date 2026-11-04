@@ -628,7 +628,12 @@ _dev_scan() {
   esac
 }
 
-_dev_list=""   # " port:pid", one entry per port (IPv4 and IPv6 sockets dedupe)
+# " port:pid" pairs. Only exact repeats collapse here (one process listening on
+# both IPv4 and IPv6). Ports are deduplicated after the project check, not
+# before: two processes can hold one port on different loopback addresses
+# (127.0.0.1:3000 and [::1]:3000), and keeping whichever lsof listed first
+# dropped the session's own server whenever the other project's came first.
+_dev_list=""
 if [ -n "$_dev_proj" ]; then
   _dev_cache="/tmp/claude-statusline-devlisten-${UID}"
   _dev_age="${CLAUDE_STATUSLINE_DEV_MAX_AGE:-10}"
@@ -645,7 +650,7 @@ if [ -n "$_dev_proj" ]; then
   fi
   for _e in $_dev_raw; do
     [[ "$_e" =~ ^[0-9]+:[0-9]+$ ]] || continue
-    case "$_dev_list " in *" ${_e%%:*}:"*) continue ;; esac
+    case "$_dev_list " in *" $_e "*) continue ;; esac
     _dev_list+=" $_e"
   done
 fi
@@ -667,9 +672,13 @@ if [ -n "$_dev_list" ]; then
         case "$_dc" in "$_dev_real"|"$_dev_real"/*) ;; *) continue ;; esac
         ;;
     esac
+    # Now one link per port: two of the project's own processes on one port
+    # (both loopback addresses) still make a single localhost link.
+    _p="${_e%%:*}"
+    case " ${_dev_ports[*]} " in *" $_p "*) continue ;; esac
     # Insertion sort, lowest port first: bash 3.2 has no sort builtin, and a
     # `sort` fork for a list this short would cost more than it saves.
-    _p="${_e%%:*}"; _i=${#_dev_ports[@]}; _dev_ports+=("$_p")
+    _i=${#_dev_ports[@]}; _dev_ports+=("$_p")
     while [ "$_i" -gt 0 ] && [ "${_dev_ports[$((_i - 1))]}" -gt "$_p" ]; do
       _dev_ports[$_i]="${_dev_ports[$((_i - 1))]}"; _i=$((_i - 1))
     done

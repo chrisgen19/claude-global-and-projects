@@ -99,8 +99,11 @@ spend limit.
 For the dev server links, each caught under both: dropping the runtime filter,
 matching the project as a bare prefix (so `devproj-old` counts), skipping
 symlink resolution, not excluding the home directory, dropping the three-port
-limit, skipping the sort, letting `osc8` link `http://` for any caller, and not
-linking the ports. On Linux (an `ubuntu:26.04` container, as root and as a
+limit, skipping the sort, letting `osc8` link `http://` for any caller, not
+linking the ports, and deduplicating ports before the project check (two
+projects on one port, on `127.0.0.1` and `::1`: one session lost its server).
+That case prints `SKIP` where `::1` cannot be bound, as in a Docker container
+with IPv6 off. On Linux (an `ubuntu:26.04` container, as root and as a
 normal user), matching the runtime by `/proc/PID/comm` instead of
 `/proc/PID/exe` is caught by the `MainThread` case: that is what CI's official
 Node 24 build reports as its process name, which the first version matched on
