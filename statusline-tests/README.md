@@ -38,9 +38,13 @@ Two things worth knowing before editing:
 does not vary with whatever is installed on the machine running the tests.
 
 The dev server tests start real listeners: `node` servers on OS-assigned (and
-two fixed, 20000-20999) ports, each in a fixture directory, plus one copy of
-`node` renamed `notadev` to stand for a listener that is not a dev runtime.
-They need `node` on `PATH` and print `SKIP` without it; both CI runners have it.
+two fixed, 20000-20999) ports, each in a fixture directory, plus one `perl`
+socket server to stand for a listener that is not a dev runtime. (A renamed
+copy of `node` did that first, until CI's macOS `node` failed to start from
+another directory: it loads `libnode` by a path relative to its own binary.)
+They need `node` and `perl` on `PATH` and print `SKIP` without them; both CI
+runners have both. If the first detection check fails, the suite prints what
+`lsof` or `ss` sees for that server, with its `comm` and cwd.
 The exit trap stops them and removes only their own `devcwd` cache entries.
 `CLAUDE_STATUSLINE_DEV_MAX_AGE=0` is exported for the whole suite, which makes
 the script neither read nor write the shared listener cache: an earlier render

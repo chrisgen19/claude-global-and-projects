@@ -778,19 +778,29 @@ echo "-- dev servers in the session's project --"
 # directory so its cwd says which project it belongs to. The listener cache is
 # off for the whole suite (see RUN_BASH), so every render sees current sockets.
 
-# start_server <dir> [binary] [port] -- sets SRV_PORT and SRV_PID, or returns 1.
-# Port 0 (the default) lets the OS pick; a fixed port that is taken makes node
-# exit, which shows up here as no port file.
+# start_server <dir> [node|perl] [port] -- sets SRV_PORT and SRV_PID, or
+# returns 1. Port 0 (the default) lets the OS pick; a fixed port that is taken
+# makes the server exit, which shows up here as no port file. perl stands for a
+# listener that is not a dev runtime: a renamed copy of node did too, until CI's
+# macOS node turned out to load libnode from a path relative to its binary.
 start_server() {
-  local dir="$1" bin="${2:-node}" port="${3:-0}" pf waited=0
+  local dir="$1" kind="${2:-node}" port="${3:-0}" pf waited=0
   pf="$FIX/port.$$.$RANDOM"
-  # exec, so the listening process is the node itself, with $dir as its cwd.
-  ( cd "$dir" && exec "$bin" -e '
-      const s = require("net").createServer();
-      s.on("error", () => process.exit(1));
-      s.listen(Number(process.argv[2]), "127.0.0.1", () =>
-        require("fs").writeFileSync(process.argv[1], String(s.address().port)));
-      setTimeout(() => process.exit(0), 120000);' "$pf" "$port" ) &
+  # exec, so the listening process is the server itself, with $dir as its cwd.
+  if [ "$kind" = perl ]; then
+    ( cd "$dir" && exec perl -MIO::Socket::INET -e '
+        my $s = IO::Socket::INET->new(Listen => 5, LocalAddr => "127.0.0.1",
+          LocalPort => $ARGV[1]) or exit 1;
+        open(my $f, ">", $ARGV[0]) or exit 1; print $f $s->sockport; close $f;
+        sleep 120;' "$pf" "$port" ) &
+  else
+    ( cd "$dir" && exec node -e '
+        const s = require("net").createServer();
+        s.on("error", () => process.exit(1));
+        s.listen(Number(process.argv[2]), "127.0.0.1", () =>
+          require("fs").writeFileSync(process.argv[1], String(s.address().port)));
+        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" ) &
+  fi
   SRV_PID=$!
   SERVER_PIDS="$SERVER_PIDS $SRV_PID"
   # Up to 5s (100 x 0.05s) for node to start and write its port.
@@ -818,19 +828,43 @@ start_low_server() {
 if ! command -v node > /dev/null; then
   echo "SKIP  node is not installed, so no fixture server can listen"
 else
-  mkdir -p "$FIX/devproj/apps/web" "$FIX/otherproj" "$FIX/devproj-old" "$FIX/bin"
-  # A copy of node under a name that is not a dev runtime.
-  cp "$(command -v node)" "$FIX/bin/notadev"
-  start_server "$FIX/devproj"          || bad "server in the project started"; P_ROOT=$SRV_PORT
+  mkdir -p "$FIX/devproj/apps/web" "$FIX/otherproj" "$FIX/devproj-old"
+  start_server "$FIX/devproj"          || bad "server in the project started"; P_ROOT=$SRV_PORT; PID_ROOT=$SRV_PID
   start_server "$FIX/devproj/apps/web" || bad "server in a subdirectory started"; P_SUB=$SRV_PORT
   start_server "$FIX/otherproj"        || bad "server in another project started"; P_OTHER=$SRV_PORT; PID_OTHER=$SRV_PID
   start_server "$FIX/devproj-old"      || bad "server in a sibling started"; P_SIB=$SRV_PORT
-  start_server "$FIX/devproj" "$FIX/bin/notadev" || bad "non-dev listener started"; P_NODEV=$SRV_PORT
+  if command -v perl > /dev/null; then
+    start_server "$FIX/devproj" perl || bad "non-dev listener started"; P_NODEV=$SRV_PORT
+  else
+    echo "SKIP  perl is not installed, so no non-dev listener can be started"; P_NODEV=0
+  fi
 
   dev_proj="\"workspace\":{\"project_dir\":\"$FIX/devproj\"}"
   got=$(raw "$FIX/devproj" "$dev_proj")
   line=$(printf '%s' "$got" | strip_links | sed -n '1p')
   contains "a server in the project is shown" "localhost:$P_ROOT" "$line"
+  # When detection fails outright, say what the OS tools see for the fixture
+  # server, so a CI log shows the cause rather than just the missing port.
+  case "$line" in
+    *"localhost:$P_ROOT"*) ;;
+    *)
+      echo "        diagnostics for pid $PID_ROOT (port $P_ROOT), OSTYPE=$OSTYPE:"
+      {
+        case "$OSTYPE" in
+          darwin*|*bsd*|FreeBSD*)
+            lsof -nP -a -iTCP -sTCP:LISTEN -p "$PID_ROOT" -Fpcn
+            echo "comm (ps): $(ps -o comm= -p "$PID_ROOT")"
+            lsof -a -p "$PID_ROOT" -d cwd -Fn ;;
+          *)
+            echo "ss: $(command -v ss || echo 'not found')"
+            ss -ltnpH | grep -F ":$P_ROOT "
+            echo "comm: $(cat "/proc/$PID_ROOT/comm")"
+            echo "cwd:  $(readlink "/proc/$PID_ROOT/cwd")" ;;
+        esac
+        echo "project_dir: $FIX/devproj"
+      } 2>&1 | sed 's/^/          /'
+      ;;
+  esac
   contains "a server in a project subdirectory is shown" "localhost:$P_SUB" "$line"
   excludes "a server in another project is not shown" "localhost:$P_OTHER" "$line"
   excludes "a server in a sibling such as devproj-old is not shown" "localhost:$P_SIB" "$line"
