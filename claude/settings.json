@@ -37,15 +37,6 @@
             "type": "command"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook PostToolUse",
-            "async": true
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [
@@ -104,15 +95,6 @@
           {
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
             "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook Stop",
-            "async": true
           }
         ]
       }
@@ -237,15 +219,6 @@
             "type": "command"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook SessionEnd",
-            "async": true
-          }
-        ]
       }
     ],
     "PreToolUse": [
@@ -294,15 +267,6 @@
           {
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
             "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook SubagentStop",
-            "async": true
           }
         ]
       }
@@ -369,5 +333,8 @@
         "repo": "anthropics/claude-plugins-community"
       }
     }
+  },
+  "env": {
+    "PLAYWRIGHT_MCP_HEADLESS": "true"
   }
 }

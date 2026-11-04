@@ -1,6 +1,7 @@
 {
   "env": {
-    "SUPERPOWERS_DISABLE_TELEMETRY": "1"
+    "SUPERPOWERS_DISABLE_TELEMETRY": "1",
+    "PLAYWRIGHT_MCP_HEADLESS": "true"
   },
   "attribution": {
     "commit": "",
@@ -12,7 +13,7 @@
       "Bash(pnpx modern-web-guidance@latest:*)"
     ]
   },
-  "model": "claude-opus-5",
+  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
@@ -40,15 +41,6 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook PostToolUse",
-            "async": true
           }
         ]
       }
@@ -109,15 +101,6 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook Stop",
-            "async": true
           }
         ]
       }
@@ -232,15 +215,6 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook SessionEnd",
-            "async": true
-          }
-        ]
       }
     ],
     "PreToolUse": [
@@ -289,15 +263,6 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/token_profiler.py hook SubagentStop",
-            "async": true
           }
         ]
       }
@@ -376,11 +341,7 @@
     "claude-md-management@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true,
-    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
-    "remotion@remotion": true,
-    "design@knowledge-work-plugins": true,
-    "design-skills@design-skills": true
+    "feature-dev@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -394,30 +355,6 @@
         "source": "github",
         "repo": "GoogleChrome/modern-web-guidance"
       }
-    },
-    "ui-ux-pro-max-skill": {
-      "source": {
-        "source": "github",
-        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
-      }
-    },
-    "remotion": {
-      "source": {
-        "source": "github",
-        "repo": "remotion-dev/claude-code-plugin"
-      }
-    },
-    "knowledge-work-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/knowledge-work-plugins"
-      }
-    },
-    "design-skills": {
-      "source": {
-        "source": "github",
-        "repo": "cuellarfr/design-skills"
-      }
     }
   },
   "alwaysThinkingEnabled": true,
@@ -427,7 +364,7 @@
       "effortLevel": "medium"
     },
     "claude-opus-5": {
-      "effortLevel": "medium"
+      "effortLevel": "xhigh"
     }
   },
   "tui": "fullscreen",
