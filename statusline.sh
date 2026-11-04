@@ -144,11 +144,18 @@ safe_cwd="${safe_cwd//[^A-Za-z0-9_.-]/_}"
 # Keep the tail (the distinctive part) if the path would overflow NAME_MAX.
 # Guarded: a negative offset larger than the string yields "" in bash.
 [ ${#safe_cwd} -gt 200 ] && safe_cwd="${safe_cwd: -200}"
-# The -v3 is the cache *format* version. Each time the line gains a field,
+# The mangling is lossy: /x/a/b and /x/a_b, or "my repo" and "my_repo", or two
+# long paths sharing their last 200 chars, all map to one file. So the file
+# name only picks a slot, and the exact cwd is stored as the entry's first line
+# and checked on every read. An entry for a different directory counts as a
+# miss, so a collision costs a recompute and never shows another repo's branch
+# or git identity. Comparing a string costs no fork, unlike hashing the cwd.
+#
+# The -v4 is the cache *format* version. Each time the entry changes shape,
 # reading it back from a file written by the previous format would silently
 # shift every value after it, so the format gets a new name instead: v2 added
-# conflicts, upstream and ahead/behind, v3 added the git email.
-CACHE_FILE="/tmp/claude-statusline-git-v3-${UID}-${safe_cwd}"
+# conflicts, upstream and ahead/behind, v3 the git email, v4 the cwd key line.
+CACHE_FILE="/tmp/claude-statusline-git-v4-${UID}-${safe_cwd}"
 # The cache exists to absorb the burst of renders inside a single turn, not to
 # serve the scheduled refresh: with "refreshInterval": 60 in settings.json those
 # are 60s apart, so they always find a stale cache and always pay full price.
@@ -168,9 +175,18 @@ case "$OSTYPE" in
   *)                      _mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; } ;;
 esac
 
+# True when the entry's key line is this exact cwd. A read failure leaves _key
+# empty, which only matches an empty cwd, and that never reaches the cache.
+cache_is_ours() {
+  local _key=""
+  IFS= read -r _key < "$CACHE_FILE" || return 1
+  [ "$_key" = "$cwd" ]
+}
+
 cache_is_stale() {
   [ ! -f "$CACHE_FILE" ] || \
-  [ $((now - $(_mtime "$CACHE_FILE"))) -gt $CACHE_MAX_AGE ]
+  [ $((now - $(_mtime "$CACHE_FILE"))) -gt $CACHE_MAX_AGE ] || \
+  ! cache_is_ours
 }
 
 if cache_is_stale && [ -n "$cwd" ]; then
@@ -262,7 +278,10 @@ if cache_is_stale && [ -n "$cwd" ]; then
   # counts. (A `|` is legal in a git branch name and would still shift them;
   # a tab delimiter would fix that but IFS collapses runs of whitespace, which
   # would break the all-empty line written outside a work tree.)
-  printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$branch" "$staged" "$modified" "$untracked" \
+  # The cwd sits on its own line ahead of the fields, so a `|` in a path can
+  # never shift them.
+  printf '%s\n%s|%s|%s|%s|%s|%s|%s|%s\n' "$cwd" \
+    "$branch" "$staged" "$modified" "$untracked" \
     "$conflicts" "$no_upstream" "${ahead}/${behind}" "$gh_email" > "$CACHE_FILE.$$"
   # Rename is atomic, so a concurrent reader never sees a half-written line.
   mv -f "$CACHE_FILE.$$" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE.$$"
@@ -270,9 +289,17 @@ fi
 
 git_branch=""; git_staged=0; git_modified=0; git_untracked=0
 git_conflicts=0; git_no_upstream=0; git_ab=""; gh_email=""
+# The key is checked again here, not just in cache_is_stale: a colliding
+# session can rename its own entry into the slot between our write and this
+# read. If it does, this render shows no git info rather than the other repo's.
 if [ -f "$CACHE_FILE" ]; then
-  IFS='|' read -r git_branch git_staged git_modified git_untracked \
-    git_conflicts git_no_upstream git_ab gh_email < "$CACHE_FILE"
+  {
+    IFS= read -r _key
+    if [ "$_key" = "$cwd" ]; then
+      IFS='|' read -r git_branch git_staged git_modified git_untracked \
+        git_conflicts git_no_upstream git_ab gh_email
+    fi
+  } < "$CACHE_FILE"
 fi
 git_ahead="${git_ab%%/*}"; git_behind="${git_ab##*/}"
 

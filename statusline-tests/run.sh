@@ -348,6 +348,27 @@ contains "the git email username is shown" "t@e.com" \
 contains "the git email username appears on the line" "t" \
   "$(render "$FIX/sync" | sed -n '1p')"
 
+echo "-- cache key collisions --"
+# The cache file name mangles / to _, so a/b and a_b share one slot. Rendered
+# back to back (well inside the 10s window), the second must not be served the
+# first one's branch or git identity. The branches and emails differ so either
+# kind of leak shows up.
+newrepo "$FIX/col/a/b" col-slash-branch || exit 1
+git -C "$FIX/col/a/b" config user.email slashuser@e.com
+newrepo "$FIX/col/a_b" col-under-branch || exit 1
+git -C "$FIX/col/a_b" config user.email underuser@e.com
+first=$(render "$FIX/col/a/b" | sed -n '1p')
+second=$(render "$FIX/col/a_b" | sed -n '1p')
+contains "a/b shows its own branch" "col-slash-branch" "$first"
+contains "a_b, rendered next, shows its own branch" "col-under-branch" "$second"
+excludes "a_b is not served the a/b branch from the cache" "col-slash-branch" "$second"
+contains "a_b shows its own git identity" "underuser" "$second"
+excludes "a_b is not served the a/b git identity from the cache" "slashuser" "$second"
+# And back again: the slot now holds a_b's entry, which a/b must not take.
+again=$(render "$FIX/col/a/b" | sed -n '1p')
+contains "a/b after a_b still shows its own branch" "col-slash-branch" "$again"
+excludes "a/b after a_b is not served the a_b identity" "underuser" "$again"
+
 echo "-- malformed and absent payload fields --"
 # The script is fed whatever Claude Code sends; a missing field must not make
 # it print an error or die mid-line.
