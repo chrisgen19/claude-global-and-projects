@@ -206,16 +206,22 @@ Applies to both the context bar and each rate limit window.
 ```bash
 # Personal account
 cp statusline.sh ~/.claude-personal/statusline.sh
-# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR='\033[36m' (cyan)
+# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR=$'\033[36m' (cyan)
 
 # Work account
 cp statusline.sh ~/.claude-work/statusline.sh
-# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR='\033[33m' (yellow)
+# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR=$'\033[33m' (yellow)
 
 # Dev account
 cp statusline.sh ~/.claude-dev/statusline.sh
-# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR='\033[32m' (green)
+# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[32m' (green)
 ```
+
+The `$'...'` quoting is required, not a style choice. The script prints its two
+lines with `printf '%s'`, so `ACCOUNT_COLOR` has to hold a real ESC byte
+already. A plain-single-quoted `'\033[36m'` is the eight characters backslash,
+zero, three, three, and so on, and the label renders as the visible text
+`\033[36mPERSONAL`.
 
 Then enable it in each account's `settings.json`:
 ```json
@@ -239,13 +245,22 @@ gen() {  # $1=account dir  $2=ACCOUNT_NAME line  $3=ACCOUNT_COLOR line
   { head -13 statusline.sh; printf '%s\n%s\n' "$2" "$3"; tail -n +16 statusline.sh; } > "$1/statusline.sh"
 }
 
-gen ~/.claude-personal 'ACCOUNT_NAME="PERSONAL"   # or "WORK" / "DEV"' \
-  "ACCOUNT_COLOR='\033[36m'  # Cyan PERSONAL, '\033[33m' Yellow WORK, '\033[32m' Green DEV"
-gen ~/.claude-work 'ACCOUNT_NAME="WORK"       # or "PERSONAL" / "DEV"' \
-  "ACCOUNT_COLOR='\033[33m'  # Yellow WORK, '\033[36m' Cyan PERSONAL, '\033[32m' Green DEV"
-gen ~/.claude-dev 'ACCOUNT_NAME="DEV"        # or "PERSONAL" / "WORK"' \
-  "ACCOUNT_COLOR='\033[32m'  # Green DEV, '\033[36m' Cyan PERSONAL, '\033[33m' Yellow WORK"
+gen claude-personal 'ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"' \
+  "ACCOUNT_COLOR=\$'\\033[36m'   # Cyan PERSONAL, \$'\\033[33m' Yellow WORK, \$'\\033[32m' Green DEV"
+gen claude-work 'ACCOUNT_NAME="WORK"         # or "PERSONAL" / "DEV"' \
+  "ACCOUNT_COLOR=\$'\\033[33m'   # Yellow WORK, \$'\\033[36m' Cyan PERSONAL, \$'\\033[32m' Green DEV"
+gen claude-dev 'ACCOUNT_NAME="DEV"          # or "PERSONAL" / "WORK"' \
+  "ACCOUNT_COLOR=\$'\\033[32m'   # Green DEV, \$'\\033[36m' Cyan PERSONAL, \$'\\033[33m' Yellow WORK"
 ```
+
+Run it from the repo root: it regenerates the tracked `claude-*/statusline.sh`
+copies, which is what CI diff-checks and what `./install.sh` deploys. Writing
+straight into `~/.claude-*` instead would fix the live files while leaving the
+tracked ones behind, and `./install.sh --check` would then report drift.
+
+The `\$'\\033[36m'` escaping is what produces a literal `$'\033[36m'` in the
+generated line, which is what the script needs. Regenerating with plain
+`'\033[36m'` renders the label as visible text instead of colouring it.
 
 The `head -13` / `tail -n +16` split assumes the config block sits on lines 14-15. Keep it there when editing the template header, or every regenerated copy loses its label.
 

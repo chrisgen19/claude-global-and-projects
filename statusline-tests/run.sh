@@ -166,6 +166,34 @@ contains "new branch in a repo with a remote shows no-upstream" \
   "feature/phase-9 no-upstream" "$(seg "$FIX/unpushed")"
 
 # ---------------------------------------------------------------------------
+echo "-- submodules --"
+# A submodule holding nothing but untracked files is reported by porcelain v2
+# as `1 .M S..U`, whose Y field reads as modified, while the `git diff` this
+# parser replaced ignored it (diff.ignoreSubmodules defaults to untracked).
+# Without --ignore-submodules=untracked a submodule with build output in it
+# would pin a permanent ~1 on the line. A real tracked change must still show.
+#
+# -c protocol.file.allow=always: git refuses file:// submodules by default
+# (CVE-2022-39253), and the fixtures here are local paths.
+newrepo "$FIX/inner" || exit 1
+newrepo "$FIX/super" || exit 1
+if git -C "$FIX/super" -c protocol.file.allow=always submodule add -q "$FIX/inner" sub > /dev/null; then
+  git -C "$FIX/super" commit -qm "add submodule"
+
+  cp -R "$FIX/super" "$FIX/sub-untracked" || exit 1
+  echo scratch > "$FIX/sub-untracked/sub/untracked.txt"
+  excludes "a submodule with only untracked content is not counted as modified" \
+    "~1" "$(seg "$FIX/sub-untracked")"
+
+  cp -R "$FIX/super" "$FIX/sub-modified" || exit 1
+  echo changed >> "$FIX/sub-modified/sub/seed.txt"
+  contains "a real tracked change inside a submodule still counts as modified" \
+    "~1" "$(seg "$FIX/sub-modified")"
+else
+  # Never silently skip: a skipped assertion looks like a passing one.
+  bad "submodule fixture could not be created (git submodule add failed)"
+fi
+
 echo "-- conflicts --"
 # Before the porcelain parse, a single conflicted file was reported as a bogus
 # "+1 ~2" by the two diff calls. It must not swing the other way and vanish.

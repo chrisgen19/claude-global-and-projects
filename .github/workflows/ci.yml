@@ -60,6 +60,27 @@ jobs:
       - name: statusline behaviour tests
         run: ./statusline-tests/run.sh
 
+      # statusline.sh prints its two lines with `printf '%s'`, so ACCOUNT_COLOR
+      # must already hold a real ESC byte: only $'\033[..m' does that. A
+      # plain-single-quoted '\033[..m' renders as the visible text
+      # "\033[36mPERSONAL". The template and the three copies are covered by the
+      # drift check below, but the README documents this assignment twice and
+      # nothing tied those to the code, so both went stale in #82.
+      - name: ACCOUNT_COLOR literals are ANSI-C quoted
+        run: |
+          # Scoped to ACCOUNT_COLOR lines: the README also quotes the broken
+          # form in prose, to say what it renders as.
+          #
+          # \\+ matches one OR MORE backslashes. The README's gen() helper
+          # passes the line inside a double-quoted shell string, where the same
+          # mistake reads '\\033[36m' with two of them, and a one-backslash
+          # pattern walked straight past it.
+          if grep -nP "ACCOUNT_COLOR.*(?<!\\\$)'\\\\+033\[" README.md statusline.sh claude*/statusline.sh; then
+            echo "FAIL  the lines above use '\\033[..m'; it must be \$'\\033[..m'"
+            exit 1
+          fi
+          echo "ok    every ACCOUNT_COLOR literal is ANSI-C quoted"
+
       # The three account status lines are generated from statusline.sh and
       # differ only in the config block on lines 14-15. Hand-editing one copy
       # is the documented way they drift apart, so diff them ignoring it.

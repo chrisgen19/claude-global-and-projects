@@ -174,6 +174,13 @@ if cache_is_stale && [ -n "$cwd" ]; then
   # conflict, where the old code reported a bogus `+1 ~2` for a single file;
   # porcelain reports it once as `u`, which is why conflicts are counted and
   # shown separately below rather than silently vanishing.
+  #
+  # --ignore-submodules=untracked keeps that equivalence for submodules. A
+  # submodule holding nothing but untracked files is reported as `1 .M S..U`,
+  # whose Y field would count as modified, while `git diff` ignored it because
+  # diff.ignoreSubmodules defaults to untracked. Without the flag a submodule
+  # with build output in it would pin a permanent `~1` on the line. A real
+  # tracked change inside a submodule still reports (`S.M.`), as it did before.
   branch=""; head_oid=""; upstream=""; ahead=0; behind=0
   staged=0; modified=0; untracked=0; conflicts=0
   while IFS= read -r _line; do
@@ -194,7 +201,8 @@ if cache_is_stale && [ -n "$cwd" ]; then
       'u '*) conflicts=$((conflicts + 1)) ;;
       '? '*) untracked=$((untracked + 1)) ;;
     esac
-  done < <(git --no-optional-locks -C "$cwd" status --porcelain=v2 --branch -uall 2>/dev/null)
+  done < <(git --no-optional-locks -C "$cwd" status --porcelain=v2 --branch -uall \
+    --ignore-submodules=untracked 2>/dev/null)
 
   # An empty `upstream` means the branch is not tracking anything, which is
   # worth flagging ("nothing is pushed") only in a repo that HAS a remote. In a
