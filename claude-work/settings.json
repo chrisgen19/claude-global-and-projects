@@ -290,7 +290,11 @@
     "claude-md-management@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true
+    "feature-dev@claude-plugins-official": true,
+    "design@knowledge-work-plugins": true,
+    "design-skills@design-skills": true,
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "remotion@remotion": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -304,6 +308,30 @@
         "source": "github",
         "repo": "GoogleChrome/modern-web-guidance"
       }
+    },
+    "knowledge-work-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins"
+      }
+    },
+    "design-skills": {
+      "source": {
+        "source": "github",
+        "repo": "cuellarfr/design-skills"
+      }
+    },
+    "ui-ux-pro-max-skill": {
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
+      }
+    },
+    "remotion": {
+      "source": {
+        "source": "github",
+        "repo": "remotion-dev/claude-code-plugin"
+      }
     }
   },
   "alwaysThinkingEnabled": true,
@@ -315,6 +343,5 @@
   },
   "tui": "fullscreen",
   "terminalProgressBarEnabled": true,
-  "agentPushNotifEnabled": true,
-  "skipWorkflowUsageWarning": true
+  "agentPushNotifEnabled": true
 }

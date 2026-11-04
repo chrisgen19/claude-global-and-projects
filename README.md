@@ -56,6 +56,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   ├── nextjs-conventions/              # Personal Next.js conventions (personal + dev only)
 │   │   ├── SKILL.md
 │   │   └── patterns.md                    #   Verified reference code: env, Prisma 7, Better Auth, DAL, actions, proxy
+│   ├── theme-factory/                   # 10 preset themes (colours + fonts) for slides, docs and pages (Apache 2.0)
 │   └── wp-backup/SKILL.md               # Export WordPress DB + zip files
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
@@ -103,13 +104,14 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/explain-code`** — Explains how code works using diagrams and analogies, with depth scaled to complexity
 - **`/deep-dive`** — Researches a system or integration thoroughly, then writes it up as both Markdown (mermaid) and a print-ready PDF (inline SVG)
 - **`/doc-coauthoring`** — Structured workflow for co-authoring documentation, proposals, specs and decision docs: transfers context, iterates on the draft, then verifies it works for its readers
+- **`/theme-factory`**: Applies one of 10 preset themes (colours and font pairings) to slides, docs, reports and HTML pages, or generates a new theme. Apache 2.0, licence in the skill folder
 
 **Stack-specific**
 - **`/nextjs-conventions`** — Personal Next.js 16 conventions: App Router, strict TypeScript, Prisma 7, Better Auth, Zod 4, Server Actions, data access layer, Biome, pnpm
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 - **`/mcp-builder`** — Guide to building MCP servers that expose an external API as well-designed tools, in Python (FastMCP) or Node/TypeScript (MCP SDK)
 
-> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other ten. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
+> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -928,8 +930,8 @@ lists. That part is skipped when the `claude` CLI is not on `PATH`. It also comp
 `codex/config.toml` with `~/.codex/config.toml`, see [Codex config](#codex-config-codex). The herdr hook is herdr's own file and a herdr update
 rewrites it live: when `--check` flags it, copy the live file back into
 `claude/hooks/` instead of deploying over it. Settings are
-compared with sorted keys and without the machine-local keys (`autoMode` and
-`skipDangerousModePermissionPrompt`, see [Account settings](#account-settings)), so
+compared with sorted keys and without the machine-local keys (`autoMode`,
+`skipDangerousModePermissionPrompt` and `skipWorkflowUsageWarning`, see [Account settings](#account-settings)), so
 formatting noise and those keys never read as drift. Run it before editing a live file by
 hand, and after.
 
@@ -1154,7 +1156,7 @@ Its status line is a 24-line **router** rather than a copy of the template: it r
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
 ```
 
-> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own. `skipDangerousModePermissionPrompt` stays out too: it records that you accepted the bypass-permissions dialog, which also lets bypass mode start without asking (background sessions, launches that request it), and that consent should be given on each machine rather than carried to another by a deploy. `--pull` strips both keys, `--check` ignores them, and a deploy keeps each live file's own values.
+> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own. `skipDangerousModePermissionPrompt` stays out too: it records that you accepted the bypass-permissions dialog, which also lets bypass mode start without asking (background sessions, launches that request it), and that consent should be given on each machine rather than carried to another by a deploy. `skipWorkflowUsageWarning` is the same kind of consent: it records that you accepted the multi-agent workflow usage warning, after which auto mode runs workflows without asking first. `--pull` strips all three keys, `--check` ignores them, and a deploy keeps each live file's own values.
 
 Restore with:
 ```bash
