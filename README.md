@@ -977,7 +977,7 @@ the tab script cannot.
 
 ### Codex config (`codex/`)
 
-`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, the hooks feature flag, four MCP servers (Atlassian Rovo, the OpenAI developer docs, chrome-devtools and the budget tracker) and the enabled plugin.
+`codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, the hooks feature flag, five MCP servers (Atlassian Rovo, the OpenAI developer docs, shadcn, chrome-devtools and the budget tracker) and the enabled plugin.
 
 Auto-review is enabled with these top-level settings:
 
