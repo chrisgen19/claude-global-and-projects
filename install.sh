@@ -89,10 +89,11 @@ backup() {
 }
 
 # Settings keys that belong to one machine and never go into the repo: autoMode
-# holds client context, and skipDangerousModePermissionPrompt records consent to
-# bypass-permissions mode, which each machine should ask for itself. --check
-# ignores them, --pull strips them and a deploy keeps the live values.
-LOCAL_KEYS='["autoMode","skipDangerousModePermissionPrompt"]'
+# holds client context, skipDangerousModePermissionPrompt records consent to
+# bypass-permissions mode, and skipWorkflowUsageWarning records consent to the
+# multi-agent workflow usage warning: each machine should ask for both itself.
+# --check ignores them, --pull strips them and a deploy keeps the live values.
+LOCAL_KEYS='["autoMode","skipDangerousModePermissionPrompt","skipWorkflowUsageWarning"]'
 
 # Print a settings file without its machine-local keys; -S sorts the keys.
 strip_local() { # file [-S]

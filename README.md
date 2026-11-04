@@ -928,8 +928,8 @@ lists. That part is skipped when the `claude` CLI is not on `PATH`. It also comp
 `codex/config.toml` with `~/.codex/config.toml`, see [Codex config](#codex-config-codex). The herdr hook is herdr's own file and a herdr update
 rewrites it live: when `--check` flags it, copy the live file back into
 `claude/hooks/` instead of deploying over it. Settings are
-compared with sorted keys and without the machine-local keys (`autoMode` and
-`skipDangerousModePermissionPrompt`, see [Account settings](#account-settings)), so
+compared with sorted keys and without the machine-local keys (`autoMode`,
+`skipDangerousModePermissionPrompt` and `skipWorkflowUsageWarning`, see [Account settings](#account-settings)), so
 formatting noise and those keys never read as drift. Run it before editing a live file by
 hand, and after.
 
@@ -1154,7 +1154,7 @@ Its status line is a 24-line **router** rather than a copy of the template: it r
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
 ```
 
-> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own. `skipDangerousModePermissionPrompt` stays out too: it records that you accepted the bypass-permissions dialog, which also lets bypass mode start without asking (background sessions, launches that request it), and that consent should be given on each machine rather than carried to another by a deploy. `--pull` strips both keys, `--check` ignores them, and a deploy keeps each live file's own values.
+> **Sanitized.** The `autoMode` block is stripped before committing. It holds auto-generated environment context about whichever client repo was last worked in (org name, CI secret names, protected branches, internal hostnames) and does not belong in a public repo. Re-add it locally by simply using Claude Code; it regenerates on its own. `skipDangerousModePermissionPrompt` stays out too: it records that you accepted the bypass-permissions dialog, which also lets bypass mode start without asking (background sessions, launches that request it), and that consent should be given on each machine rather than carried to another by a deploy. `skipWorkflowUsageWarning` is the same kind of consent: it records that you accepted the multi-agent workflow usage warning, after which auto mode runs workflows without asking first. `--pull` strips all three keys, `--check` ignores them, and a deploy keeps each live file's own values.
 
 Restore with:
 ```bash

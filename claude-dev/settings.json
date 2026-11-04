@@ -346,7 +346,6 @@
     }
   },
   "tui": "fullscreen",
-  "skipWorkflowUsageWarning": true,
   "theme": "dark",
   "terminalProgressBarEnabled": true,
   "agentPushNotifEnabled": true
