@@ -56,6 +56,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   ├── nextjs-conventions/              # Personal Next.js conventions (personal + dev only)
 │   │   ├── SKILL.md
 │   │   └── patterns.md                    #   Verified reference code: env, Prisma 7, Better Auth, DAL, actions, proxy
+│   ├── theme-factory/                   # 10 preset themes (colours + fonts) for slides, docs and pages (Apache 2.0)
 │   └── wp-backup/SKILL.md               # Export WordPress DB + zip files
 ├── wp-projects/
 │   ├── CLAUDE.md                          # WordPress project standards
@@ -103,13 +104,14 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/explain-code`** — Explains how code works using diagrams and analogies, with depth scaled to complexity
 - **`/deep-dive`** — Researches a system or integration thoroughly, then writes it up as both Markdown (mermaid) and a print-ready PDF (inline SVG)
 - **`/doc-coauthoring`** — Structured workflow for co-authoring documentation, proposals, specs and decision docs: transfers context, iterates on the draft, then verifies it works for its readers
+- **`/theme-factory`**: Applies one of 10 preset themes (colours and font pairings) to slides, docs, reports and HTML pages, or generates a new theme. Apache 2.0, licence in the skill folder
 
 **Stack-specific**
 - **`/nextjs-conventions`** — Personal Next.js 16 conventions: App Router, strict TypeScript, Prisma 7, Better Auth, Zod 4, Server Actions, data access layer, Biome, pnpm
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 - **`/mcp-builder`** — Guide to building MCP servers that expose an external API as well-designed tools, in Python (FastMCP) or Node/TypeScript (MCP SDK)
 
-> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other ten. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
+> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
