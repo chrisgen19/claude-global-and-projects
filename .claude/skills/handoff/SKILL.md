@@ -31,6 +31,9 @@ If the user needs the old session's whole context, not a summary, tell them to r
 ```bash
 claude-handoff copy <id> --to <this account>   # dev, work, personal or default
 claude-<account> --resume <full id>            # from the session's directory
+claude --resume <full id>                      # instead, for the default account
 ```
+
+`copy` prints the exact resume command with the full id. `--resume` does not accept the 8-character prefix.
 
 Resuming reloads the whole transcript, which uses a lot of the new account's limit, so suggest it only when the brief is not enough. Don't run `copy` yourself: the user resumes in a new terminal.

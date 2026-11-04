@@ -187,7 +187,7 @@ PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432  ~/
 █░░░░░░░░░░░░░░ 7% | 5h 19% (2h14m) 7d 3% (4d3h) | $1.64 | 26m 57s | +273 -3
 ```
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, the prefix [`claude-handoff`](#session-handoff-between-accounts-claude-handoff) and `--resume` take), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
 
 **Line 2** — context usage bar, rate limit windows with reset countdowns, session cost, elapsed wall clock, lines added/removed.
 
@@ -702,8 +702,9 @@ Two ways to carry a session over:
   it only when the brief is not enough.
 
 `copy` never moves or deletes the original. It refuses to overwrite an existing copy
-without `--force`, warns when the source was written in the last 2 minutes (it may
-still be running), and keeps the original timestamps. Once copied, the same id lives in
+without `--force`, and even with `--force` it refuses to replace a newer copy unless
+`--from` names the source on purpose. It warns when the source was written in the last
+2 minutes (it may still be running), and keeps the original timestamps. Once copied, the same id lives in
 two accounts: commands use the newest copy, or the one `--from <account>` names. The
 account's `memory/` folder is not copied, so each account keeps its own memory.
 

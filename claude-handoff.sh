@@ -176,6 +176,11 @@ EOF
   if [ -e "$dest/$id.jsonl" ] && [ "$3" != 1 ]; then
     die "$dest/$id.jsonl already exists (use --force to overwrite)"
   fi
+  # Without --from the source is picked automatically, so --force alone must not
+  # replace a copy that was resumed (and grew) in the target with an older one.
+  if [ -e "$dest/$id.jsonl" ] && [ -z "$4" ] && [ "$(_mtime "$dest/$id.jsonl")" -gt "$mtime" ]; then
+    die "$dest/$id.jsonl is newer than the $acct copy; use --from $acct --force to overwrite it on purpose"
+  fi
   age=$(( $(date +%s) - mtime ))
   if [ "$age" -lt 120 ]; then
     printf 'Warning: the source session was written %ss ago and may still be running.\n' "$age" >&2
@@ -184,7 +189,8 @@ EOF
   mkdir -p "$dest" || die "cannot create $dest"
   cp -p "$path" "$dest/$id.jsonl" || die "cannot copy the transcript"
   if [ -d "$src_dir/$id" ]; then
-    rm -rf "${dest:?}/$id"
+    rm -rf "${dest:?}/$id" || die "cannot remove the old $dest/$id"
+    [ -e "$dest/$id" ] && die "cannot remove the old $dest/$id"
     cp -pR "$src_dir/$id" "$dest/$id" || die "cannot copy $src_dir/$id"
   fi
 
@@ -216,6 +222,8 @@ main() {
     shift
   done
   case "$count" in ''|*[!0-9]*) die "-n needs a number" ;; esac
+  [ -d "$dir" ] || die "no such directory: $dir"
+  dir=$(cd "$dir" && pwd -P) || die "cannot resolve $dir"
 
   case "$cmd" in
     list) cmd_list "$all" "$(slug_for "$dir")" ;;

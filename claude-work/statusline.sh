@@ -267,7 +267,7 @@ if [ -n "$version" ]; then
   ver_info=" ${DIM}v${version}${RESET}"
 fi
 
-# -- Session id (first 8 chars: the prefix claude-handoff and --resume accept) --
+# -- Session id (first 8 chars: enough for claude-handoff; --resume needs the full id) --
 id_info=""
 if [ -n "$session_id" ]; then
   id_info=" ${DIM}id:${session_id:0:8}${RESET}"
