@@ -37,6 +37,15 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook PostToolUse",
+            "async": true
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -95,6 +104,15 @@
           {
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status",
             "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook Stop",
+            "async": true
           }
         ]
       }
@@ -219,6 +237,15 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SessionEnd",
+            "async": true
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -269,9 +296,68 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SubagentStop",
+            "async": true
+          }
+        ]
       }
     ]
   },
+  "footerLinksRegexes": [
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3000\\b",
+      "url": "http://localhost:3000",
+      "label": "localhost:3000"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3001\\b",
+      "url": "http://localhost:3001",
+      "label": "localhost:3001"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3020\\b",
+      "url": "http://localhost:3020",
+      "label": "localhost:3020"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3111\\b",
+      "url": "http://localhost:3111",
+      "label": "localhost:3111"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3821\\b",
+      "url": "http://localhost:3821",
+      "label": "localhost:3821"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:5173\\b",
+      "url": "http://localhost:5173",
+      "label": "localhost:5173"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:8080\\b",
+      "url": "http://localhost:8080",
+      "label": "localhost:8080"
+    },
+    {
+      "type": "regex",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
+      "label": "run {id}"
+    }
+  ],
   "terminalProgressBarEnabled": true,
   "enabledPlugins": {
     "next-steps@claude-community": true
@@ -283,8 +369,5 @@
         "repo": "anthropics/claude-plugins-community"
       }
     }
-  },
-  "env": {
-    "PLAYWRIGHT_MCP_HEADLESS": "true"
   }
 }

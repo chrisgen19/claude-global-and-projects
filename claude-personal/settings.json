@@ -1,7 +1,6 @@
 {
   "env": {
-    "SUPERPOWERS_DISABLE_TELEMETRY": "1",
-    "PLAYWRIGHT_MCP_HEADLESS": "true"
+    "SUPERPOWERS_DISABLE_TELEMETRY": "1"
   },
   "attribution": {
     "commit": "",
@@ -13,7 +12,7 @@
       "Bash(pnpx modern-web-guidance@latest:*)"
     ]
   },
-  "model": "opus",
+  "model": "claude-opus-5",
   "hooks": {
     "PostToolUse": [
       {
@@ -41,6 +40,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook PostToolUse",
+            "async": true
           }
         ]
       }
@@ -101,6 +109,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook Stop",
+            "async": true
           }
         ]
       }
@@ -215,6 +232,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SessionEnd",
+            "async": true
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -265,6 +291,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/token_profiler.py hook SubagentStop",
+            "async": true
+          }
+        ]
       }
     ]
   },
@@ -274,6 +309,56 @@
     "command": "bash ~/.claude-personal/statusline.sh",
     "refreshInterval": 60
   },
+  "footerLinksRegexes": [
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3000\\b",
+      "url": "http://localhost:3000",
+      "label": "localhost:3000"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3001\\b",
+      "url": "http://localhost:3001",
+      "label": "localhost:3001"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3020\\b",
+      "url": "http://localhost:3020",
+      "label": "localhost:3020"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3111\\b",
+      "url": "http://localhost:3111",
+      "label": "localhost:3111"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:3821\\b",
+      "url": "http://localhost:3821",
+      "label": "localhost:3821"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:5173\\b",
+      "url": "http://localhost:5173",
+      "label": "localhost:5173"
+    },
+    {
+      "type": "regex",
+      "pattern": "http://localhost:8080\\b",
+      "url": "http://localhost:8080",
+      "label": "localhost:8080"
+    },
+    {
+      "type": "regex",
+      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
+      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
+      "label": "run {id}"
+    }
+  ],
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
@@ -291,7 +376,11 @@
     "claude-md-management@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true
+    "feature-dev@claude-plugins-official": true,
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "remotion@remotion": true,
+    "design@knowledge-work-plugins": true,
+    "design-skills@design-skills": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -305,6 +394,30 @@
         "source": "github",
         "repo": "GoogleChrome/modern-web-guidance"
       }
+    },
+    "ui-ux-pro-max-skill": {
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
+      }
+    },
+    "remotion": {
+      "source": {
+        "source": "github",
+        "repo": "remotion-dev/claude-code-plugin"
+      }
+    },
+    "knowledge-work-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins"
+      }
+    },
+    "design-skills": {
+      "source": {
+        "source": "github",
+        "repo": "cuellarfr/design-skills"
+      }
     }
   },
   "alwaysThinkingEnabled": true,
@@ -314,7 +427,7 @@
       "effortLevel": "medium"
     },
     "claude-opus-5": {
-      "effortLevel": "xhigh"
+      "effortLevel": "medium"
     }
   },
   "tui": "fullscreen",
