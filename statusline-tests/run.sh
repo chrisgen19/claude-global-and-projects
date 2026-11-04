@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Behaviour tests for statusline.sh.
 #
-# shellcheck proves the script parses and avoids known footguns. It cannot tell
+# Linting proves the script parses and avoids known footguns. It cannot tell
 # whether the rendered line is correct, which is what actually breaks: the %b
 # escape bug (#81) was shellcheck-clean for as long as it existed.
+#
+# (This comment must not begin with the word shellcheck: a comment whose first
+# token is that word is parsed as a shellcheck directive and fails the lint.)
 #
 # Each test feeds the script a statusline JSON payload on stdin and asserts on
 # what it prints. Run from anywhere:  ./statusline-tests/run.sh
