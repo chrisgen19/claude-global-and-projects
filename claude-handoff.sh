@@ -56,14 +56,16 @@ human_size() {
   awk -v b="$1" 'BEGIN { if (b >= 1048576) printf "%.1fM", b / 1048576; else printf "%dK", b / 1024 }'
 }
 
-# Text of the user and assistant turns, skipping tool results and the harness's
-# <system-reminder>/<command-*> wrappers. One JSON string per message.
+# Text of the user and assistant turns, skipping tool results and the messages
+# the harness injects (<system-reminder>, <task-notification>, <command-name>,
+# <local-command-stdout>, ...). Only those known tags are skipped, so a real
+# prompt that starts with markup such as <div> is kept. One JSON object per message.
 MESSAGES_JQ='
   select(.type == "user" or .type == "assistant") | select(.isMeta != true)
   | .type as $t
   | (.message.content
      | if type == "string" then . else (map(select(.type == "text") | .text) | join("\n")) end) as $c
-  | select($c != "" and ($c | startswith("<") | not))
+  | select($c != "" and ($c | test("^<(system-reminder|task-notification|command-|local-command-|artifact-content-)") | not))
   | {role: $t, text: $c}'
 
 # Every transcript for the project (or all projects), newest first, as
