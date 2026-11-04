@@ -37,6 +37,17 @@ Two things worth knowing before editing:
 `CLAUDE_CONFIG_DIR` is pointed at an empty directory so the `(account)` suffix
 does not vary with whatever is installed on the machine running the tests.
 
+The dev server tests start real listeners: `node` servers on OS-assigned (and
+two fixed, 20000-20999) ports, each in a fixture directory, plus one copy of
+`node` renamed `notadev` to stand for a listener that is not a dev runtime.
+They need `node` on `PATH` and print `SKIP` without it; both CI runners have it.
+The exit trap stops them and removes only their own `devcwd` cache entries.
+`CLAUDE_STATUSLINE_DEV_MAX_AGE=0` is exported for the whole suite, which makes
+the script neither read nor write the shared listener cache: an earlier render
+reading a previous run's list looked up dead fixture pids. Assertions on the
+visible text of linked output use `strip_links`, since with the OSC 8 wrapper in
+place a linked port appears twice.
+
 ## Portability
 
 CI runs this on Ubuntu and on macOS with the stock `/bin/bash` 3.2 and BSD
@@ -80,3 +91,11 @@ only, as the bug is), restoring `${cwd/#$HOME/\~}`, ignoring the `%z` sign,
 linking branches without an upstream, dropping a review state, raising the
 token breakdown threshold, uncapping the session name, and pacing a monthly
 spend limit.
+
+For the dev server links, each caught under both: dropping the runtime filter,
+matching the project as a bare prefix (so `devproj-old` counts), skipping
+symlink resolution, not excluding the home directory, dropping the three-port
+limit, skipping the sort, letting `osc8` link `http://` for any caller, and not
+linking the ports. Not trimming a trailing slash from `project_dir` survives,
+and should: the resolved-path comparison strips it anyway, so the trim only
+saves a subshell.
