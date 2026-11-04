@@ -39,17 +39,20 @@ FIX=$(mktemp -d) || exit 1
 
 # Removing the fixtures is not enough: the script writes a cache entry per
 # directory it renders, so every run used to leave ~11 orphans behind in /tmp.
-# They are keyed by the mangled cwd, so deleting only the ones whose key starts
-# with this run's own $FIX leaves every other session's entries untouched. The
-# mangling has to match the script's: / becomes _, then anything outside
-# [A-Za-z0-9_.-] becomes _ as well.
-cache_prefix() {
-  local k="${FIX//\//_}"
-  printf '/tmp/claude-statusline-git-v3-%s-%s' "$UID" "${k//[^A-Za-z0-9_.-]/_}"
-}
+# They are keyed by the mangled cwd, so matching on this run's own $FIX leaves
+# every other session's entries untouched. The mangling has to agree with the
+# script's: / becomes _, then anything outside [A-Za-z0-9_.-] becomes _ too.
+#
+# The cache format version is globbed rather than named, so this keeps working
+# when the script bumps it. Naming v3 here would have quietly started leaking
+# again at v4, which is the same way the leak arrived in the first place.
 cleanup() {
   rm -rf "$FIX" "$CONFIG_DIR"
-  rm -f "$(cache_prefix)"*
+  # The variables stay quoted and only the * are bare, so the pattern expands
+  # without word-splitting the path. With no match bash passes the pattern
+  # through literally and `rm -f` ignores it.
+  local k="${FIX//\//_}"
+  rm -f /tmp/claude-statusline-git-*-"${UID}"-"${k//[^A-Za-z0-9_.-]/_}"*
 }
 trap cleanup EXIT
 
