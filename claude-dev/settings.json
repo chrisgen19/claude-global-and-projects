@@ -1,6 +1,7 @@
 {
   "env": {
-    "SUPERPOWERS_DISABLE_TELEMETRY": "1"
+    "SUPERPOWERS_DISABLE_TELEMETRY": "1",
+    "PLAYWRIGHT_MCP_HEADLESS": "true"
   },
   "attribution": {
     "commit": "",
@@ -309,56 +310,6 @@
     "command": "bash ~/.claude-dev/statusline.sh",
     "refreshInterval": 60
   },
-  "footerLinksRegexes": [
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3000\\b",
-      "url": "http://localhost:3000",
-      "label": "localhost:3000"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3001\\b",
-      "url": "http://localhost:3001",
-      "label": "localhost:3001"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3020\\b",
-      "url": "http://localhost:3020",
-      "label": "localhost:3020"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3111\\b",
-      "url": "http://localhost:3111",
-      "label": "localhost:3111"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:3821\\b",
-      "url": "http://localhost:3821",
-      "label": "localhost:3821"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:5173\\b",
-      "url": "http://localhost:5173",
-      "label": "localhost:5173"
-    },
-    {
-      "type": "regex",
-      "pattern": "http://localhost:8080\\b",
-      "url": "http://localhost:8080",
-      "label": "localhost:8080"
-    },
-    {
-      "type": "regex",
-      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
-      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
-      "label": "run {id}"
-    }
-  ],
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
