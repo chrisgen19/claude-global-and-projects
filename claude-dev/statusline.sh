@@ -270,7 +270,7 @@ fi
 # -- Session id (first 8 chars: enough for claude-handoff; --resume needs the full id) --
 id_info=""
 if [ -n "$session_id" ]; then
-  id_info=" ${DIM}id:${session_id:0:8}${RESET}"
+  id_info=" ${DIM}id:${RESET}${session_id:0:8}"
 fi
 
 # -- Git email prefix (username only, strip @domain) --
