@@ -100,6 +100,10 @@ For the dev server links, each caught under both: dropping the runtime filter,
 matching the project as a bare prefix (so `devproj-old` counts), skipping
 symlink resolution, not excluding the home directory, dropping the three-port
 limit, skipping the sort, letting `osc8` link `http://` for any caller, and not
-linking the ports. Not trimming a trailing slash from `project_dir` survives,
+linking the ports. On Linux (an `ubuntu:26.04` container, as root and as a
+normal user), matching the runtime by `/proc/PID/comm` instead of
+`/proc/PID/exe` is caught by the `MainThread` case: that is what CI's official
+Node 24 build reports as its process name, which the first version matched on
+and missed. Not trimming a trailing slash from `project_dir` survives,
 and should: the resolved-path comparison strips it anyway, so the trim only
 saves a subshell.

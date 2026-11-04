@@ -546,10 +546,14 @@ fi
 # A session in the home directory is not a project: every server under ~ would
 # match, so it shows none. Up to three ports show, lowest first, each linked to
 # http://localhost:<port>.
-# The Linux (ss) pattern. Next.js retitles its process, and on Linux that
-# reaches /proc/PID/comm, so ss reports "next-server (v…" rather than node;
-# macOS lsof still reports node. The macOS side is the -c list in _dev_scan.
-DEV_RUNTIMES='node|bun|deno|php|[Pp]ython[0-9.]*|ruby|next-server[^"]*'
+# Linux matches the executable's file name (/proc/PID/exe), not the process
+# name ss reports: that name is /proc/PID/comm, which a process can change.
+# The official Node 24 builds name their main thread MainThread, which is what
+# comm shows (found by CI, whose runner uses them; Ubuntu's packaged node still
+# says node), and Next.js retitles itself next-server. The executable stays
+# node. A trailing " (deleted)" (the binary was upgraded underneath) is dropped.
+# The macOS side is the -c list in _dev_scan, where p_comm is not retitled.
+DEV_EXES='node|bun|deno|php[0-9.]*|python[0-9.]*|ruby[0-9.]*'
 
 # Both dev caches store their own write time as the first word and compare it
 # with $now, instead of asking stat for the mtime: that is a fork per file per
@@ -601,10 +605,24 @@ _dev_scan() {
         -c python -c Python -c ruby -Fpn 2>/dev/null)
       ;;
     *)
-      # LISTEN 0 511 127.0.0.1:3000 0.0.0.0:* users:(("node",pid=4436,fd=21))
-      local _re="^LISTEN +[0-9]+ +[0-9]+ +[^ ]*:([0-9]+) +[^ ]+ +users:\\(\\(\"(${DEV_RUNTIMES})\",pid=([0-9]+),"
+      # LISTEN 0 511 127.0.0.1:3000 0.0.0.0:* users:(("MainThread",pid=4436,fd=21))
+      # ss names a process only for the user's own sockets, so the readlink
+      # below runs for a handful of pids, once each (_seen holds pid=verdict).
+      local _re='^LISTEN +[0-9]+ +[0-9]+ +[^ ]*:([0-9]+) +[^ ]+ +users:\(\("[^"]*",pid=([0-9]+),'
+      local _seen=" " _port _p _exe
       while IFS= read -r _x; do
-        [[ "$_x" =~ $_re ]] && printf ' %s:%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}"
+        [[ "$_x" =~ $_re ]] || continue
+        _port="${BASH_REMATCH[1]}"; _p="${BASH_REMATCH[2]}"
+        case "$_seen" in
+          *" $_p=1 "*) ;;
+          *" $_p=0 "*) continue ;;
+          *)
+            _exe=$(readlink "/proc/$_p/exe" 2>/dev/null)
+            _exe="${_exe% (deleted)}"; _exe="${_exe##*/}"
+            if [[ "$_exe" =~ ^(${DEV_EXES})$ ]]; then _seen+="$_p=1 "; else _seen+="$_p=0 "; continue; fi
+            ;;
+        esac
+        printf ' %s:%s' "$_port" "$_p"
       done < <(ss -ltnpH 2>/dev/null)
       ;;
   esac

@@ -464,9 +464,12 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   at most three, lowest port first. It works on any port with no list to maintain.
   Details:
   - Listeners come from `lsof` on macOS and `ss` on Linux, filtered to dev runtimes
-    (`node`, `bun`, `deno`, `php`, `python`, `ruby`; on Linux also `next-server`, which
-    is how Next.js retitles itself there). Postgres, MySQL, nginx and mailpit are not
-    shown. Docker-published ports and Herd/Valet `*.test` sites are out of scope.
+    (`node`, `bun`, `deno`, `php`, `python`, `ruby`). On Linux the runtime is read from
+    the executable (`/proc/PID/exe`), not the process name `ss` reports: the official
+    Node 24 builds name their main thread `MainThread` and Next.js retitles itself
+    `next-server`, and both show up as the process name there. Postgres, MySQL, nginx
+    and mailpit are not shown. Docker-published ports and Herd/Valet `*.test` sites are
+    out of scope.
   - Not `netstat`, although it is ~3ms against `lsof`'s ~27ms: on this Mac it printed
     nothing, exit 0, whenever an ancestor process was Homebrew's bash, which the
     `bash` in the status line command can be.
@@ -1141,7 +1144,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 924-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 942-line template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh

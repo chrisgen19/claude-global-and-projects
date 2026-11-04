@@ -793,6 +793,16 @@ start_server() {
           LocalPort => $ARGV[1]) or exit 1;
         open(my $f, ">", $ARGV[0]) or exit 1; print $f $s->sockport; close $f;
         sleep 120;' "$pf" "$port" ) &
+  elif [ "$kind" = node-mainthread ]; then
+    # Linux only: what the official Node 24 builds do, naming the main thread
+    # (and so /proc/PID/comm, which ss reports) MainThread.
+    ( cd "$dir" && exec node -e '
+        require("fs").writeFileSync("/proc/self/comm", "MainThread");
+        const s = require("net").createServer();
+        s.on("error", () => process.exit(1));
+        s.listen(Number(process.argv[2]), "127.0.0.1", () =>
+          require("fs").writeFileSync(process.argv[1], String(s.address().port)));
+        setTimeout(() => process.exit(0), 120000);' "$pf" "$port" ) &
   else
     ( cd "$dir" && exec node -e '
         const s = require("net").createServer();
@@ -915,6 +925,23 @@ else
   a=$P_LO1; b=$P_LO2; [ "$a" -gt "$b" ] && { a=$P_LO2; b=$P_LO1; }
   contains "the lowest ports come first, whatever order the processes started in" \
     "▶ localhost:$a localhost:$b localhost:$lo +1" "$got"
+
+  # Linux reads the runtime from /proc/PID/exe, because the process name ss
+  # reports can be anything: CI's official Node 24 build says MainThread.
+  case "$OSTYPE" in
+    darwin*|*bsd*|FreeBSD*) ;;
+    *)
+      mkdir -p "$FIX/retitled"
+      if start_server "$FIX/retitled" node-mainthread; then
+        P_RT=$SRV_PORT
+        equals "the fixture node really reports MainThread" "MainThread" "$(cat "/proc/$SRV_PID/comm")"
+        got=$(seg "$FIX/retitled" "\"workspace\":{\"project_dir\":\"$FIX/retitled\"}")
+        contains "a node whose process name is MainThread is still shown" "localhost:$P_RT" "$(printf '%s' "$got" | strip_links)"
+      else
+        bad "a node server that retitles itself started"
+      fi
+      ;;
+  esac
 
   # A stopped server disappears on the next scan.
   kill "$PID_OTHER" 2>/dev/null; wait "$PID_OTHER" 2>/dev/null
