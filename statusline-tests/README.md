@@ -44,6 +44,18 @@ CI runs this on Ubuntu and on macOS with the stock `/bin/bash` 3.2 and BSD
 `date +%N`, and `sed 's/\x1b//'` (BSD `sed` has no `\x` escapes, so the ESC
 byte is built with `printf` and interpolated into the pattern).
 
+The script under test runs under the same bash as the suite (`$BASH`, printed
+in the header). It used to be invoked as a bare `bash`, which resolved through
+`PATH`: `/bin/bash ./statusline-tests/run.sh` ran the suite under 3.2 but the
+script under Homebrew's 5.x wherever that came first, so a 3.2-only bug (the
+signed byte in `urlenc_path`) passed.
+
+Never put `\"` inside a `$(...)` that is itself in double quotes: bash 3.2
+parses that nesting differently, the payload reaches `jq` mangled, and an
+`excludes` check then passes on an empty render. Assign `got=$(...)` first,
+then pass `"$got"`. Where a test only asserts an absence, pair it with a
+`contains` on the same output so a render that failed outright cannot pass.
+
 ## Checking the tests can still fail
 
 A suite that cannot fail guards nothing. Reintroduce a bug and confirm the
@@ -60,3 +72,11 @@ test named for it: restoring `printf '%b'`, dropping `-uall` from `git status`,
 not counting `u` (conflict) lines, dropping the detached-HEAD guard on the
 no-upstream marker, and swapping the staged and unstaged halves of the
 porcelain XY pair.
+
+For the #88 segments, each of these was caught under both bash 5 and 3.2
+unless noted: removing the `caching_observed` gate on the hit rate, making
+`clean()` a no-op, disabling pace alerts, dropping the `& 255` byte mask (3.2
+only, as the bug is), restoring `${cwd/#$HOME/\~}`, ignoring the `%z` sign,
+linking branches without an upstream, dropping a review state, raising the
+token breakdown threshold, uncapping the session name, and pacing a monthly
+spend limit.
