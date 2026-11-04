@@ -183,13 +183,17 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 A two-line status line covering account identity, model, git state, context usage, subscription rate limits, and session cost.
 
 ```
-PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432  ~/projects/my-app | main ~3 ?2  #42
-█░░░░░░░░░░░░░░ 7% | 5h 19% (2h14m) 7d 3% (4d3h) | $1.64 | 26m 57s | +273 -3
+PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432 fix login flow  ~/projects/my-app | main ~3 ?2 wt:fix-login  #42 approved
+█░░░░░░░░░░░░░░ 7% | 5h 41% →196% (3h58m) 7d 3% (4d3h) | cache 14:30 hit 94% | $1.64 | 26m 57s | +273 -3
 ```
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com and is linked only when it tracks an upstream. If links show but do not click, launch with `FORCE_HYPERLINK=1`.
 
-**Line 2** — context usage bar, rate limit windows with reset countdowns, session cost, elapsed wall clock, lines added/removed.
+**Line 2** — context usage bar (falls back to the live token count when `used_percentage` reads 0 after `/compact`, and adds `(in: 12k, cache: 170k)` from 85%), rate limit windows with reset countdowns and usage pace, the gateway spend limit when one is set (`spend 63% $314/$500`), prompt cache expiry and hit rate, session cost, elapsed wall clock, lines added/removed.
+
+Usage pace projects each window's used percentage to its reset. `→196%` means the current rate runs out the limit before the window resets (red above 100%, yellow from 90%), which is the cue to switch accounts. It stays silent below 10% used, where a projection is noise. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
+
+Every string from the payload is sanitised in the single `jq` pass: escape sequences, C0/C1 controls and bidi marks are stripped, so a crafted cwd, session name or `pr.url` cannot recolour the line, move the cursor or plant a link.
 
 Every segment hides itself when its data is absent, so the line stays short outside a git repo, on API billing, or early in a session.
 
@@ -1134,7 +1138,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 287-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 754-line template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
