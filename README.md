@@ -1033,10 +1033,10 @@ Check the result before trusting it:
 python3 -c 'import tomllib, os; d = tomllib.load(open(os.path.expanduser("~/.codex/config.toml"), "rb")); print(len(d.get("projects", {})), "projects,", len(d.get("hooks", {}).get("state", {})), "hook trust entries,", list(d))'
 ```
 
-#### Two prerequisites the config cannot satisfy itself
+#### Three prerequisites the config cannot satisfy itself
 
-Restoring `config.toml` only *declares* these two. Neither is installed or set by copying the
-file, and `./install.sh --check` reports both sides as `ok` while either is missing, so check
+Restoring `config.toml` only *declares* these three. None is installed or set by copying the
+file, and `./install.sh --check` reports both sides as `ok` while any is missing, so check
 them by hand on a new machine.
 
 **The plugin is enabled, not installed.** `[plugins."superpowers@openai-curated"] enabled = true`
@@ -1064,6 +1064,16 @@ terminals) will not have it:
 
 ```bash
 test -n "$BUDGET_MCP_TOKEN" && echo "set" || echo "MISSING: budget MCP will start without auth"
+```
+
+**The `shadcn` CLI must be on PATH.** `[mcp_servers.shadcn]` runs `command = "shadcn"`
+directly (unlike chrome-devtools, which fetches itself through `npx`), so the server fails to
+start without a global install. Under nvm the install is per Node version: switching
+versions, or launching Codex from a shell that has not loaded nvm, loses it.
+
+```bash
+npm i -g shadcn
+command -v shadcn && shadcn --version || echo "MISSING: shadcn MCP will not start"
 ```
 
 #### Always use Auto-review from the terminal
