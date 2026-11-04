@@ -974,16 +974,20 @@ scripts would exit cleanly on their own, but only after `bash` resolves. WSL is 
 different case: Claude Code there is a Linux install, so use `install.sh` and the
 [Windows Terminal tab status](#windows-terminal-tab-status-wsl) script.
 
-`windows/settings.json` is that portable subset — the badges and plain config values, no
-hooks and no status line. Copy it to `%USERPROFILE%\.claude\settings.json`.
+`windows/settings.json` is that portable subset: the plain config values in the table
+above plus `alwaysThinkingEnabled`, no hooks and no status line. Copy it to
+`%USERPROFILE%\.claude\settings.json`.
+
+It has no dev server links. The macOS and Linux ones come from the status line, which
+does not run here, and the footer badges (`footerLinksRegexes`) it used to carry are gone
+from every profile, this one included: they matched any localhost URL printed in the
+conversation, so they linked to servers that were not running. Under WSL, `install.sh`
+gives the full status line, links included.
 
 `terminalProgressBarEnabled` is the closest cross-platform stand-in for the iTerm2 tab
 indicator: Claude Code emits `OSC 9;4` in-process, which Windows Terminal renders as
 taskbar progress. It sidesteps the detached-terminal problem entirely, so it works where
 the tab script cannot.
-
-> The badge ports come from this machine's projects. Run the port scan from the iTerm2
-> section on the Windows box and add whatever it finds.
 
 ### Codex config (`codex/`)
 
@@ -1144,7 +1148,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 942-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 951-line template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
