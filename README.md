@@ -18,6 +18,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── wt-tab-status.sh                        # Windows Terminal (WSL) tab indicator (copy to ~/.local/bin/)
 ├── prisma-prod-guard.sh                    # PreToolUse hook: confirm destructive Prisma commands on prod DBs
 ├── wt-dev.sh                               # dev server per git worktree in one tmux session, stable ports
+├── claude-handoff.sh                       # list, brief or copy a session to another account (claude-handoff)
 ├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g or a herdr/tmux popup
 ├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
@@ -46,6 +47,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
 │   ├── security-audit/SKILL.md          # Scan for vulnerabilities (PHP + JS/TS)
 │   ├── change-doc/SKILL.md              # File-by-file writeup of a completed change
+│   ├── handoff/SKILL.md                 # Pick up a session another account started (uses claude-handoff)
 │   ├── review-loop/                     # Claude + Codex review, cross-verify, auto-fix loop
 │   │   ├── SKILL.md
 │   │   └── pr-bots.sh                     #   Trigger, wait for and collect @codex / @claude PR reviews
@@ -93,6 +95,9 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 **Auditing**
 - **`/env-check`** — Audits environment variables: hardcoded secrets, `.gitignore` coverage, `.env.example` completeness, stack-specific misconfigurations
 - **`/security-audit`** — Scans for common vulnerabilities (XSS, SQL injection, missing sanitization, exposed secrets) across PHP/WordPress and JS/TS/Next.js codebases
+
+**Sessions**
+- **`/handoff`**: Picks up a session another account started, e.g. after that account hit its 5h limit. Finds it with `claude-handoff list`, reads `claude-handoff brief`, checks the brief against git, PRs and CI, then reports what is done and what is left and asks before any outward-facing step. See [Session handoff](#session-handoff-between-accounts-claude-handoff)
 
 **Understanding & documenting**
 - **`/explain-code`** — Explains how code works using diagrams and analogies, with depth scaled to complexity
@@ -178,11 +183,11 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 A two-line status line covering account identity, model, git state, context usage, subscription rate limits, and session cost.
 
 ```
-PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235  ~/projects/my-app | main ~3 ?2  #42
+PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432  ~/projects/my-app | main ~3 ?2  #42
 █░░░░░░░░░░░░░░ 7% | 5h 19% (2h14m) 7d 3% (4d3h) | $1.64 | 26m 57s | +273 -3
 ```
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), open PR number.
 
 **Line 2** — context usage bar, rate limit windows with reset countdowns, session cost, elapsed wall clock, lines added/removed.
 
@@ -668,6 +673,41 @@ Inside the session every tmux key starts with `Ctrl-b`:
 - While a session is running, `wt-dev <branch>` only re-attaches: it does not add that
   worktree. Kill the session and start it again with the branches you want.
 
+### Session handoff between accounts (`claude-handoff`)
+
+When one account hits its 5h limit mid-task, another account can pick up the work.
+Every account stores a session under `projects/<cwd-slug>/`: `<session-id>.jsonl` is the
+transcript and `<session-id>/` holds its subagents and tool results. The slug is the cwd
+with every non-alphanumeric character turned into `-`. The status line shows the
+first 8 characters of the id as `id:xxxxxxxx`.
+
+`claude-handoff.sh` is deployed to `~/.local/bin/claude-handoff` by `install.sh`. It
+needs bash 3.2+ and `jq`.
+
+```bash
+claude-handoff list                  # this project's sessions in every account, newest first
+claude-handoff list --all            # every project (a session that ran in a worktree)
+claude-handoff brief fff7b432        # Markdown handoff: last 12 messages, last todo list, git state now
+claude-handoff brief fff7 -n 30      # any unique prefix works; -n sets how many messages
+claude-handoff copy fff7 --to work   # copy the transcript so `claude-work --resume <id>` opens it
+```
+
+Two ways to carry a session over:
+
+- **Brief (cheap, the default):** in the new account, run `/handoff` (or "pick up the dev
+  session"). It reads the brief and checks it against git, PRs and CI before acting.
+- **Copy (full context):** `claude-handoff copy <id> --to <account>`, then
+  `claude-<account> --resume <full id>` from the session's directory. Resuming reloads the
+  whole transcript (often 5 to 30MB), which uses a lot of the new account's limit, so use
+  it only when the brief is not enough.
+
+`copy` never moves or deletes the original. It refuses to overwrite an existing copy
+without `--force`, and even with `--force` it refuses to replace a newer copy unless
+`--from` names the source on purpose. It warns when the source was written in the last
+2 minutes (it may still be running), and keeps the original timestamps. Once copied, the same id lives in
+two accounts: commands use the newest copy, or the one `--from <account>` names. The
+account's `memory/` folder is not copied, so each account keeps its own memory.
+
 ### tmux config (`.tmux.conf`)
 
 `.tmux.conf` holds the tmux settings used with this setup. tmux reads `~/.tmux.conf`, so
@@ -853,7 +893,7 @@ and the shared tab scripts are generated from the repo, so `--pull` leaves them 
 
 `--check` compares settings, status line, `CLAUDE.md` and skills for every profile, and
 the shared scripts in `~/.local/bin` (both tab-status scripts, `prisma-prod-guard`,
-`wt-dev`, `claude-update-plugins` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
+`wt-dev`, `claude-update-plugins`, `claude-handoff` and the two `next-steps` names) plus `~/.claude/hooks/herdr-agent-state.sh`, and
 the agy plugin and status line. It also lists every plugin a profile's live
 `settings.json` enables that has no user-scope install: enabling a plugin there does not
 install it, so after a deploy that adds one, run
