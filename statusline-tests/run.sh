@@ -36,7 +36,21 @@ fail=0
 # with whatever is installed on the machine running the tests.
 CONFIG_DIR=$(mktemp -d) || exit 1
 FIX=$(mktemp -d) || exit 1
-cleanup() { rm -rf "$FIX" "$CONFIG_DIR"; }
+
+# Removing the fixtures is not enough: the script writes a cache entry per
+# directory it renders, so every run used to leave ~11 orphans behind in /tmp.
+# They are keyed by the mangled cwd, so deleting only the ones whose key starts
+# with this run's own $FIX leaves every other session's entries untouched. The
+# mangling has to match the script's: / becomes _, then anything outside
+# [A-Za-z0-9_.-] becomes _ as well.
+cache_prefix() {
+  local k="${FIX//\//_}"
+  printf '/tmp/claude-statusline-git-v3-%s-%s' "$UID" "${k//[^A-Za-z0-9_.-]/_}"
+}
+cleanup() {
+  rm -rf "$FIX" "$CONFIG_DIR"
+  rm -f "$(cache_prefix)"*
+}
 trap cleanup EXIT
 
 strip_ansi() { sed "s/${ESC}\\[[0-9;]*m//g"; }
@@ -292,6 +306,45 @@ out=$(printf '%s' \
 contains "ACCOUNT_LABEL_OVERRIDE wins over the built-in label" "CLAUDE" "$out"
 
 # ---------------------------------------------------------------------------
+echo "-- the Claude account email --"
+# It arrives through --slurpfile on the same jq pass as the payload, so the
+# things worth pinning are that it is read at all, and that a bad account file
+# costs only the email rather than blanking the whole line.
+acct_dir=$(mktemp -d) || exit 1
+printf '{"oauthAccount":{"emailAddress":"someone@example.com"}}' > "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "the account username is shown in parens" "(someone)" "$out"
+excludes "the domain is stripped" "example.com" "$out"
+
+# Truncated mid-write: jq exits 2 with no output at all on a bad --slurpfile,
+# so without the fallback this blanks the model, the directory and everything
+# else, not just the email.
+printf '{"oauthAccount":{"emailAddress":"someone@example.' > "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"MODELNAME"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "a corrupt .claude.json still renders the rest of the line" "MODELNAME" "$out"
+excludes "a corrupt .claude.json shows no account" "(" "$out"
+
+# No .claude.json at all: --slurpfile on a missing path is a hard jq error, so
+# the script has to substitute /dev/null rather than pass the path through.
+rm -f "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"MODELNAME"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "an absent .claude.json still renders the line" "MODELNAME" "$out"
+rm -rf "$acct_dir"
+
+echo "-- the git identity --"
+# Read from git config so an includeIf per directory is respected, which is why
+# it is resolved per cwd rather than once per session.
+contains "the git email username is shown" "t@e.com" \
+  "$(git -C "$FIX/sync" config user.email)"
+contains "the git email username appears on the line" "t" \
+  "$(render "$FIX/sync" | sed -n '1p')"
+
 echo "-- malformed and absent payload fields --"
 # The script is fed whatever Claude Code sends; a missing field must not make
 # it print an error or die mid-line.

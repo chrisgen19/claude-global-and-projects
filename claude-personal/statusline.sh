@@ -42,13 +42,25 @@ DIM=$'\033[2m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
 
+# -- Which config dir this session runs under, needed by the jq pass below --
+config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
 # -- Extract every field in one jq pass (one fork instead of ten) --
 # Numeric fields that may be absent use -1 as the sentinel so a real 0
 # stays distinguishable from "not sent".
-# `mapfile` is bash 4+; macOS ships bash 3.2, so read the lines in a loop.
-# The redirect keeps the loop in the current shell, so F survives it.
-F=()
-while IFS= read -r _f; do F+=("$_f"); done < <(printf '%s' "$input" | jq -r '
+#
+# The Claude account email comes through --slurpfile rather than a second jq.
+# .claude.json is ~178KB, but the cost was the extra process, not the parse:
+# two jq calls 6.4ms, one with --slurpfile 4.9ms, one without the account file
+# 3.0ms (min of 30 runs, three interleaved rounds). Caching the email instead
+# would have been the wrong fix: with "refreshInterval": 60 against a 10s cache
+# every scheduled render misses, so a cached value saves nothing on the path
+# that actually dominates, while this saves ~1.5ms on every render.
+#
+# /dev/null stands in for a missing file: --slurpfile on a path that does not
+# exist is a hard jq error, while on /dev/null it yields an empty array, so
+# $acct[0] is null and the email falls back to "".
+JQ_FIELDS='
   [ .model.display_name                            // "?",
     (.workspace.current_dir // .cwd)               // "",
     (.context_window.used_percentage // 0 | floor),
@@ -67,8 +79,24 @@ while IFS= read -r _f; do F+=("$_f"); done < <(printf '%s' "$input" | jq -r '
     (.rate_limits.seven_day.used_percentage // -1 | floor),
     (.rate_limits.seven_day.resets_at       // -1),
     .session_id                                    // "",
-    .permission_mode                               // ""
-  ] | .[] | tostring' 2>/dev/null)
+    .permission_mode                               // "",
+    ($acct[0].oauthAccount.emailAddress            // "")
+  ] | .[] | tostring'
+
+acct_file="$config_dir/.claude.json"
+[ -f "$acct_file" ] || acct_file=/dev/null
+_fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" "$JQ_FIELDS" 2>/dev/null)
+# A half-written or corrupt .claude.json makes jq exit 2 with no output at all,
+# which would blank every field on the line rather than just the email. Retry
+# without it so a bad account file costs only the thing it describes.
+if [ -z "$_fields" ]; then
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null "$JQ_FIELDS" 2>/dev/null)
+fi
+
+# `mapfile` is bash 4+; macOS ships bash 3.2, so read the lines in a loop.
+# The redirect keeps the loop in the current shell, so F survives it.
+F=()
+while IFS= read -r _f; do F+=("$_f"); done < <(printf '%s\n' "$_fields")
 
 model="${F[0]}";        cwd="${F[1]}";           pct="${F[2]}"
 cost="${F[3]}";         duration_ms="${F[4]}";   lines_added="${F[5]}"
@@ -78,6 +106,7 @@ pr_number="${F[12]}"
 rl_5h="${F[13]}";       rl_5h_at="${F[14]}"
 rl_7d="${F[15]}";       rl_7d_at="${F[16]}"
 session_id="${F[17]}";  permission_mode="${F[18]}"
+claude_email="${F[19]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -99,18 +128,10 @@ if [ ${#short_dir} -gt 30 ]; then
   short_dir="${cwd##*/}"
 fi
 
-# -- Git email (reads local git config — respects includeIf per directory) --
-gh_email=""
-if [ -n "$cwd" ]; then
-  gh_email=$(git -C "$cwd" config user.email 2>/dev/null || echo "")
-fi
-
-# -- Claude account email (from .claude.json in config dir) --
-claude_email=""
-config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-if [ -f "$config_dir/.claude.json" ]; then
-  claude_email=$(jq -r '.oauthAccount.emailAddress // ""' "$config_dir/.claude.json")
-fi
+# The git email used to be read here on every render, uncached, while the
+# branch state next to it was cached. It is now resolved inside the cache block
+# below, which is the only place that still forks git. The Claude account email
+# arrives with the payload, from the single jq pass above.
 
 # -- Wall clock, read once and shared by the cache check and the reset countdowns --
 now=$(date +%s)
@@ -123,11 +144,11 @@ safe_cwd="${safe_cwd//[^A-Za-z0-9_.-]/_}"
 # Keep the tail (the distinctive part) if the path would overflow NAME_MAX.
 # Guarded: a negative offset larger than the string yields "" in bash.
 [ ${#safe_cwd} -gt 200 ] && safe_cwd="${safe_cwd: -200}"
-# The -v2 is the cache *format* version. The line gained three fields
-# (conflicts, upstream, ahead/behind); reading those from a file written by the
-# old four-field format would leave upstream empty and render a wrong
-# "no-upstream" until the entry aged out, so the new format gets a new name.
-CACHE_FILE="/tmp/claude-statusline-git-v2-${UID}-${safe_cwd}"
+# The -v3 is the cache *format* version. Each time the line gains a field,
+# reading it back from a file written by the previous format would silently
+# shift every value after it, so the format gets a new name instead: v2 added
+# conflicts, upstream and ahead/behind, v3 added the git email.
+CACHE_FILE="/tmp/claude-statusline-git-v3-${UID}-${safe_cwd}"
 # The cache exists to absorb the burst of renders inside a single turn, not to
 # serve the scheduled refresh: with "refreshInterval": 60 in settings.json those
 # are 60s apart, so they always find a stale cache and always pay full price.
@@ -217,6 +238,14 @@ if cache_is_stale && [ -n "$cwd" ]; then
     [ -n "$(git --no-optional-locks -C "$cwd" remote 2>/dev/null)" ] && no_upstream=1
   fi
 
+  # The git identity belongs here rather than on every render: it is read from
+  # git config, so it respects an includeIf per directory, which makes it a
+  # property of the cwd exactly like the branch state beside it. Together with
+  # the jq merge above this takes a warm render from 14.4ms to 11.1ms and a
+  # cold one from 16.9ms to 15.5ms (min of 30, three interleaved rounds); a
+  # miss still pays this fork, because that is the render that fills the cache.
+  gh_email=$(git --no-optional-locks -C "$cwd" config user.email 2>/dev/null || echo "")
+
   # A detached HEAD reports `# branch.head (detached)`; show the short oid
   # instead, as the old rev-parse fallback did. An unborn branch reports
   # `(initial)` as the oid, so only substitute something that looks like a sha.
@@ -228,17 +257,22 @@ if cache_is_stale && [ -n "$cwd" ]; then
   fi
   # Outside a work tree git writes nothing, so branch stays empty and the
   # cache line is all-empty: the same signal the old `else` branch wrote.
-  printf '%s|%s|%s|%s|%s|%s|%s\n' "$branch" "$staged" "$modified" "$untracked" \
-    "$conflicts" "$no_upstream" "${ahead}/${behind}" > "$CACHE_FILE.$$"
+  # The email goes last on purpose: `read` puts anything beyond the named
+  # fields into the final variable, so a stray delimiter there cannot shift the
+  # counts. (A `|` is legal in a git branch name and would still shift them;
+  # a tab delimiter would fix that but IFS collapses runs of whitespace, which
+  # would break the all-empty line written outside a work tree.)
+  printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$branch" "$staged" "$modified" "$untracked" \
+    "$conflicts" "$no_upstream" "${ahead}/${behind}" "$gh_email" > "$CACHE_FILE.$$"
   # Rename is atomic, so a concurrent reader never sees a half-written line.
   mv -f "$CACHE_FILE.$$" "$CACHE_FILE" 2>/dev/null || rm -f "$CACHE_FILE.$$"
 fi
 
 git_branch=""; git_staged=0; git_modified=0; git_untracked=0
-git_conflicts=0; git_no_upstream=0; git_ab=""
+git_conflicts=0; git_no_upstream=0; git_ab=""; gh_email=""
 if [ -f "$CACHE_FILE" ]; then
   IFS='|' read -r git_branch git_staged git_modified git_untracked \
-    git_conflicts git_no_upstream git_ab < "$CACHE_FILE"
+    git_conflicts git_no_upstream git_ab gh_email < "$CACHE_FILE"
 fi
 git_ahead="${git_ab%%/*}"; git_behind="${git_ab##*/}"
 
