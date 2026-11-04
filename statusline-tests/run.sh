@@ -417,6 +417,76 @@ stderr_of "a non-numeric rate limit"               '{"rate_limits":{"five_hour":
 stderr_of "a model given as a string"              '{"model":"x"}'
 stderr_of "a tiny cost in exponent form"           '{"cost":{"total_cost_usd":1e-7}}'
 
+# ---------------------------------------------------------------------------
+echo "-- wrongly shaped payload fields --"
+# One jq error used to abort the whole field pass, so a single field arriving
+# in an unexpected shape (an object that became a string, a number, an array)
+# blanked the model, the directory, git and everything else. Each shape below
+# is merged over a good payload, so the assertion is that the fields it does
+# NOT touch still render, and that nothing reaches stderr.
+#
+# shape_ok <label> <shape-json> <needle-that-must-survive>
+shape_ok() {
+  local payload out err
+  payload=$(jq -nc --arg d "$FIX/plain" --argjson x "$2" \
+    '{workspace:{current_dir:$d},model:{display_name:"MODELNAME"},cost:{total_cost_usd:0.42},context_window:{used_percentage:40}} * $x')
+  out=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi)
+  err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" 2>&1 > /dev/null)
+  contains "$1: the rest of the line survives" "$3" "$out"
+  equals "$1: nothing on stderr" "" "$err"
+}
+# The untouched model name is the canary, except where the shape replaces the
+# model itself; there the directory is.
+shape_ok "model as a string"            '{"model":"x"}'                          "plain"
+shape_ok "model name as an object"      '{"model":{"display_name":{"a":1}}}'     "plain"
+shape_ok "workspace as a string"        '{"workspace":"x"}'                      "[MODELNAME]"
+shape_ok "cost as a string"             '{"cost":"free"}'                        "[MODELNAME]"
+shape_ok "cost as a number"             '{"cost":5}'                             "[MODELNAME]"
+shape_ok "cost total as an array"       '{"cost":{"total_cost_usd":[1]}}'        "[MODELNAME]"
+shape_ok "context_window as a string"   '{"context_window":"big"}'               "[MODELNAME]"
+shape_ok "effort as a string"           '{"effort":"high"}'                      "[MODELNAME]"
+shape_ok "thinking as a boolean"        '{"thinking":true}'                      "[MODELNAME]"
+shape_ok "pr as a number"               '{"pr":42}'                              "[MODELNAME]"
+shape_ok "a rate limit window as a string" '{"rate_limits":{"five_hour":"x"}}'   "[MODELNAME]"
+shape_ok "rate_limits as an array"      '{"rate_limits":[1]}'                    "[MODELNAME]"
+
+# A root that is not an object at all used to fail before any field was read.
+# There is nothing to keep, so the line must just render cleanly with defaults.
+for root in '[]' '"str"' 'null'; do
+  equals "root $root still renders two lines" \
+    "1" "$(printf '%s' "$root" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | wc -l | tr -d ' ')"
+  contains "root $root falls back to the ? model" "[?]" \
+    "$(printf '%s' "$root" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+  stderr_of "root $root" "$root"
+done
+
+# A wrongly shaped account file is a payload of its own: oauthAccount as a
+# string used to fail the pass and fall back to the second jq run. Now it
+# costs only the email, on the first pass.
+acct_dir=$(mktemp -d) || exit 1
+printf '{"oauthAccount":"x"}' > "$acct_dir/.claude.json"
+out=$(printf '{"model":{"display_name":"MODELNAME"}}' | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "oauthAccount as a string keeps the line" "[MODELNAME]" "$out"
+excludes "oauthAccount as a string shows no account" "(" "$out"
+rm -rf "$acct_dir"
+
+# ---------------------------------------------------------------------------
+echo "-- newlines inside values --"
+# Fields are passed one per line and read back by position, so a real newline
+# in any value shifted every field after it: a model name holding one pushed
+# its second half into the cwd slot. jq builds the payload, so "\n" here is a
+# real LF on the wire, which is the case that matters (the #81 tests cover a
+# literal backslash-n).
+nl_payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"top\nbottom"},cost:{},context_window:{used_percentage:40}}')
+out=$(printf '%s' "$nl_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi)
+contains "a newline in the model name is flattened to a space" "[top bottom]" "$out"
+contains "a newline in the model name does not shift the cwd" "plain" "$(printf '%s\n' "$out" | sed -n '1p')"
+equals "a newline in the model name cannot add a third line" \
+  "1" "$(printf '%s' "$nl_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | wc -l | tr -d ' ')"
+cr_payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"top\r\nbottom"},cost:{},context_window:{used_percentage:40}}')
+contains "a CRLF in the model name is flattened too" "plain" \
+  "$(printf '%s' "$cr_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+
 echo
 echo "$pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then

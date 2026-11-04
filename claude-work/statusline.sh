@@ -61,31 +61,43 @@ config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # exist is a hard jq error, while on /dev/null it yields an empty array, so
 # $acct[0] is null and the email falls back to "".
 #
-# `floor` on a non-number is a jq error, and one error aborts the whole pass,
-# so a string percentage used to blank every field on the line. `numbers`
-# drops a wrong-typed value instead, and the `//` default takes its place.
+# One jq error aborts the whole pass and blanks every field on the line, so a
+# single field arriving in an unexpected shape must not be able to raise one.
+# Two kinds are guarded:
+#   - indexing the wrong type: {"model":"x"} makes .model.display_name fail
+#     with "Cannot index string". opt() turns any error in one field into null
+#     and its `//` default takes over. A trailing `?` is not enough: it only
+#     covers the last step, so .rate_limits.five_hour.used_percentage? still
+#     fails when .rate_limits is an array, and so does any path on a payload
+#     whose root is not an object.
+#   - `floor` on a non-number: `numbers` drops a wrong-typed value first.
+#
+# Each value becomes one line, read back into F by position, so a real newline
+# inside any value would shift every field after it (a model name with one in
+# it pushed the cwd into the next slot). gsub flattens CR and LF to spaces.
 JQ_FIELDS='
-  [ .model.display_name                            // "?",
-    (.workspace.current_dir // .cwd)               // "",
-    ((.context_window.used_percentage | numbers | floor) // 0),
-    .cost.total_cost_usd                           // 0,
-    .cost.total_duration_ms                        // 0,
-    .cost.total_lines_added                        // 0,
-    .cost.total_lines_removed                      // 0,
-    .version                                       // "",
-    .context_window.context_window_size            // 0,
-    .effort.level                                  // "",
-    (.thinking.enabled // false),
-    (.fast_mode // false),
-    .pr.number                                     // "",
-    ((.rate_limits.five_hour.used_percentage | numbers | floor) // -1),
-    (.rate_limits.five_hour.resets_at       // -1),
-    ((.rate_limits.seven_day.used_percentage | numbers | floor) // -1),
-    (.rate_limits.seven_day.resets_at       // -1),
-    .session_id                                    // "",
-    .permission_mode                               // "",
-    ($acct[0].oauthAccount.emailAddress            // "")
-  ] | .[] | tostring'
+  def opt(f): try f catch null;
+  [ (opt(.model.display_name)                      // "?"),
+    (opt(.workspace.current_dir) // opt(.cwd)      // ""),
+    ((opt(.context_window.used_percentage) | numbers | floor) // 0),
+    (opt(.cost.total_cost_usd)                     // 0),
+    (opt(.cost.total_duration_ms)                  // 0),
+    (opt(.cost.total_lines_added)                  // 0),
+    (opt(.cost.total_lines_removed)                // 0),
+    (opt(.version)                                 // ""),
+    (opt(.context_window.context_window_size)      // 0),
+    (opt(.effort.level)                            // ""),
+    (opt(.thinking.enabled)                        // false),
+    (opt(.fast_mode)                               // false),
+    (opt(.pr.number)                               // ""),
+    ((opt(.rate_limits.five_hour.used_percentage) | numbers | floor) // -1),
+    (opt(.rate_limits.five_hour.resets_at)         // -1),
+    ((opt(.rate_limits.seven_day.used_percentage) | numbers | floor) // -1),
+    (opt(.rate_limits.seven_day.resets_at)         // -1),
+    (opt(.session_id)                              // ""),
+    (opt(.permission_mode)                         // ""),
+    (opt($acct[0].oauthAccount.emailAddress)       // "")
+  ] | .[] | tostring | gsub("[\r\n]"; " ")'
 
 acct_file="$config_dir/.claude.json"
 [ -f "$acct_file" ] || acct_file=/dev/null
