@@ -316,12 +316,6 @@
       "pattern": "http://localhost:8080\\b",
       "url": "http://localhost:8080",
       "label": "localhost:8080"
-    },
-    {
-      "type": "regex",
-      "pattern": "https://github\\.com/(?<owner>[\\w.-]+)/(?<repo>[\\w.-]+)/actions/runs/(?<id>\\d+)",
-      "url": "https://github.com/{owner}/{repo}/actions/runs/{id}",
-      "label": "run {id}"
     }
   ],
   "enabledPlugins": {

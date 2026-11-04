@@ -453,12 +453,13 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   everywhere. For WSL in Windows Terminal, see
   [Windows Terminal tab status](#windows-terminal-tab-status-wsl) below.
 - Footer link badges (`footerLinksRegexes` in each account's `settings.json`) turn matched
-  IDs in turn output into clickable badges: a dev-server URL, or a GitHub Actions run.
+  dev-server URLs in turn output into clickable badges, so the server running in the
+  session is one click away. There is deliberately no GitHub Actions run badge: CI run
+  URLs from `gh pr checks` filled all five slots and pushed the dev server out.
   The URL template's **origin must be literal** — a capture group in the host or port is
   accepted at load but silently never renders, so the localhost entries are one fixed
-  port each rather than a `{port}` placeholder. Placeholders in the *path* are fine,
-  which is why the Actions entry keeps `{owner}`, `{repo}` and `{id}`. At most 5 badges
-  render at once, oldest displaced, and `/clear` wipes them.
+  port each rather than a `{port}` placeholder. Placeholders in the *path* are fine.
+  At most 5 badges render at once, oldest displaced, and `/clear` wipes them.
 - The cost of a literal origin is that **every port needs its own entry**. The list covers
   3000/3001 (Next.js default and fallback), 5173 (Vite), 8080, and the ports pinned in
   individual projects — 3020, 3111, 3821. A project on an unlisted port simply gets no
