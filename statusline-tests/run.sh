@@ -544,6 +544,14 @@ excludes "under 10% used grades no pace" "→" "$got"
 # projects to 95% (a yellow pace grade), and the percent stays red.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":95,\"resets_at\":$((now + 60))}}")
 contains "pace never lowers a red threshold" "${RED}95%" "$got"
+# That projection equals the current percent, so `5h 95% →95%` would repeat
+# it. The marker shows only when the projection is above the percent.
+contains "a projection equal to the percent still shows the window" "5h 95%" "$(printf '%s' "$got" | strip_ansi)"
+excludes "a projection equal to the percent shows no marker" "→" "$(printf '%s' "$got" | strip_ansi)"
+# The guard must not hide a high percent that is still climbing: 90% four
+# hours into 5h projects to 112%.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":90,\"resets_at\":$((now + 3600))}}")
+contains "a projection above a high percent still shows" "5h 90% →112%" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- prompt cache --"

@@ -191,7 +191,7 @@ PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432 fix
 
 **Line 2** — context usage bar (adds `(in: 12k, cache: 170k)` from 85%; reads 0% right after `/compact` until the next reply, because Claude Code sends no token counts until then), rate limit windows with reset countdowns and usage pace, the gateway spend limit when one is set (`spend 63% $314/$500`), prompt cache expiry and hit rate (both hidden until a response has reported cache tokens), session cost, elapsed wall clock, lines added/removed.
 
-Usage pace projects each window's used percentage to its reset. `→196%` means the current rate runs out the limit before the window resets (red above 100%, yellow from 90%), which is the cue to switch accounts. It stays silent below 10% used, where a projection is noise. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
+Usage pace projects each window's used percentage to its reset. `→196%` means the current rate runs out the limit before the window resets (red above 100%, yellow from 90%), which is the cue to switch accounts. The marker shows only when the projection is above the current percent, so `95%` a minute before the reset (projecting to 95%) shows no `→95%`. It stays silent below 10% used, where a projection is noise. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
 
 Every string from the payload is sanitised in the single `jq` pass: escape sequences, C0/C1 controls and bidi marks are stripped, so a crafted cwd, session name or `pr.url` cannot recolour the line, move the cursor or plant a link.
 
@@ -1138,7 +1138,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 748-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 752-line template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh

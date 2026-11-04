@@ -589,7 +589,11 @@ fmt_left() {  # $1=outvar  $2=epoch seconds when the window resets
 # above 100% (the limit runs out before the reset) is red, 90% or more is
 # yellow, and the percent takes whichever of threshold or pace is worse. When
 # pace raises an alert the projection is shown as `→200%`, which is the cue to
-# switch accounts. Below 10% used a projection is noise (3% five minutes in
+# switch accounts, but only when it is above the current percent: right before
+# a reset almost no time is left to project over, so 95% projects to 95% and
+# `5h 95% →95%` would say nothing. That case needs 90% or more used, where the
+# threshold colour is already red, so hiding the marker loses no colour either.
+# Below 10% used a projection is noise (3% five minutes in
 # "projects" 180%), and a reset already past or a full window away has no
 # elapsed time to project from, so neither grades pace.
 fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)  $5=window seconds
@@ -604,7 +608,7 @@ fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)
   fi
   [ "$_psev" -gt "$_sev" ] && _sev=$_psev
   case "$_sev" in 2) _c="$RED" ;; 1) _c="$YELLOW" ;; esac
-  if [ "$_psev" -gt 0 ]; then
+  if [ "$_psev" -gt 0 ] && [ "$_proj" -gt "$3" ]; then
     [ "$_psev" -eq 2 ] && _pc="$RED" || _pc="$YELLOW"
     [ "$_proj" -gt 999 ] && _proj=999
     _pace=" ${_pc}→${_proj}%${RESET}"
