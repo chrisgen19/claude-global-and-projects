@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Comprehensive developer statusline for Claude Code
-# Line 1: Account | Git user (Claude account) | Model + flags | Version | Dir | Git branch/status | PR
+# Line 1: Account | Git user (Claude account) | Model + flags | Version | Session id | Dir | Git branch/status | PR
 # Line 2: Context bar | Rate limits | Cost | Duration | Lines changed
 #
 # Setup: Copy to each account's config directory and set the account label:
@@ -56,7 +56,8 @@ while IFS= read -r _f; do F+=("$_f"); done < <(printf '%s' "$input" | jq -r '
     (.rate_limits.five_hour.used_percentage // -1 | floor),
     (.rate_limits.five_hour.resets_at       // -1),
     (.rate_limits.seven_day.used_percentage // -1 | floor),
-    (.rate_limits.seven_day.resets_at       // -1)
+    (.rate_limits.seven_day.resets_at       // -1),
+    .session_id                                    // ""
   ] | .[] | tostring' 2>/dev/null)
 
 model="${F[0]}";        cwd="${F[1]}";           pct="${F[2]}"
@@ -66,6 +67,7 @@ effort="${F[9]}";       thinking="${F[10]}";     fast_mode="${F[11]}"
 pr_number="${F[12]}"
 rl_5h="${F[13]}";       rl_5h_at="${F[14]}"
 rl_7d="${F[15]}";       rl_7d_at="${F[16]}"
+session_id="${F[17]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -265,6 +267,12 @@ if [ -n "$version" ]; then
   ver_info=" ${DIM}v${version}${RESET}"
 fi
 
+# -- Session id (first 8 chars: the prefix claude-handoff and --resume accept) --
+id_info=""
+if [ -n "$session_id" ]; then
+  id_info=" ${DIM}id:${session_id:0:8}${RESET}"
+fi
+
 # -- Git email prefix (username only, strip @domain) --
 gh_prefix=""
 if [ -n "$gh_email" ]; then
@@ -280,8 +288,8 @@ fi
 # -- Account label --
 account_label="${BOLD}${ACCOUNT_COLOR}${ACCOUNT_NAME}${RESET}"
 
-# -- LINE 1: Account | Git user (Claude account) | Model + flags | Dir | Git | PR --
-printf '%b\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${ver_info}  ${short_dir}${git_info}${pr_info}"
+# -- LINE 1: Account | Git user (Claude account) | Model + flags | Version | Session id | Dir | Git | PR --
+printf '%b\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${ver_info}${id_info}  ${short_dir}${git_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits | Cost | Duration | Lines --
 printf '%b' "${bar_color}${bar}${RESET} ${pct}%${rl_info} | ${YELLOW}${cost_fmt}${RESET} | ${time_fmt}${lines_info}"
