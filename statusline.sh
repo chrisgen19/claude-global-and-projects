@@ -691,7 +691,7 @@ if [ -n "$_dev_list" ]; then
       _dev_txt+="${_dev_txt:+ }${_dl}"
     done
     [ ${#_dev_ports[@]} -gt 3 ] && _dev_txt+=" ${DIM}+$(( ${#_dev_ports[@]} - 3 ))${RESET}"
-    dev_info="  ${GREEN}▶${RESET} ${_dev_txt}"
+    dev_info="${GREEN}▶${RESET} ${_dev_txt}"
   fi
 fi
 
@@ -943,9 +943,13 @@ fi
 account_label="${BOLD}${ACCOUNT_COLOR}${ACCOUNT_NAME}${RESET}"
 
 # -- LINE 1: Account | Git user (Claude account) | Model + flags + mode | Version | Session id | Dir | Git | PR --
+# Dev servers get line 3: at the end of line 1 a narrow terminal cut them off.
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}${dev_info}"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
 printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info} | ${YELLOW}${cost_fmt}${RESET} | ${time_fmt}${lines_info}"
+
+# -- LINE 3: Dev servers running in the project, only when there are any --
+if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi

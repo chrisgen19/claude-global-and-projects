@@ -117,6 +117,11 @@ line2() {
   render "$1" "${2:-}" | sed -n '2p'
 }
 
+# devseg <dir> [extra-json] -- line 3 (the dev servers), colours stripped
+devseg() {
+  render "$1" "${2:-}" | sed -n '3p'
+}
+
 ok()   { pass=$((pass + 1)); printf 'ok    %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf 'FAIL  %s\n' "$1"; }
 
@@ -853,7 +858,9 @@ else
 
   dev_proj="\"workspace\":{\"project_dir\":\"$FIX/devproj\"}"
   got=$(raw "$FIX/devproj" "$dev_proj")
-  line=$(printf '%s' "$got" | strip_links | sed -n '1p')
+  line=$(printf '%s' "$got" | strip_links | sed -n '3p')
+  excludes "dev servers are not on line 1" "localhost:" "$(printf '%s' "$got" | strip_links | sed -n '1p')"
+  excludes "dev servers are not on line 2" "localhost:" "$(printf '%s' "$got" | strip_links | sed -n '2p')"
   contains "a server in the project is shown" "localhost:$P_ROOT" "$line"
   # When detection fails outright, say what the OS tools see for the fixture
   # server, so a CI log shows the cause rather than just the missing port.
@@ -891,27 +898,27 @@ else
   # /var/folders, which lsof reports as /private/var/folders, so the checks
   # above only reach the resolved-path comparison; these reach the plain one.
   real_proj=$(cd "$FIX/devproj" && pwd -P)
-  got=$(raw "$real_proj" "\"workspace\":{\"project_dir\":\"$real_proj\"}" | strip_links | sed -n '1p')
+  got=$(raw "$real_proj" "\"workspace\":{\"project_dir\":\"$real_proj\"}" | strip_links | sed -n '3p')
   contains "a resolved project_dir shows its own server" "localhost:$P_ROOT" "$got"
   contains "a resolved project_dir shows a subdirectory server" "localhost:$P_SUB" "$got"
   excludes "a resolved project_dir does not show a sibling's server" "localhost:$P_SIB" "$got"
 
   dev_proj_slash="\"workspace\":{\"project_dir\":\"$FIX/devproj/\"}"
-  got=$(seg "$FIX/devproj" "$dev_proj_slash")
+  got=$(devseg "$FIX/devproj" "$dev_proj_slash")
   contains "a trailing slash on project_dir still matches" "localhost:$P_ROOT" "$got"
 
   # Without project_dir the cwd is the project: from apps/ only apps/web counts.
-  got=$(seg "$FIX/devproj/apps" "")
+  got=$(devseg "$FIX/devproj/apps" "")
   contains "without project_dir the cwd is used" "localhost:$P_SUB" "$got"
   excludes "without project_dir a server above the cwd is not shown" "localhost:$P_ROOT" "$got"
 
-  got=$(seg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  got=$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
   contains "each session sees its own project's server" "localhost:$P_OTHER" "$got"
   excludes "and not the servers of another project" "localhost:$P_ROOT" "$got"
 
   # A home-directory session is not a project: everything under ~ would match.
   got=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
-    | HOME="$FIX/devproj" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p')
+    | HOME="$FIX/devproj" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi)
   contains "a home-directory session still renders" "[M]" "$got"
   excludes "a home-directory session shows no dev servers" "localhost:" "$got"
 
@@ -920,7 +927,7 @@ else
   # newest pids and the listing order has to be sorted to come out right.
   start_low_server "$FIX/devproj" || bad "third project server started"; P_LO1=$SRV_PORT
   start_low_server "$FIX/devproj" || bad "fourth project server started"; P_LO2=$SRV_PORT
-  got=$(raw "$FIX/devproj" "$dev_proj" | strip_links | sed -n '1p')
+  got=$(raw "$FIX/devproj" "$dev_proj" | strip_links | sed -n '3p')
   contains "more than three servers show a +N count" "+1" "$got"
   n_links=$(printf '%s' "$got" | grep -o 'localhost:[0-9]*' | wc -l | tr -d ' ')
   equals "more than three servers show three links" "3" "$n_links"
@@ -937,9 +944,9 @@ else
   if start_server "$FIX/samea" node 0 127.0.0.1; then
     P_SAME=$SRV_PORT
     if start_server "$FIX/sameb" node "$P_SAME" ::1; then
-      got=$(raw "$FIX/samea" "\"workspace\":{\"project_dir\":\"$FIX/samea\"}" | strip_links | sed -n '1p')
+      got=$(raw "$FIX/samea" "\"workspace\":{\"project_dir\":\"$FIX/samea\"}" | strip_links | sed -n '3p')
       contains "two projects on one port: the 127.0.0.1 one sees its server" "localhost:$P_SAME" "$got"
-      got=$(raw "$FIX/sameb" "\"workspace\":{\"project_dir\":\"$FIX/sameb\"}" | strip_links | sed -n '1p')
+      got=$(raw "$FIX/sameb" "\"workspace\":{\"project_dir\":\"$FIX/sameb\"}" | strip_links | sed -n '3p')
       contains "two projects on one port: the ::1 one sees its server" "localhost:$P_SAME" "$got"
       n_links=$(printf '%s' "$got" | grep -o "localhost:$P_SAME" | wc -l | tr -d ' ')
       equals "two projects on one port: the port is listed once" "1" "$n_links"
@@ -959,7 +966,7 @@ else
       if start_server "$FIX/retitled" node-mainthread; then
         P_RT=$SRV_PORT
         equals "the fixture node really reports MainThread" "MainThread" "$(cat "/proc/$SRV_PID/comm")"
-        got=$(seg "$FIX/retitled" "\"workspace\":{\"project_dir\":\"$FIX/retitled\"}")
+        got=$(devseg "$FIX/retitled" "\"workspace\":{\"project_dir\":\"$FIX/retitled\"}")
         contains "a node whose process name is MainThread is still shown" "localhost:$P_RT" "$(printf '%s' "$got" | strip_links)"
       else
         bad "a node server that retitles itself started"
@@ -969,13 +976,17 @@ else
 
   # A stopped server disappears on the next scan.
   kill "$PID_OTHER" 2>/dev/null; wait "$PID_OTHER" 2>/dev/null
-  got=$(seg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  got=$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
   excludes "a stopped server is no longer shown" "localhost:$P_OTHER" "$got"
 
   err=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
     | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
   equals "no stderr: dev servers detected" "" "$err"
 fi
+
+# No dev servers, no third line: the status line stays two lines.
+n_lines=$(printf '%s\n' "$(raw "$FIX/plain")" | wc -l | tr -d ' ')
+equals "without dev servers the status line has two lines" "2" "$n_lines"
 
 # The http://localhost exception is for the links the script builds itself; a
 # payload URL never gets it.
