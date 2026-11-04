@@ -60,10 +60,14 @@ config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # /dev/null stands in for a missing file: --slurpfile on a path that does not
 # exist is a hard jq error, while on /dev/null it yields an empty array, so
 # $acct[0] is null and the email falls back to "".
+#
+# `floor` on a non-number is a jq error, and one error aborts the whole pass,
+# so a string percentage used to blank every field on the line. `numbers`
+# drops a wrong-typed value instead, and the `//` default takes its place.
 JQ_FIELDS='
   [ .model.display_name                            // "?",
     (.workspace.current_dir // .cwd)               // "",
-    (.context_window.used_percentage // 0 | floor),
+    ((.context_window.used_percentage | numbers | floor) // 0),
     .cost.total_cost_usd                           // 0,
     .cost.total_duration_ms                        // 0,
     .cost.total_lines_added                        // 0,
@@ -74,9 +78,9 @@ JQ_FIELDS='
     (.thinking.enabled // false),
     (.fast_mode // false),
     .pr.number                                     // "",
-    (.rate_limits.five_hour.used_percentage // -1 | floor),
+    ((.rate_limits.five_hour.used_percentage | numbers | floor) // -1),
     (.rate_limits.five_hour.resets_at       // -1),
-    (.rate_limits.seven_day.used_percentage // -1 | floor),
+    ((.rate_limits.seven_day.used_percentage | numbers | floor) // -1),
     (.rate_limits.seven_day.resets_at       // -1),
     .session_id                                    // "",
     .permission_mode                               // "",
@@ -119,6 +123,11 @@ _int rl_5h -1
 _int rl_5h_at -1
 _int rl_7d -1
 _int rl_7d_at -1
+# cost is the one float, so _int would reject a real value like 0.42. It still
+# needs a guard: printf '%.2f' writes "invalid number" to stderr on anything
+# else, and an empty field (non-JSON input, or any jq error) is exactly that.
+# The exponent form is allowed because jq prints tiny costs as 1e-07.
+[[ "$cost" =~ ^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$ ]] || cost=0
 [[ "$model" ]] || model="?"
 
 # -- Shorten directory (replace $HOME with ~) --

@@ -382,6 +382,41 @@ equals "non-numeric context percentage does not break the bar" \
 equals "non-JSON input still renders two lines" \
   "1" "$(printf 'not json at all' | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | wc -l | tr -d ' ')"
 
+# A wrong-typed number used to abort the whole jq pass, so one bad field cost
+# the model, the directory and everything else on the line.
+contains "a non-numeric context percentage keeps the rest of the line" "[MODELNAME]" \
+  "$(printf '{"model":{"display_name":"MODELNAME"},"context_window":{"used_percentage":"oops"}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+contains "a non-numeric rate limit keeps the rest of the line" "[MODELNAME]" \
+  "$(printf '{"model":{"display_name":"MODELNAME"},"rate_limits":{"five_hour":{"used_percentage":"x"}}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+contains "a tiny cost in exponent form still formats" '$0.00' \
+  "$(printf '{"cost":{"total_cost_usd":1e-7}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi)"
+
+echo "-- nothing on stderr --"
+# Claude Code shows only stdout, so stderr noise is invisible in normal use and
+# easy to regress. Every assertion above discards it, which is how the
+# `printf: : invalid number` on an empty cost went unnoticed. Each payload here
+# must render with stderr completely empty, good input and bad alike.
+# stderr_of <label> <payload>
+stderr_of() {
+  local err
+  err=$(printf '%s' "$2" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" 2>&1 > /dev/null)
+  equals "no stderr: $1" "" "$err"
+}
+stderr_of "an ordinary render in a repo" \
+  "$(jq -nc --arg d "$FIX/sync" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{total_cost_usd:0.42},context_window:{used_percentage:40}}')"
+stderr_of "an ordinary render outside a repo" \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}}')"
+stderr_of "an empty object payload"                '{}'
+stderr_of "non-JSON input"                         'not json at all'
+stderr_of "a non-numeric context percentage"       '{"context_window":{"used_percentage":"oops"}}'
+stderr_of "a non-numeric cost"                     '{"cost":{"total_cost_usd":"x"}}'
+stderr_of "a non-numeric rate limit"               '{"rate_limits":{"five_hour":{"used_percentage":"x"}}}'
+stderr_of "a model given as a string"              '{"model":"x"}'
+stderr_of "a tiny cost in exponent form"           '{"cost":{"total_cost_usd":1e-7}}'
+
 echo
 echo "$pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
