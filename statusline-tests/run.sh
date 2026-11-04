@@ -36,7 +36,24 @@ fail=0
 # with whatever is installed on the machine running the tests.
 CONFIG_DIR=$(mktemp -d) || exit 1
 FIX=$(mktemp -d) || exit 1
-cleanup() { rm -rf "$FIX" "$CONFIG_DIR"; }
+
+# Removing the fixtures is not enough: the script writes a cache entry per
+# directory it renders, so every run used to leave ~11 orphans behind in /tmp.
+# They are keyed by the mangled cwd, so matching on this run's own $FIX leaves
+# every other session's entries untouched. The mangling has to agree with the
+# script's: / becomes _, then anything outside [A-Za-z0-9_.-] becomes _ too.
+#
+# The cache format version is globbed rather than named, so this keeps working
+# when the script bumps it. Naming v3 here would have quietly started leaking
+# again at v4, which is the same way the leak arrived in the first place.
+cleanup() {
+  rm -rf "$FIX" "$CONFIG_DIR"
+  # The variables stay quoted and only the * are bare, so the pattern expands
+  # without word-splitting the path. With no match bash passes the pattern
+  # through literally and `rm -f` ignores it.
+  local k="${FIX//\//_}"
+  rm -f /tmp/claude-statusline-git-*-"${UID}"-"${k//[^A-Za-z0-9_.-]/_}"*
+}
 trap cleanup EXIT
 
 strip_ansi() { sed "s/${ESC}\\[[0-9;]*m//g"; }
@@ -292,6 +309,66 @@ out=$(printf '%s' \
 contains "ACCOUNT_LABEL_OVERRIDE wins over the built-in label" "CLAUDE" "$out"
 
 # ---------------------------------------------------------------------------
+echo "-- the Claude account email --"
+# It arrives through --slurpfile on the same jq pass as the payload, so the
+# things worth pinning are that it is read at all, and that a bad account file
+# costs only the email rather than blanking the whole line.
+acct_dir=$(mktemp -d) || exit 1
+printf '{"oauthAccount":{"emailAddress":"someone@example.com"}}' > "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "the account username is shown in parens" "(someone)" "$out"
+excludes "the domain is stripped" "example.com" "$out"
+
+# Truncated mid-write: jq exits 2 with no output at all on a bad --slurpfile,
+# so without the fallback this blanks the model, the directory and everything
+# else, not just the email.
+printf '{"oauthAccount":{"emailAddress":"someone@example.' > "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"MODELNAME"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "a corrupt .claude.json still renders the rest of the line" "MODELNAME" "$out"
+excludes "a corrupt .claude.json shows no account" "(" "$out"
+
+# No .claude.json at all: --slurpfile on a missing path is a hard jq error, so
+# the script has to substitute /dev/null rather than pass the path through.
+rm -f "$acct_dir/.claude.json"
+out=$(printf '%s' \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"MODELNAME"},cost:{},context_window:{used_percentage:1}}')" \
+  | CLAUDE_CONFIG_DIR="$acct_dir" bash "$SCRIPT" | strip_ansi | sed -n '1p')
+contains "an absent .claude.json still renders the line" "MODELNAME" "$out"
+rm -rf "$acct_dir"
+
+echo "-- the git identity --"
+# Read from git config so an includeIf per directory is respected, which is why
+# it is resolved per cwd rather than once per session.
+contains "the git email username is shown" "t@e.com" \
+  "$(git -C "$FIX/sync" config user.email)"
+contains "the git email username appears on the line" "t" \
+  "$(render "$FIX/sync" | sed -n '1p')"
+
+echo "-- cache key collisions --"
+# The cache file name mangles / to _, so a/b and a_b share one slot. Rendered
+# back to back (well inside the 10s window), the second must not be served the
+# first one's branch or git identity. The branches and emails differ so either
+# kind of leak shows up.
+newrepo "$FIX/col/a/b" col-slash-branch || exit 1
+git -C "$FIX/col/a/b" config user.email slashuser@e.com
+newrepo "$FIX/col/a_b" col-under-branch || exit 1
+git -C "$FIX/col/a_b" config user.email underuser@e.com
+first=$(render "$FIX/col/a/b" | sed -n '1p')
+second=$(render "$FIX/col/a_b" | sed -n '1p')
+contains "a/b shows its own branch" "col-slash-branch" "$first"
+contains "a_b, rendered next, shows its own branch" "col-under-branch" "$second"
+excludes "a_b is not served the a/b branch from the cache" "col-slash-branch" "$second"
+contains "a_b shows its own git identity" "underuser" "$second"
+excludes "a_b is not served the a/b git identity from the cache" "slashuser" "$second"
+# And back again: the slot now holds a_b's entry, which a/b must not take.
+again=$(render "$FIX/col/a/b" | sed -n '1p')
+contains "a/b after a_b still shows its own branch" "col-slash-branch" "$again"
+excludes "a/b after a_b is not served the a_b identity" "underuser" "$again"
+
 echo "-- malformed and absent payload fields --"
 # The script is fed whatever Claude Code sends; a missing field must not make
 # it print an error or die mid-line.
@@ -304,6 +381,41 @@ equals "non-numeric context percentage does not break the bar" \
     | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | wc -l | tr -d ' ')"
 equals "non-JSON input still renders two lines" \
   "1" "$(printf 'not json at all' | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | wc -l | tr -d ' ')"
+
+# A wrong-typed number used to abort the whole jq pass, so one bad field cost
+# the model, the directory and everything else on the line.
+contains "a non-numeric context percentage keeps the rest of the line" "[MODELNAME]" \
+  "$(printf '{"model":{"display_name":"MODELNAME"},"context_window":{"used_percentage":"oops"}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+contains "a non-numeric rate limit keeps the rest of the line" "[MODELNAME]" \
+  "$(printf '{"model":{"display_name":"MODELNAME"},"rate_limits":{"five_hour":{"used_percentage":"x"}}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi | sed -n '1p')"
+contains "a tiny cost in exponent form still formats" '$0.00' \
+  "$(printf '{"cost":{"total_cost_usd":1e-7}}' \
+    | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" | strip_ansi)"
+
+echo "-- nothing on stderr --"
+# Claude Code shows only stdout, so stderr noise is invisible in normal use and
+# easy to regress. Every assertion above discards it, which is how the
+# `printf: : invalid number` on an empty cost went unnoticed. Each payload here
+# must render with stderr completely empty, good input and bad alike.
+# stderr_of <label> <payload>
+stderr_of() {
+  local err
+  err=$(printf '%s' "$2" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" bash "$SCRIPT" 2>&1 > /dev/null)
+  equals "no stderr: $1" "" "$err"
+}
+stderr_of "an ordinary render in a repo" \
+  "$(jq -nc --arg d "$FIX/sync" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{total_cost_usd:0.42},context_window:{used_percentage:40}}')"
+stderr_of "an ordinary render outside a repo" \
+  "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}}')"
+stderr_of "an empty object payload"                '{}'
+stderr_of "non-JSON input"                         'not json at all'
+stderr_of "a non-numeric context percentage"       '{"context_window":{"used_percentage":"oops"}}'
+stderr_of "a non-numeric cost"                     '{"cost":{"total_cost_usd":"x"}}'
+stderr_of "a non-numeric rate limit"               '{"rate_limits":{"five_hour":{"used_percentage":"x"}}}'
+stderr_of "a model given as a string"              '{"model":"x"}'
+stderr_of "a tiny cost in exponent form"           '{"cost":{"total_cost_usd":1e-7}}'
 
 echo
 echo "$pass passed, $fail failed"
