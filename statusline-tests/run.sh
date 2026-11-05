@@ -572,37 +572,83 @@ RED="${ESC}[31m"; YELLOW="${ESC}[33m"; GREEN="${ESC}[32m"; DIM="${ESC}[2m"; RST=
 
 # ---------------------------------------------------------------------------
 echo "-- usage pace --"
-# 40% used one hour into a 5h window projects to 200%: red, with the
-# projection shown. Over 100 means the limit runs out before the reset.
+# eta_want <epoch> -- the local HH:MM for an epoch under TZ=UTC0, as plain
+# arithmetic. The script may read the clock a second after the suite, which
+# moves a projected ETA by up to a minute, so callers accept epoch and epoch+60.
+eta_want() {
+  local e l
+  for e in "$1" "$(($1 + 60))"; do
+    l=$(( e % 86400 ))
+    printf '%02d:%02d\n' $((l / 3600)) $(((l % 3600) / 60))
+  done
+}
+# eta_has <name> <epoch> <output> -- passes when "out HH:MM" holds for either
+eta_has() {
+  local w1 w2
+  { read -r w1; read -r w2; } < <(eta_want "$2")
+  if [ "${3#*"out $w1"}" != "$3" ] || [ "${3#*"out $w2"}" != "$3" ]; then
+    ok "$1"
+  else
+    bad "$1"
+    printf '        want out %s or out %s\n        got: %s\n' "$w1" "$w2" "$3"
+  fi
+}
+# 40% used one hour into a 5h window: 20% of the window elapsed, so 20 points
+# ahead of the clock. The projection is 200%: red, and it runs out after 90
+# more minutes (now + 5400).
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))}}")
 contains "5h on course to run out is red" "${RED}40%" "$got"
-contains "5h on course to run out shows the projection" "→" "$(printf '%s' "$got" | strip_ansi)"
-# 60% at day 4.5 of 7 projects to 93%: amber, from 90.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))}}")
+contains "5h ahead of the clock" "5h 40% ⇡20%" "$got"
+eta_has "5h run-out time is local" $((now + 5400)) "$got"
+# 60% at day 4.5 of 7: 64% elapsed, 4 points behind; projects to 93%: amber
+# from 90, but under 100 so no ETA.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"seven_day\":{\"used_percentage\":60,\"resets_at\":$((now + 216000))}}")
 contains "7d heading for 93% is yellow" "${YELLOW}60%" "$got"
-contains "7d heading for 93% shows it" "→93%" "$(printf '%s' "$got" | strip_ansi)"
-# 40% with 30 minutes left projects to 44%: on track, no marker.
+plain_got=$(printf '%s' "$got" | strip_ansi)
+contains "7d heading for 93% is behind the clock" "7d 60% ⇣4%" "$plain_got"
+excludes "7d heading for 93% shows no ETA" "out " "$plain_got"
+# 40% with 30 minutes left: 90% elapsed, 50 points behind.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 1800))}}")
 contains "5h on track stays green" "${GREEN}40%" "$got"
-excludes "5h on track shows no projection" "→" "$(printf '%s' "$got" | strip_ansi)"
+excludes "5h on track shows no ETA" "out " "$(printf '%s' "$got" | strip_ansi)"
+# 24% with 3h12m left: 36% elapsed, 12 points behind, no ETA.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":24,\"resets_at\":$((now + 11520))}}")
+contains "behind the clock" "5h 24% ⇣12%" "$got"
+excludes "behind the clock shows no ETA" "out " "$got"
 # Below 10% a projection is noise (3% five minutes in "projects" 180%).
 # The positive check first, so a payload that failed to parse cannot pass the
 # exclusion by rendering no window at all.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":5,\"resets_at\":$((now + 17700))}}")
 contains "under 10% used still shows the window" "5h 5%" "$got"
-excludes "under 10% used grades no pace" "→" "$got"
+excludes "under 10% used shows no pace marker" "⇡" "$got"
+excludes "under 10% used shows no behind marker" "⇣" "$got"
+excludes "under 10% used shows no ETA" "out " "$got"
 # Pace never lowers the threshold colour: a minute before the reset, 95%
 # projects to 95% (a yellow pace grade), and the percent stays red.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":95,\"resets_at\":$((now + 60))}}")
 contains "pace never lowers a red threshold" "${RED}95%" "$got"
-# That projection equals the current percent, so `5h 95% →95%` would repeat
-# it. The marker shows only when the projection is above the percent.
+# The projection equals the percent, so there is no run-out to announce.
 contains "a projection equal to the percent still shows the window" "5h 95%" "$(printf '%s' "$got" | strip_ansi)"
-excludes "a projection equal to the percent shows no marker" "→" "$(printf '%s' "$got" | strip_ansi)"
-# The guard must not hide a high percent that is still climbing: 90% four
-# hours into 5h projects to 112%.
-got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":90,\"resets_at\":$((now + 3600))}}")
-contains "a projection above a high percent still shows" "5h 90% →112%" "$got"
+excludes "a projection equal to the percent shows no ETA" "out " "$(printf '%s' "$got" | strip_ansi)"
+# 90% four hours into 5h: 80% elapsed, 10 ahead, projects to 112%, so it runs
+# out 1600s from now.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":90,\"resets_at\":$((now + 3600))}}")
+contains "a high percent still climbing is ahead" "5h 90% ⇡10%" "$got"
+eta_has "a high percent still climbing shows its run-out" $((now + 1600)) "$got"
+# 7d 70% with 3d left: 4d elapsed, runs out 148114s from now, more than 24h
+# away, so the weekday comes first. 1970-01-01 was a Thursday.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"seven_day\":{\"used_percentage\":70,\"resets_at\":$((now + 259200))}}")
+contains "7d ahead of the clock" "7d 70% ⇡13%" "$got"
+dnames=(Sun Mon Tue Wed Thu Fri Sat)
+_e=$((now + 148114))
+want_day=${dnames[$(( (_e / 86400 + 4) % 7 ))]}
+_e1=$((now + 148114 + 60))
+want_day1=${dnames[$(( (_e1 / 86400 + 4) % 7 ))]}
+case "$got" in *"out $want_day "*|*"out $want_day1 "*) ok "an ETA over 24h away carries the weekday" ;; *) bad "an ETA over 24h away carries the weekday"; printf '        got: %s\n' "$got" ;; esac
+# On pace exactly: no marker sign beyond +-0.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":50,\"resets_at\":$((now + 9000))}}")
+contains "on pace reads plus-minus zero" "5h 50% ±0%" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- prompt cache --"
@@ -639,12 +685,14 @@ got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":
 contains "spend over the limit shows its percent" "spend 104%" "$got"
 contains "spend shows used over limit in whole dollars" '$520/$500' "$got"
 # Months run 28 to 31 days, so a monthly period grades no pace.
-excludes "a monthly period grades no pace" "→" "$got"
+excludes "a monthly period shows no pace marker" "⇡" "$got"
+excludes "a monthly period shows no ETA" "out " "$got"
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":104,\"resets_at\":$((now + 1728000)),\"period\":\"monthly\"}}")
 contains "spend over the limit is red" "${RED}104%" "$got"
-# 50% three days into a week projects to 116%.
+# 50% three days into a week: 42% elapsed, 8 points ahead, projects to 116%.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600)),\"period\":\"weekly\"}}")
-contains "a weekly period grades pace" "→116%" "$got"
+contains "a weekly period grades pace" "spend 50% ⇡8%" "$got"
+contains "a weekly period shows its run-out" "out " "$got"
 # The dollar amounts arrive up to five minutes after the percentage.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600))}}")
 contains "spend without dollars still shows its percent" "spend 50%" "$got"
@@ -1046,6 +1094,15 @@ got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain")
 contains "ascii bar" "[====------] 40%" "$got"
 excludes "ascii prints no box divider" "│" "$got"
 equals "ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+# A full payload: every optional segment, so a non-ASCII glyph in any of them
+# fails here. The contains pairs keep a failed render from passing as empty.
+got=$(STATUSLINE_GLYPHS=ascii TZ=UTC0 render "$FIX/sync" "\"output_style\":{\"name\":\"explanatory\"},\"vim\":{\"mode\":\"NORMAL\"},\"agent\":{\"name\":\"reviewer\"},\"session_name\":\"icons\",\"worktree\":{\"name\":\"feat-x\"},\"pr\":{\"number\":42,\"review_state\":\"approved\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))},\"seven_day\":{\"used_percentage\":24,\"resets_at\":$((now + 259200))}},\"prompt_cache\":{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$((now + 1800)),\"hit_ratio\":0.88},\"cost\":{\"total_lines_added\":5,\"total_lines_removed\":2}")
+contains "full ascii payload renders the pace marker" "5h 40% ^20%" "$got"
+contains "full ascii payload renders the ETA" "out " "$got"
+contains "full ascii payload renders the branch" "main" "$got"
+contains "full ascii payload renders the cache" "cache " "$got"
+contains "full ascii payload renders the style" "explanatory" "$got"
+equals "full ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
 contains "unknown glyph tier falls back to nerd" $'\xee\xbc\xa3' "$(STATUSLINE_GLYPHS=bogus raw "$FIX/plain")"
 contains "ansi palette keeps 8-colour green" "${ESC}[32m" "$(raw "$FIX/plain")"
 

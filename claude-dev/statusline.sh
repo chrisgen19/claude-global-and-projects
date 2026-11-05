@@ -343,14 +343,28 @@ fi
 # (BSD and GNU also disagree on how to format a given epoch). It is the offset
 # now, which is also right at an expiry at most an hour away, barring a DST
 # switch inside that hour.
-read -r now tz_off < <(date '+%s %z')
+read -r now tz_off today < <(date '+%s %z %Y-%m-%d')
 [[ "$now" =~ ^[0-9]+$ ]] || now=0
+[[ "$today" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || today=""
 tz_secs=0
 if [[ "$tz_off" =~ ^([-+])([0-9]{2})([0-9]{2})$ ]]; then
   # 10# forces base ten: a bare 08 or 09 is an invalid octal literal.
   tz_secs=$(( 10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60 ))
   [ "${BASH_REMATCH[1]}" = "-" ] && tz_secs=$(( -tz_secs ))
 fi
+# Local midnight as an epoch, by arithmetic on the offset read above.
+midnight=$(( now - ((now + tz_secs) % 86400) ))
+
+# Local HH:MM of an epoch, with the weekday in front when it is more than 24h
+# away (1970-01-01 was a Thursday, hence the + 4). Pure arithmetic: no `date`.
+fmt_clock() {  # $1=outvar  $2=epoch
+  local _l=$(( ($2 + tz_secs) % 86400 )) _wd=""
+  if [ $(( $2 - now )) -gt 86400 ]; then
+    local _names=(Sun Mon Tue Wed Thu Fri Sat)
+    _wd="${_names[$(( (($2 + tz_secs) / 86400 + 4) % 7 ))]} "
+  fi
+  printf -v "$1" '%s%02d:%02d' "$_wd" $((_l / 3600)) $(((_l % 3600) / 60))
+}
 
 # -- Git info (cached PER DIRECTORY) --
 # The cache key includes the cwd and uid, so concurrent sessions in
@@ -910,39 +924,49 @@ fmt_left() {  # $1=outvar  $2=epoch seconds when the window resets
   fi
 }
 
-# Usage pace, after claude-hud's getUsagePace: project the used percentage
-# linearly to the window's reset. 40% used one hour into a 5h window projects
-# to 200%, which the raw percentage alone shows as a calm green. Projection
-# above 100% (the limit runs out before the reset) is red, 90% or more is
-# yellow, and the percent takes whichever of threshold or pace is worse. When
-# pace raises an alert the projection is shown as `→200%`, which is the cue to
-# switch accounts, but only when it is above the current percent: right before
-# a reset almost no time is left to project over, so 95% projects to 95% and
-# `5h 95% →95%` would say nothing. That case needs 90% or more used, where the
-# threshold colour is already red, so hiding the marker loses no colour either.
-# Below 10% used a projection is noise (3% five minutes in
-# "projects" 180%), and a reset already past or a full window away has no
-# elapsed time to project from, so neither grades pace.
+# Usage pace, after claude-hud's getUsagePace: how far the used percentage is
+# ahead of or behind the clock (`used% - elapsed%` of the window), as `⇡20%`,
+# `⇣12%` or `±0%`. 40% used one hour into a 5h window is 20 points ahead, which
+# the raw percentage alone shows as a calm green. The severity still comes from
+# the linear projection to the reset: over 100% (the limit runs out first) is
+# red, 90% or more is yellow, and the percent takes whichever of threshold or
+# pace is worse. When the projection is over 100% the time it reaches 100% at
+# the current average rate is shown as `out HH:MM`, the cue to switch accounts.
+# Below 10% used a projection is noise (3% five minutes in "projects" 180%),
+# and a reset already past or a full window away has no elapsed time to
+# project from, so neither grades pace. Sets RL_LAST_SEV (0 ok, 1 warn,
+# 2 crit) for the window just formatted.
 fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)  $5=window seconds
-  local _sev=0 _psev=0 _c="$GREEN" _pc="" _rem _proj=0 left="" _pace=""
+  local _sev=0 _psev=0 _c="$C_OK" _pc="$C_OK" _rem _el _proj=0 _delta=0 _graded=0
+  local left="" _pace="" _eta="" _clk
   if [ "$3" -ge 90 ]; then _sev=2; elif [ "$3" -ge 70 ]; then _sev=1; fi
   if [ "$4" -ge 0 ] && [ "$3" -ge 10 ]; then
     _rem=$(( $4 - now ))
     if [ "$_rem" -gt 0 ] && [ "$_rem" -lt "$5" ]; then
-      _proj=$(( $3 * $5 / ($5 - _rem) ))
+      _graded=1
+      _el=$(( $5 - _rem ))
+      _proj=$(( $3 * $5 / _el ))
+      _delta=$(( $3 - _el * 100 / $5 ))
       if [ "$_proj" -gt 100 ]; then _psev=2; elif [ "$_proj" -ge 90 ]; then _psev=1; fi
     fi
   fi
   [ "$_psev" -gt "$_sev" ] && _sev=$_psev
-  case "$_sev" in 2) _c="$RED" ;; 1) _c="$YELLOW" ;; esac
-  if [ "$_psev" -gt 0 ] && [ "$_proj" -gt "$3" ]; then
-    [ "$_psev" -eq 2 ] && _pc="$RED" || _pc="$YELLOW"
-    [ "$_proj" -gt 999 ] && _proj=999
-    _pace=" ${_pc}→${_proj}%${RESET}"
+  RL_LAST_SEV=$_sev
+  case "$_sev" in 2) _c="$C_CRIT" ;; 1) _c="$C_WARN" ;; esac
+  case "$_psev" in 2) _pc="$C_CRIT" ;; 1) _pc="$C_WARN" ;; esac
+  if [ "$_graded" = 1 ]; then
+    if   [ "$_delta" -gt 0 ]; then _pace=" ${_pc}${G_UP}${_delta}%${RESET}"
+    elif [ "$_delta" -lt 0 ]; then _pace=" ${C_OK}${G_DOWN}$(( -_delta ))%${RESET}"
+    else                           _pace=" ${C_MUTED}${G_EVEN}0%${RESET}"
+    fi
+    if [ "$_proj" -gt 100 ]; then
+      fmt_clock _clk $(( now - _el + _el * 100 / $3 ))
+      _eta=" ${_pc}${I_ETA}out ${_clk}${RESET}"
+    fi
   fi
   [ "$4" -ge 0 ] && fmt_left left "$4"
-  [ -n "$left" ] && left=" ${DIM}(${left})${RESET}"
-  printf -v "$1" '%s%s%s %s%s%%%s%s%s' "$DIM" "$2" "$RESET" "$_c" "$3" "$RESET" "$_pace" "$left"
+  [ -n "$left" ] && left=" ${C_MUTED}(${left})${RESET}"
+  printf -v "$1" '%s%s%s %s%s%%%s%s%s%s' "$C_MUTED" "$2" "$RESET" "$_c" "$3" "$RESET" "$_pace" "$_eta" "$left"
 }
 
 rl_parts=()
@@ -969,7 +993,10 @@ if [ "$sl_pct" -ge 0 ]; then
   rl_parts+=("$_rls")
 fi
 rl_info=""
-[ ${#rl_parts[@]} -gt 0 ] && rl_info="${SEP}${rl_parts[*]}"
+if [ ${#rl_parts[@]} -gt 0 ]; then
+  icon _ic "$C_QUOTA" "$I_QUOTA"
+  rl_info="${SEP}${_ic}${rl_parts[*]}"
+fi
 
 # -- Prompt cache: when it goes cold, and the session hit rate --
 # A clock time, not a countdown, as claude-hud's promptCacheLine does: the line
@@ -984,12 +1011,11 @@ if [ "$cache_observed" = "true" ]; then
   if [ "$_cache_left" -gt 0 ]; then
     case "$cache_ttl" in 1h) _ttl=3600 ;; *) _ttl=300 ;; esac
     _warn=$((_ttl / 5)); [ "$_warn" -lt 60 ] && _warn=60
-    _local=$(( (cache_exp + tz_secs) % 86400 ))
-    printf -v _hhmm '%02d:%02d' $((_local / 3600)) $(((_local % 3600) / 60))
-    _cc="$GREEN"; [ "$_cache_left" -le "$_warn" ] && _cc="$YELLOW"
-    cache_info="${DIM}cache${RESET} ${_cc}${_hhmm}${RESET}"
+    fmt_clock _hhmm "$cache_exp"
+    _cc="$C_OK"; [ "$_cache_left" -le "$_warn" ] && _cc="$C_WARN"
+    cache_info="${C_MUTED}cache${RESET} ${_cc}${_hhmm}${RESET}"
   else
-    cache_info="${DIM}cache cold${RESET}"
+    cache_info="${C_MUTED}cache cold${RESET}"
   fi
 fi
 # Gated on caching_observed like the expiry above: with caching off, or a
@@ -997,10 +1023,13 @@ fi
 # `hit 0%` would read as a cache doing badly rather than one not in play.
 if [ "$cache_observed" = "true" ] && [ "$cache_hit" -ge 0 ]; then
   [ "$cache_hit" -gt 100 ] && cache_hit=100
-  _hit="${DIM}hit${RESET} ${cache_hit}%"
+  _hit="${C_MUTED}hit${RESET} ${cache_hit}%"
   cache_info="${cache_info:+${cache_info} }${_hit}"
 fi
-[ -n "$cache_info" ] && cache_info="${SEP}${cache_info}"
+if [ -n "$cache_info" ]; then
+  icon _ic "$C_CACHE" "$I_CACHE"
+  cache_info="${SEP}${_ic}${cache_info}"
+fi
 
 # -- Format cost --
 cost_fmt=$(printf '$%.2f' "$cost")
@@ -1022,7 +1051,7 @@ fi
 # -- Lines changed --
 lines_info=""
 if [ "$lines_added" -gt 0 ] || [ "$lines_removed" -gt 0 ]; then
-  lines_info="${SEP}${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
+  lines_info="${SEP}${C_OK}+${lines_added}${RESET} ${C_CRIT}-${lines_removed}${RESET}"
 fi
 
 # -- Version tag --
@@ -1083,7 +1112,9 @@ icon _dir_ic "$C_WORKSP" "$I_DIR"
 printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${name_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
-printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${YELLOW}${cost_fmt}${RESET}${SEP}${time_fmt}${lines_info}"
+icon _cost_ic "$C_COST" "$I_COST"
+icon _time_ic "$C_TIMING" "$I_TIME"
+printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${_cost_ic}${C_COST}${cost_fmt}${RESET}${SEP}${_time_ic}${C_TIMING}${time_fmt}${C_TIMING:+${RESET}}${lines_info}"
 
 # -- LINE 3: Dev servers running in the project, only when there are any --
 if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi
