@@ -1286,6 +1286,8 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
   _day="$_ledger/$today"
   _new_day=""
   if [ ! -d "$_day" ]; then
+    # Both levels are named, so each gets 700; -p only fills in STATE_DIR.
+    # shellcheck disable=SC2174
     mkdir -p -m 700 "$_ledger" "$_day" 2>/dev/null
     _new_day=1
   fi

@@ -777,6 +777,8 @@ tx_new() {
   tx_n=$((tx_n + 1))
   TXL="$STATE/turns$tx_n"
   TXD="$TXL/claude-statusline-cost-${UID}/$tx_day"
+  # Both ledger levels are named, so each gets 700 as the script makes them.
+  # shellcheck disable=SC2174
   mkdir -p -m 700 "$TXL/claude-statusline-cost-${UID}" "$TXD" || exit 1
 }
 # tx_render <cache tokens> -- line 2 for session tx1 at 88% with 1000 input tokens
@@ -1220,7 +1222,7 @@ equals "every new segment at once is still two lines" \
 
 # ---------------------------------------------------------------------------
 echo "-- palette and glyphs --"
-got=$(STATUSLINE_PALETTE= STATUSLINE_GLYPHS= raw "$FIX/plain")
+got=$(STATUSLINE_PALETTE='' STATUSLINE_GLYPHS='' raw "$FIX/plain")
 contains "default palette is catppuccin (ok green)" "${ESC}[38;2;166;227;161m" "$got"
 contains "default glyphs are nerd (model icon)" $'\xee\xbc\xa3' "$got"
 contains "unicode tier divider" " │ " "$(render "$FIX/plain" | sed -n 2p)"
