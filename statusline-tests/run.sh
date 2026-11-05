@@ -1483,6 +1483,23 @@ got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
 contains "unmatched CLAUDE session lists every account" "other accounts: PERSONAL 30% (8m ago)  WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
 contains "unmatched CLAUDE session leaves WORK untouched" "WORK w@x 12 " "$(cat "$QD/claude-statusline-quota-$UID-WORK")"
 equals "unmatched CLAUDE session writes no new file" "3" "$(ls "$QD" | wc -l | tr -d ' ')"
+
+# Two files sharing the current login: the same quota is never offered to switch to.
+printf '{"oauthAccount":{"emailAddress":"p@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile DEV p@x 3 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510))
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+got=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$RCFG" "$RUN_BASH" "$SCRIPT" | strip_ansi)
+contains "named session: a third account is still listed" "WORK 12%" "$got"
+excludes "named session: another file with its email is not listed" "DEV" "$got"
+
+qdir
+qfile PERSONAL x@x 30 $((now + 9000)) $((now - 510)); qfile WORK p@x 12 $((now + 9000)) $((now - 510)); qfile DEV p@x 3 $((now + 9000)) $((now - 510))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "matched CLAUDE session: a third account is still listed" "PERSONAL 30%" "$got"
+excludes "matched CLAUDE session: a second file with its email is not listed" "DEV 3%" "$got"
+excludes "matched CLAUDE session: the matched file is not listed" "WORK 12%" "$got"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
 echo

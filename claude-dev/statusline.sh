@@ -1130,14 +1130,14 @@ if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
 fi
 
 # The line itself: only when this session's 5h is warn or crit. This session's
-# own account is skipped (an unmatched CLAUDE session skips any file with its
-# email), and so is anything missing, corrupt, or older than five hours.
+# own account is skipped, as is any file holding this session's email, and so is anything missing, corrupt, or older than five hours.
 other_info=""
 if [ "$_sev5" -ge 1 ]; then
   for _i in 0 1 2; do
     [ "${QOK[$_i]}" = 1 ] || continue
     [ "$_i" = "$_q_self" ] && continue
-    [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ] && [ "${QE[$_i]}" = "$_q_email" ] && continue
+    # Same login as this session (whatever the label): the same quota, never offered.
+    [ "$_q_email" != "-" ] && [ "${QE[$_i]}" = "$_q_email" ] && continue
     [ "${QP5[$_i]}" -ge 0 ] || continue
     _age=$(( now - QS[_i] )); [ "$_age" -lt 0 ] && _age=0
     [ "$_age" -gt 18000 ] && continue
