@@ -908,11 +908,11 @@ excludes "a wrongly typed review state is dropped" "{" \
 
 # ---------------------------------------------------------------------------
 echo "-- session name and worktree --"
-contains "the session name is shown" "fix login flow" "$(seg "$FIX/plain" '"session_name":"fix login flow"')"
-got=$(seg "$FIX/plain" '"session_name":"abcdefghijklmnopqrstuvwxyz0123456789"')
-contains "a long session name is cut to 29 characters and an ellipsis" "abcdefghijklmnopqrstuvwxyz012…" "$got"
-excludes "a long session name does not run on" "3456789" "$got"
-excludes "a wrongly typed session name is dropped" "{" "$(seg "$FIX/plain" '"session_name":{"a":1}')"
+# The session name is in the terminal tab title (Claude Code sets it), so the
+# line leaves it out. The id stays, for claude-handoff.
+got=$(render "$FIX/plain" '"session_name":"fix login flow","session_id":"4f7b85aa-0000"')
+excludes "the session name is not on the line" "fix login flow" "$got"
+contains "the session id still is" "id:4f7b85aa" "$got"
 contains "worktree.name is shown" "wt:feat-x" "$(seg "$FIX/plain" '"worktree":{"name":"feat-x"}')"
 contains "a git_worktree path shows its last segment" "wt:fix-y" \
   "$(seg "$FIX/plain" '"workspace":{"git_worktree":"/a/b/.worktrees/fix-y"}')"
@@ -922,18 +922,19 @@ excludes "a wrongly typed worktree is dropped" "wt:" "$(seg "$FIX/plain" '"workt
 echo "-- sanitising payload strings --"
 # clean() in the jq pass: a raw ESC printed with %s still reaches the terminal,
 # so sequences, controls and bidi marks are stripped before anything renders.
-got=$(raw "$FIX/plain" '"session_name":"a\u001b[31mred"')
+# The values ride in agent.name, a free-text field line 1 prints as it is.
+got=$(raw "$FIX/plain" '"agent":{"name":"a\u001b[31mred"}')
 excludes "a CSI sequence in a value is stripped" "${ESC}[31mred" "$got"
 contains "the text around a CSI sequence survives" "ared" "$(printf '%s' "$got" | strip_ansi)"
-got=$(raw "$FIX/plain" '"session_name":"a\u001b]8;;https://evil\u0007b"')
+got=$(raw "$FIX/plain" '"agent":{"name":"a\u001b]8;;https://evil\u0007b"}')
 excludes "an OSC 8 link in a value is stripped" "evil" "$got"
 contains "the text around an OSC sequence survives" "ab" "$(printf '%s' "$got" | strip_ansi)"
 rlo=$(printf '\342\200\256')
-got=$(raw "$FIX/plain" '"session_name":"x‮y"')
+got=$(raw "$FIX/plain" '"agent":{"name":"x‮y"}')
 excludes "a right-to-left override is stripped" "$rlo" "$got"
 contains "the text around a bidi mark survives" "xy" "$(printf '%s' "$got" | strip_ansi)"
 bel=$(printf '\007')
-got=$(raw "$FIX/plain" '"session_name":"p\u0007q\tr"')
+got=$(raw "$FIX/plain" '"agent":{"name":"p\u0007q\tr"}')
 excludes "a BEL in a value is stripped" "$bel" "$got"
 contains "a BEL and a tab are removed, not spaced" "pqr" "$(printf '%s' "$got" | strip_ansi)"
 got=$(raw "$FIX/plain" '"model":{"display_name":"M\u001b[2J"}')
@@ -941,7 +942,7 @@ excludes "a sequence in the model name is stripped too" "${ESC}[2J" "$got"
 # A NUL that reached `_fields=$(...)` made bash 5 warn "ignored null byte in
 # input" on stderr (3.2 dropped it silently). A shell variable cannot hold a
 # NUL, so the evidence is the stderr and the text either side surviving.
-nul_payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},session_name:"n\u0000ul"}')
+nul_payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},agent:{name:"n\u0000ul"}}')
 err=$(printf '%s' "$nul_payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
 equals "a NUL in a value causes nothing on stderr" "" "$err"
 contains "the text around a NUL survives" "nul" \
