@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Comprehensive developer statusline for Claude Code
-# Line 1: Account | Git user (Claude) | Model + flags, style, vim, agent, mode | Version | Session id + name | Dir | Git | Worktree | PR
+# Line 1: Account | Git user (Claude) | Model + flags, style, vim, agent, mode | Version | Session id | Dir | Git | Worktree | PR
 # Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache | Cost, today, $/h | Duration | Lines
 # Line 3: other accounts (only when this 5h is warn or crit). Dev servers come last: line 3, or line 4 after that one.
 # Setup: Copy to each account's config directory and set the account label:
@@ -123,7 +123,7 @@ account_color() {
 # and bash 3.2 (no \u escapes there) can still build them.
 case "$GLYPHS" in
   nerd)
-    I_MODEL=$'\xee\xbc\xa3 ';    I_NAME=$'\xef\x80\xab ';     I_DIR=$'\xf3\xb0\x89\x8b '
+    I_MODEL=$'\xee\xbc\xa3 ';    I_DIR=$'\xf3\xb0\x89\x8b '
     I_GIT=$'\xf3\xb0\x8a\xa2 ';  I_WT=$'\xef\x86\xbb ';       I_PR=$'\xef\x90\x87 '
     I_STYLE=$'\xf3\xb1\x8b\xb5 '; I_VIM=$'\xee\x98\xab ';     I_AGENT=$'\xef\x80\x87 '
     I_COMPACT=$'\xef\x81\xa6 '; I_QUOTA=$'\xf3\xb0\x94\xa0 '; I_ETA=$'\xef\x89\x92 '
@@ -131,21 +131,21 @@ case "$GLYPHS" in
     I_CACHE=$'\xef\x87\x80 ';   I_TIME=$'\xf3\xb1\xa6\xbb ';  I_SWITCH=$'\xef\x83\xac '
     I_DEV="▶ " ;;
   unicode)
-    I_MODEL="◆ "; I_NAME="# "; I_DIR="▣ "; I_GIT="⎇ "; I_WT="⑂ "; I_PR="⇄ "
+    I_MODEL="◆ "; I_DIR="▣ "; I_GIT="⎇ "; I_WT="⑂ "; I_PR="⇄ "
     I_STYLE="◎ "; I_VIM="v "; I_AGENT="@ "; I_COMPACT="⇲ "; I_QUOTA="◷ "; I_ETA="⇥ "
     I_COST="$ "; I_TODAY="∑ "; I_RATE="∂ "; I_CACHE="≈ "; I_TIME="◷ "; I_SWITCH="⇆ "
     I_DEV="▶ " ;;
   *)
-    I_MODEL=""; I_NAME=""; I_DIR=""; I_GIT=""; I_WT=""; I_PR=""
+    I_MODEL=""; I_DIR=""; I_GIT=""; I_WT=""; I_PR=""
     I_STYLE=""; I_VIM=""; I_AGENT=""; I_COMPACT=""; I_QUOTA=""; I_ETA=""
     I_COST=""; I_TODAY=""; I_RATE=""; I_CACHE=""; I_TIME=""; I_SWITCH=""
     I_DEV="> " ;;
 esac
 if [ "$GLYPHS" = "ascii" ]; then
-  G_FULL="="; G_EMPTY="-"; G_UP="^"; G_DOWN="v"; G_EVEN="+-"; G_DOT="-"; G_ELLIPSIS="..."
+  G_FULL="="; G_EMPTY="-"; G_UP="^"; G_DOWN="v"; G_EVEN="+-"; G_DOT="-"
   SEP="${C_SEP} | ${RESET}"
 else
-  G_FULL="▰"; G_EMPTY="▱"; G_UP="⇡"; G_DOWN="⇣"; G_EVEN="±"; G_DOT="·"; G_ELLIPSIS="…"
+  G_FULL="▰"; G_EMPTY="▱"; G_UP="⇡"; G_DOWN="⇣"; G_EVEN="±"; G_DOT="·"
   SEP="${C_SEP} │ ${RESET}"
 fi
 
@@ -222,7 +222,10 @@ JQ_FIELDS='
     (opt(.session_id)                              // ""),
     (opt(.permission_mode)                         // ""),
     (opt($acct[0].oauthAccount.emailAddress)       // ""),
-    (opt(.session_name | strings)                  // ""),
+    # Slot 20 was the session name. Claude Code shows that in the terminal tab
+    # title itself, so the line no longer does; the empty slot stays so the
+    # fields after it keep their positions.
+    "",
     (opt(.worktree.name | strings) // opt(.workspace.git_worktree | strings) // ""),
     (opt(.prompt_cache.warm)                       // false),
     (opt(.prompt_cache.caching_observed)           // false),
@@ -297,7 +300,7 @@ rl_5h="${F[13]}";       rl_5h_at="${F[14]}"
 rl_7d="${F[15]}";       rl_7d_at="${F[16]}"
 session_id="${F[17]}";  permission_mode="${F[18]}"
 claude_email="${F[19]}"
-session_name="${F[20]}"; worktree="${F[21]}"
+worktree="${F[21]}"
 cache_warm="${F[22]}";  cache_observed="${F[23]}"
 cache_exp="${F[24]}";   cache_ttl="${F[25]}";    cache_hit="${F[26]}"
 repo_host="${F[27]}";   repo_owner="${F[28]}";   repo_name="${F[29]}"
@@ -1463,18 +1466,6 @@ if [ -n "$session_id" ]; then
   id_info=" ${C_SUB}id:${RESET}${session_id:0:8}"
 fi
 
-# -- Session name (/rename, or the title Claude Code generated) --
-# Easier to recognise than the id when picking a session up from another
-# account. Already sanitised by clean(); capped so a long title cannot push the
-# directory and branch off the line. Bash counts characters, not bytes, under a
-# UTF-8 locale, so the cut does not split a multibyte character there.
-name_info=""
-if [ -n "$session_name" ]; then
-  # 30 characters in all: 29 plus a one-character ellipsis, 27 plus "...".
-  [ ${#session_name} -gt 30 ] && session_name="${session_name:0:$((30 - ${#G_ELLIPSIS}))}${G_ELLIPSIS}"
-  name_info=" ${C_SESS}${I_NAME}${session_name}${RESET}"
-fi
-
 # -- Worktree (superpowers and EnterWorktree sessions) --
 # workspace.git_worktree can be a path, so keep only its last segment.
 wt_info=""
@@ -1506,7 +1497,7 @@ account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 # each carry their own SEP). The model icon sits inside the model colour so
 # ascii, where the icon is empty, leaves no empty colour/reset pair.
 icon _dir_ic "$C_WORKSP" "$I_DIR"
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${name_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost, today, $/h | Duration | Lines --
 icon _cost_ic "$C_COST" "$I_COST"

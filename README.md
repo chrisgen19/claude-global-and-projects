@@ -185,7 +185,7 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 A status line covering account identity, model, git state, context usage and tokens left before auto-compact, subscription rate limits with a run-out time, the other accounts' usage when this one is running low, and session, daily and hourly cost. Icons, Catppuccin colours and dim `│` dividers are borrowed from [CCometixLine](https://github.com/Haleclipse/CCometixLine).
 
 ```
-PERSONAL  chrisgen19 (chrisgen19)  ◆ [Opus 5.5] 1M hi think ◎ explanatory v NORMAL @ reviewer v2.1.330 id:4f7b85aa # statusline upgrade │ ▣ ~/claude-global │ ⎇ feature/statusline ^2 +1 ~3 ?2 │ ⑂ wt:icons │ ⇄ #42 approved
+PERSONAL  chrisgen19 (chrisgen19)  ◆ [Opus 5.5] 1M hi think ◎ explanatory v NORMAL @ reviewer v2.1.330 id:4f7b85aa │ ▣ ~/claude-global │ ⎇ feature/statusline ^2 +1 ~3 ?2 │ ⑂ wt:icons │ ⇄ #42 approved
 ▰▰▰▰▰▰▰▰▱▱ 87% (in: 12k, cache: 180k) ⇲ 26k to compact ~3 turns │ ◷ 5h 72% ⇡34% ⇥ out 14:20 (2h05m)  7d 71% (1d6h) │ ≈ cache 14:02 hit 88% │ $ $9.84 · ∑ today $46.10 · ∂ $7.90/h │ ◷ 1h 14m │ +880 -212
 ⇆ other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)
 ▶ localhost:3000 localhost:5173
@@ -193,7 +193,7 @@ PERSONAL  chrisgen19 (chrisgen19)  ◆ [Opus 5.5] 1M hi think ◎ explanatory v 
 
 Shown with the Unicode tier (`STATUSLINE_GLYPHS=unicode`). The default tier uses Nerd Font icons instead of these symbols, so a terminal without a Nerd Font shows boxes: set `STATUSLINE_GLYPHS=unicode` there.
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), output style (hidden when `default`), vim mode, agent name, Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), and open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), output style (hidden when `default`), vim mode, agent name, Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve; the session name is not shown, since Claude Code puts it in the terminal tab title and `/rename` changes it there), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), and open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
 
 Each group has an icon, and the folder, git, worktree and PR groups are separated by dim `│` dividers.
 
@@ -215,7 +215,7 @@ Each group has an icon, and the folder, git, worktree and PR groups are separate
 
 The env vars are read from the status line's own environment, and the two settings from `$CLAUDE_CONFIG_DIR/settings.json` and `.claude.json`. Project-level `.claude/settings*.json` is not read. A corrupt `settings.json` hides the compact segment, and a corrupt `.claude.json` hides only the account email.
 
-Every string from the payload is sanitised in the single `jq` pass: escape sequences, C0/C1 controls and bidi marks are stripped, so a crafted cwd, session name or `pr.url` cannot recolour the line, move the cursor or plant a link.
+Every string from the payload is sanitised in the single `jq` pass: escape sequences, C0/C1 controls and bidi marks are stripped, so a crafted cwd, agent name or `pr.url` cannot recolour the line, move the cursor or plant a link.
 
 Every segment hides itself when its data is absent, so the line stays short outside a git repo, on API billing, or early in a session.
 
@@ -261,7 +261,7 @@ Catppuccin Mocha, from CCometixLine's `catppuccin-mocha` palette (matches the pu
 | quota | `#fab387` | quota icon, vim mode |
 | cost | `#f9e2af` | cost, today |
 | cache | `#89dceb` | cache icon, PERSONAL label |
-| session | `#f5c2e7` | session name, worktree |
+| session | `#f5c2e7` | worktree |
 | timing | `#f2cdcd` | duration |
 
 The context bar and each rate limit window go green under 70%, yellow from 70% and red from 90%. `ACCOUNT_COLOR` is a 24-bit escape in the same ANSI-C quoted form, for example `ACCOUNT_COLOR=$'\033[38;2;249;226;175m'` for WORK.
