@@ -1521,6 +1521,8 @@ else
   # project and skips the dev-server scan. The suite runs that scan afresh on
   # every render (max age 0, so fixture servers never reach the shared /tmp
   # cache), which is a cold cost of tens of ms and not what a warm render pays.
+  # So this guard covers the git, ledger, quota and formatting paths only; a
+  # fork added to the dev-server section is not caught here.
   perf_render() { printf '%s' "$perf_payload" | HOME="$FIX/plain" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" >/dev/null; }
   perf_render
   perf_ledger="$QD/claude-statusline-cost-${UID}/$tday/perf1"
