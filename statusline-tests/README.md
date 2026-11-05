@@ -51,8 +51,13 @@ cannot change what is asserted:
   and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are unset.
 
 The `-- performance --` section renders one warm payload (git cache hot, cost
-and quota unchanged) 20 times and asserts the fastest is under
-`STATUSLINE_PERF_BUDGET_MS` (default 15). The render uses `HOME` as the
+and quota unchanged) 20 times, alternating with a baseline (a bash, one `jq`
+and one `date` on the same payload), and asserts the fastest render is under
+`STATUSLINE_PERF_FACTOR` (default 5) times the fastest baseline. It is relative
+because the GitHub runner measured 15.9ms one run and 22.6ms the next, so a
+fixed budget in ms flaked. A WSL2 dev box measures about 3.8. The factor
+catches a heavy regression on the warm path (a second `jq`, a `git` call,
+several forks), not one extra fork, which adds about 0.3. The render uses `HOME` as the
 session directory, which skips the dev server scan: the suite runs that scan on
 every render (see below), which is a cold cost and not what the guard is for.
 It needs `EPOCHREALTIME` (bash 5) and prints `SKIP` under bash 3.2. The same
@@ -140,7 +145,7 @@ saves a subshell.
 
 For the performance section: making the quota file rewrite on every render
 (`if true ||` in front of the changed-or-old test) is caught by the inode
-check and by the 15ms budget, and passes the single before/after comparison it
+check, and passes the single before/after comparison it
 replaced, which is why the check runs after every render. The sections for the
 palette, glyph tiers, line 1 extras, cost today, tokens to compact and other
 accounts were each written test first (red, then green); no per-mutation list

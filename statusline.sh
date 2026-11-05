@@ -246,7 +246,8 @@ JQ_FIELDS='
     (opt($set[0].autoCompactEnabled | booleans | tostring)
       // opt($acct[0].autoCompactEnabled | booleans | tostring) // ""),
     ((opt($set[0].autoCompactWindow | numbers | floor)
-      // opt($acct[0].autoCompactWindow | numbers | floor)) // "")
+      // opt($acct[0].autoCompactWindow | numbers | floor)) // ""),
+    ([opt(.cost.total_cost_usd | numbers)] | if length > 0 then "1" else "" end)
   ] | .[] | if type == "string" then clean else tostring end'
 # Numbers and booleans cannot hold control characters, so only strings go
 # through clean().
@@ -304,6 +305,11 @@ pr_review="${F[38]}"
 project_dir="${F[39]}"
 output_style="${F[40]}"; vim_mode="${F[41]}";    agent_name="${F[42]}"
 ac_enabled="${F[43]}";  ac_window="${F[44]}"
+# "1" only when cost.total_cost_usd is a real number. The cost above falls back
+# to 0 when it is missing, which the ledger would read as a cost drop: banking
+# the spend and counting it again when the value comes back. So a render
+# without a cost leaves the ledger alone.
+cost_present="${F[45]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -1125,7 +1131,10 @@ if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
   _q_old="${QE[$_q_self]} ${QP5[$_q_self]} ${QA5[$_q_self]} ${QP7[$_q_self]} ${QA7[$_q_self]}"
   if [ "${QOK[$_q_self]}" != 1 ] || [ "$_q_new" != "$_q_old" ] || [ $(( now - QS[_q_self] )) -ge 60 ]; then
     _q_file="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$_q_self]}"
-    { printf '%s %s %s\n' "${QL[$_q_self]}" "$_q_new" "$now" > "$_q_file.$$"; } 2>/dev/null \
+    # noclobber (set -C) makes > refuse an existing path, so on a shared /tmp
+    # a symlink planted at the predictable temp name is never written through.
+    # Builtin, no fork. A refused write falls through to the rm, as before.
+    { set -C; printf '%s %s %s\n' "${QL[$_q_self]}" "$_q_new" "$now" > "$_q_file.$$"; _q_w=$?; set +C; [ "$_q_w" = 0 ]; } 2>/dev/null \
       && mv -f "$_q_file.$$" "$_q_file" 2>/dev/null || rm -f "$_q_file.$$" 2>/dev/null
   fi
 fi
@@ -1305,7 +1314,9 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
     _state="$_day/$sid"
     ledger_read "$_state"
     _ledger_dirty=""
-    if [ -z "$_lg_base" ]; then
+    if [ -z "$cost_present" ]; then
+      :  # No cost in this payload: nothing to record (see cost_present).
+    elif [ -z "$_lg_base" ]; then
       if [ $(( now - duration_ms / 1000 )) -ge "$midnight" ]; then _lg_base=0; else _lg_base=$cost_micros; fi
       _lg_total=$cost_micros; _lg_banked=0; _ledger_dirty=1
     elif [ "$cost_micros" -ne "$_lg_total" ]; then
@@ -1318,7 +1329,7 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
     # Context samples for the compact estimate: one per distinct token count,
     # the last 10 kept. A change alone makes the file dirty.
     _nx=${#_lg_x[@]}
-    if [ "$_cused" -gt 0 ] && { [ "$_nx" -eq 0 ] || [ "${_lg_x[_nx - 1]}" -ne "$_cused" ]; }; then
+    if [ -n "$cost_present" ] && [ "$_cused" -gt 0 ] && { [ "$_nx" -eq 0 ] || [ "${_lg_x[_nx - 1]}" -ne "$_cused" ]; }; then
       _lg_x+=("$_cused"); _ledger_dirty=1
       [ "${#_lg_x[@]}" -gt 10 ] && _lg_x=("${_lg_x[@]:${#_lg_x[@]}-10}")
     fi
@@ -1359,13 +1370,17 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
       done
       _lg_c=("${_kept[@]}")
       for _s in "${_lg_x[@]}"; do _body+=$'\n'"x $_s"; done
-      { printf '%s\n' "$_body" > "$_state.$$"; } 2>/dev/null \
-        && mv -f "$_state.$$" "$_state" 2>/dev/null || rm -f "$_state.$$" 2>/dev/null
+      # The temp file is a dotfile so the tally glob below never reads it, not
+      # while another session is mid-write and not if a render was killed
+      # between the write and the mv (that left a second copy counted all day).
+      _lg_tmp="$_day/.$sid.$$"
+      { printf '%s\n' "$_body" > "$_lg_tmp"; } 2>/dev/null \
+        && mv -f "$_lg_tmp" "$_state" 2>/dev/null || rm -f "$_lg_tmp" 2>/dev/null
     fi
     today_micros=0; _rate_sum=0; _rate_from=-1
-    ledger_tally
-    # The glob skips dotfiles, so another session's half-written temp file
-    # is never read.
+    # A first render with no cost has no entry of its own yet.
+    [ -n "$_lg_base" ] && ledger_tally
+    # The glob skips dotfiles, so a temp file (see above) is never read.
     for _f in "$_day"/*; do
       [ "$_f" = "$_state" ] && continue
       [ -f "$_f" ] || continue

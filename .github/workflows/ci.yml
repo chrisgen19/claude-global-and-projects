@@ -57,13 +57,9 @@ jobs:
       # footguns. It cannot see that the rendered line is wrong, and the %b
       # escape bug (#81) was shellcheck-clean for as long as it existed. These
       # tests build fixture repos and assert on what the script actually prints.
-      #
-      # The warm-render guard measured 15.9ms on this runner against the 15ms
-      # default, so CI allows 20ms. That still catches a new fork on the warm
-      # path (one costs several ms) without failing on runner noise.
+      # The warm-render guard compares against a baseline timed in the same run
+      # (see statusline-tests/README.md), so it needs no runner-specific budget.
       - name: statusline behaviour tests
-        env:
-          STATUSLINE_PERF_BUDGET_MS: 20
         run: ./statusline-tests/run.sh
 
       # statusline.sh prints its two lines with `printf '%s'`, so ACCOUNT_COLOR

@@ -1317,6 +1317,36 @@ newledger
 rnd s4 10 $(( (now - midnight + 3600) * 1000 )) >/dev/null
 contains "pre-midnight spend is not today's" "today \$2.00" "$(rnd s4 12 $(( (now - midnight + 3700) * 1000 )))"
 
+# A render killed between writing its temp file and the mv leaves the temp
+# behind. A stand-in mv that does nothing reproduces that. The leftover must be
+# a dotfile, so the tally glob never counts the session twice.
+newledger
+rnd s5 2 60000 >/dev/null
+mkdir -p "$L/bin" || exit 1
+printf '#!/bin/sh\nexit 0\n' > "$L/bin/mv" && chmod +x "$L/bin/mv"
+PATH="$L/bin:$PATH" rnd s5 3 60000 >/dev/null
+s5_left=""
+for _f in "$DAY"/.s5.*; do [ -f "$_f" ] && s5_left=1; done
+equals "a leftover ledger temp file is a dotfile" "1" "$s5_left"
+contains "a leftover temp file is not counted twice" "today \$3.00" "$(rnd s5 3 60000)"
+
+# No cost in the payload must not read as a cost drop: that banked the spend
+# and counted it again when the cost came back.
+newledger
+rnd s7 4 60000 >/dev/null
+s7_none=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"s7",cost:{},context_window:{used_percentage:40}}')
+got=$(printf '%s' "$s7_none" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 | strip_ansi | sed -n 2p)
+contains "a render with no cost still renders" "\$0.00" "$got"
+contains "a render with no cost keeps today" "today \$4.00" "$got"
+contains "a cost that comes back is not counted twice" "today \$4.50" "$(rnd s7 4.5 60000)"
+newledger
+got=$(printf '%s' "$s7_none" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 | strip_ansi | sed -n 2p)
+contains "a first render with no cost still renders" "\$0.00" "$got"
+contains "a first render with no cost still totals the other sessions" "today \$0.00" "$got"
+s7_files=""
+for _f in "$DAY"/*; do [ -e "$_f" ] && s7_files=1; done
+equals "a first render with no cost writes no ledger file" "" "$s7_files"
+
 # Review Focus 1: a hostile session id stays inside the day folder
 newledger
 rnd '../../evil/x' 1 60000 >/dev/null
@@ -1525,22 +1555,50 @@ got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
 contains "matched CLAUDE session: a third account is still listed" "PERSONAL 30%" "$got"
 excludes "matched CLAUDE session: a second file with its email is not listed" "DEV 3%" "$got"
 excludes "matched CLAUDE session: the matched file is not listed" "WORK 12%" "$got"
-export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
+# A symlink planted at the quota temp name (predictable on a shared /tmp) must
+# not be written through. The script's $$ is known when a subshell execs it:
+# exec keeps the pid, and $BASHPID is that pid. Needs bash 4 for $BASHPID.
+if [ -z "${BASHPID:-}" ]; then
+  echo "SKIP  quota temp symlink (BASHPID is not set, bash 3.2)"
+else
+  qdir
+  printf 'keep\n' > "$QD/victim"
+  q_payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 30 9000)}" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}} * $x')
+  got=$( (
+    ln -s "$QD/victim" "$QD/claude-statusline-quota-$UID-PERSONAL.$BASHPID"
+    CLAUDE_CONFIG_DIR="$CONFIG_DIR" exec "$RUN_BASH" "$SCRIPT" <<<"$q_payload"
+  ) | strip_ansi | sed -n 1p)
+  contains "a planted quota temp symlink: the line still renders" "[M]" "$got"
+  equals "a planted quota temp symlink is not written through" "keep" "$(cat "$QD/victim")"
+fi
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
 # ---------------------------------------------------------------------------
 echo "-- performance --"
 # A warm render (git cache hot, cost and quota unchanged) must stay fast and
 # must not rewrite its state files. Wall time needs EPOCHREALTIME (bash 5), so
-# bash 3.2 prints SKIP. The minimum of 20 renders is compared with the budget,
-# because a single slow sample says more about the runner than the script.
+# bash 3.2 prints SKIP.
+#
+# Speed is judged against a baseline measured in the same run, not a fixed
+# number of ms: the GitHub runner measured 15.9ms one run and 22.6ms the next,
+# so any fixed budget either flakes or guards nothing. The baseline is the
+# floor every render pays (a bash, one jq and one date on the same payload),
+# and the two are timed alternately so a busy runner slows both. The minimum
+# of 20 of each is compared, as a single slow sample says more about the
+# runner than the script. The render may take STATUSLINE_PERF_FACTOR times
+# the baseline (default 5; about 3.8 measured on a WSL2 dev box). That catches
+# a heavy regression on the warm path (a second jq, a git call, several
+# forks), not a single extra fork, which adds about 0.3 of a baseline.
 # The unchanged-file check compares inodes: a rewrite is a temp file plus mv,
 # which always gives the file a new inode, while mtime can tie within a second.
 if [ -z "${EPOCHREALTIME:-}" ]; then
   echo "SKIP  performance (EPOCHREALTIME is not set, bash 3.2)"
 else
   qdir
-  PERF_BUDGET_MS="${STATUSLINE_PERF_BUDGET_MS:-15}"
+  PERF_FACTOR="${STATUSLINE_PERF_FACTOR:-5}"
+  [[ "$PERF_FACTOR" =~ ^[0-9]+$ ]] || PERF_FACTOR=5
   perf_payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 30 7500)}" \
     '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"perf1",cost:{total_cost_usd:1.5,total_duration_ms:60000},context_window:{used_percentage:40}} * $x')
   # HOME is the session's own directory: a home-directory session is not a
@@ -1550,12 +1608,18 @@ else
   # So this guard covers the git, ledger, quota and formatting paths only; a
   # fork added to the dev-server section is not caught here.
   perf_render() { printf '%s' "$perf_payload" | HOME="$FIX/plain" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" >/dev/null; }
+  perf_base() { printf '%s' "$perf_payload" | "$RUN_BASH" -c 'jq -r .model >/dev/null; date "+%s %z %Y-%m-%d" >/dev/null'; }
   perf_render
   perf_ledger="$QD/claude-statusline-cost-${UID}/$tday/perf1"
   perf_quota="$QD/claude-statusline-quota-${UID}-PERSONAL"
   perf_ino_before="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
-  perf_min=""
+  perf_min=""; perf_base_min=""
   for _i in $(seq 1 20); do
+    _t0=${EPOCHREALTIME/./}
+    perf_base
+    _t1=${EPOCHREALTIME/./}
+    _us=$((_t1 - _t0))
+    if [ -z "$perf_base_min" ] || [ "$_us" -lt "$perf_base_min" ]; then perf_base_min=$_us; fi
     _t0=${EPOCHREALTIME/./}
     perf_render
     _t1=${EPOCHREALTIME/./}
@@ -1567,11 +1631,15 @@ else
     perf_ino_after="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
     [ "$perf_ino_after" = "$perf_ino_before" ] || break
   done
-  printf '        warm render minimum: %d.%03d ms (budget %s ms)\n' $((perf_min / 1000)) $((perf_min % 1000)) "$PERF_BUDGET_MS"
-  if [ "$perf_min" -lt $((PERF_BUDGET_MS * 1000)) ]; then
-    ok "warm render stays under ${PERF_BUDGET_MS}ms"
+  # Ratio in hundredths, integer arithmetic only.
+  perf_ratio=$(( perf_min * 100 / perf_base_min ))
+  printf '        warm render minimum: %d.%03d ms, baseline %d.%03d ms, ratio %d.%02d (limit %s)\n' \
+    $((perf_min / 1000)) $((perf_min % 1000)) $((perf_base_min / 1000)) $((perf_base_min % 1000)) \
+    $((perf_ratio / 100)) $((perf_ratio % 100)) "$PERF_FACTOR"
+  if [ "$perf_ratio" -lt $((PERF_FACTOR * 100)) ]; then
+    ok "warm render stays under ${PERF_FACTOR}x the baseline"
   else
-    bad "warm render stays under ${PERF_BUDGET_MS}ms"
+    bad "warm render stays under ${PERF_FACTOR}x the baseline"
   fi
   if [ "$(printf '%s\n' "$perf_ino_before" | wc -l | tr -d ' ')" = 2 ]; then
     ok "perf fixture wrote both state files"

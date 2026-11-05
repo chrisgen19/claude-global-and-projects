@@ -223,7 +223,7 @@ Every segment hides itself when its data is absent, so the line stays short outs
 
 | Variable | Values | Default | Effect |
 |----------|--------|---------|--------|
-| `STATUSLINE_GLYPHS` | `nerd`, `unicode`, `ascii` | `nerd` | Icon set. `unicode` swaps Nerd Font icons for plain symbols, `ascii` prints no icons and 7-bit text only (`|` dividers, `^`/`v`/`+-` pace, `[==--]`-style bar, `>` for dev servers). An unknown value falls back to `nerd`. |
+| `STATUSLINE_GLYPHS` | `nerd`, `unicode`, `ascii` | `nerd` | Icon set. `unicode` swaps Nerd Font icons for plain symbols, `ascii` prints no icons and 7-bit text only (`\|` dividers, `^`/`v`/`+-` pace, `[==--]`-style bar, `>` for dev servers). An unknown value falls back to `nerd`. |
 | `STATUSLINE_PALETTE` | `catppuccin`, `ansi` | `catppuccin` | `catppuccin` is 24-bit colour. `ansi` keeps the 8-colour output for a terminal without true colour, and ignores `ACCOUNT_COLOR`. There is no auto-detection, because whether Claude Code passes `COLORTERM` to the command is unverified and a wrong guess would silently drop the palette. |
 | `CLAUDE_STATUSLINE_STATE_DIR` | a directory | `/tmp` | Where the per-session cost files, the per-account quota files and the context samples live. The tests point it at a throwaway directory. |
 
@@ -342,7 +342,7 @@ done
 
 - **Requires** bash 3.2+ (macOS stock `/bin/bash` works), `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
 - Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
-- Cost, quota and context state lives under `CLAUDE_STATUSLINE_STATE_DIR` (default `/tmp`) in files keyed by uid. A render where nothing changed rewrites no state file and adds no `mv`; the suite asserts the git, ledger, quota and formatting paths of a warm render stay under 15ms (`STATUSLINE_PERF_BUDGET_MS`). The dev-server section is excluded: a hot dev cache in the suite would write fixture servers into the shared `/tmp` cache, so a fork added there is not caught.
+- Cost, quota and context state lives under `CLAUDE_STATUSLINE_STATE_DIR` (default `/tmp`) in files keyed by uid. A render where nothing changed rewrites no state file and adds no `mv`; the suite asserts the git, ledger, quota and formatting paths of a warm render stay under 5 times a baseline measured in the same run (a bash, one `jq` and one `date`; `STATUSLINE_PERF_FACTOR`), which catches a heavy regression but not a single extra fork. The dev-server section is excluded: a hot dev cache in the suite would write fixture servers into the shared `/tmp` cache, so a fork added there is not caught.
 - The other-accounts line only knows what each account last rendered, so an account you have not used recently is missing or shows an old age.
 - All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
 
