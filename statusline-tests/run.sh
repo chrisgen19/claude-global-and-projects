@@ -50,6 +50,7 @@ export STATUSLINE_PALETTE=ansi STATUSLINE_GLYPHS=unicode
 # The script reads these from its own environment: never inherit them from the
 # developer's shell.
 unset DISABLE_COMPACT DISABLE_AUTO_COMPACT CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+unset CLAUDE_STATUSLINE_SHOW_TODAY
 STATE=$(mktemp -d) || exit 1
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
@@ -1325,6 +1326,18 @@ tz_secs=$(( 10#${tz_off:1:2} * 3600 + 10#${tz_off:3:2} * 60 ))
 [ "${tz_off:0:1}" = "-" ] && tz_secs=$(( -tz_secs ))
 midnight=$(( now - ((now + tz_secs) % 86400) ))
 
+# Hidden by default: the ledger still runs (the compact estimate reads it) and
+# the session cost stays, but today and $/h only show on opt-in.
+newledger
+rnd s0 1.5 60000 >/dev/null
+got=$(rnd s0 1.5 60000)
+excludes "today is hidden by default" "today" "$got"
+excludes "\$/h is hidden by default" "/h" "$got"
+contains "the session cost shows by default" "\$ \$1.50" "$got"
+equals "the ledger still runs when hidden" "yes" "$([ -f "$DAY/s0" ] && echo yes || echo no)"
+
+# The rest of this section tests the figures themselves, so turn them on.
+export CLAUDE_STATUSLINE_SHOW_TODAY=1
 newledger
 contains "a new session counts its whole cost" "today \$1.50" "$(rnd s1 1.5 60000)"
 rnd s2 2.25 60000 >/dev/null
@@ -1486,6 +1499,7 @@ got=$(rnd s11 1 60000)
 excludes "an unusable state dir shows no today" "today" "$got"
 contains "an unusable state dir keeps the session cost" "\$1.00" "$got"
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+unset CLAUDE_STATUSLINE_SHOW_TODAY
 
 # ---------------------------------------------------------------------------
 echo "-- other accounts --"
