@@ -1131,7 +1131,17 @@ fi
 # Write only when a value changed or the stored time is a minute old, so a
 # render where nothing changed adds no fork. Own temp file plus mv.
 if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
-  _q_new="$_q_email $rl_5h $rl_5h_at $rl_7d $rl_7d_at"
+  # A payload without five_hour must not wipe a 5h reading whose window is
+  # still running: the other-accounts line would then call this account
+  # fresh while it may be near its limit. The stored value stands until its
+  # window resets; only after that does -1 mean nothing used. This session's
+  # own line 2 still uses rl_5h as sent.
+  _q5=$rl_5h; _q5at=$rl_5h_at
+  if [ "$_q5" -lt 0 ] && [ "${QOK[$_q_self]}" = 1 ] && [ "${QP5[$_q_self]}" -ge 0 ] \
+     && [ "${QA5[$_q_self]}" -gt "$now" ]; then
+    _q5=${QP5[$_q_self]}; _q5at=${QA5[$_q_self]}
+  fi
+  _q_new="$_q_email $_q5 $_q5at $rl_7d $rl_7d_at"
   _q_old="${QE[$_q_self]} ${QP5[$_q_self]} ${QA5[$_q_self]} ${QP7[$_q_self]} ${QA7[$_q_self]}"
   if [ "${QOK[$_q_self]}" != 1 ] || [ "$_q_new" != "$_q_old" ] || [ $(( now - QS[_q_self] )) -ge 60 ]; then
     _q_file="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$_q_self]}"
@@ -1156,7 +1166,11 @@ if [ "$_sev5" -ge 1 ]; then
     _age=$(( now - QS[_i] )); [ "$_age" -lt 0 ] && _age=0
     [ "$_age" -gt 18000 ] && continue
     account_color _qc "${QL[$_i]}"
-    if [ "${QP5[$_i]}" -lt 0 ]; then
+    if [ "${QP7[$_i]}" -ge 100 ] && { [ "${QA7[$_i]}" -lt 0 ] || [ "${QA7[$_i]}" -gt "$now" ]; }; then
+      # The weekly limit blocks it whatever its 5h says, so it is not a
+      # switch target. Shown rather than dropped, so it is clear why.
+      _qv="${C_CRIT}7d full${RESET}"
+    elif [ "${QP5[$_i]}" -lt 0 ]; then
       # No 5h window in that account's last payload (it carried only 7d):
       # nothing used in the current window, so it is the best one to switch
       # to. Dropping it hid exactly that account.

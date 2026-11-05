@@ -1531,6 +1531,37 @@ got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
 contains "fresh sits beside a percentage" "WORK 12% (8m ago)  DEV fresh (8m ago)" "$got"
 got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
 equals "fresh line is 7-bit under ascii" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+
+# A payload without five_hour keeps this account's stored 5h reading while that
+# window is still running, so the other accounts never see it as fresh. Once the
+# stored window has reset, -1 is written as before.
+q7only="\"rate_limits\":{\"seven_day\":{\"used_percentage\":12,\"resets_at\":$((now + 300000))}}"
+qdir
+printf 'PERSONAL - 80 %s 10 %s %s\n' "$((now + 3000))" "$((now + 300000))" "$((now - 120))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$q7only" >/dev/null
+read -r _ _ q_p5 q_at5 q_p7 _ _ < "$QD/claude-statusline-quota-$UID-PERSONAL"
+equals "a missing five_hour keeps a running 5h reading" "80 $((now + 3000))" "$q_p5 $q_at5"
+equals "a missing five_hour still records the new 7d" "12" "$q_p7"
+qdir
+printf 'PERSONAL - 80 %s 10 %s %s\n' "$((now - 60))" "$((now + 300000))" "$((now - 120))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$q7only" >/dev/null
+read -r _ _ q_p5 _ _ _ _ < "$QD/claude-statusline-quota-$UID-PERSONAL"
+equals "a missing five_hour after the window reset writes -1" "-1" "$q_p5"
+
+# 7d at 100% with its window still running: shown as 7d full in red, whatever
+# the 5h says (fresh or a percentage). Once that 7d window resets, it is normal.
+qdir
+printf 'WORK w@x -1 -1 100 %s %s\n' "$((now + 200000))" "$((now - 510))" > "$QD/claude-statusline-quota-$UID-WORK"
+printf 'DEV d@x 12 %s 100 %s %s\n' "$((now + 9000))" "$((now + 200000))" "$((now - 510))" > "$QD/claude-statusline-quota-$UID-DEV"
+got=$(raw "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "a full 7d shows 7d full in red" "${ESC}[31m7d full" "$got"
+contains "a full 7d overrides fresh" "WORK${ESC}[0m ${ESC}[31m7d full" "$got"
+contains "a full 7d overrides a 5h percentage" "DEV${ESC}[0m ${ESC}[31m7d full" "$got"
+excludes "a full 7d account is not shown as fresh" "fresh" "$(printf '%s' "$got" | strip_ansi)"
+qdir
+printf 'DEV d@x 12 %s 100 %s %s\n' "$((now + 9000))" "$((now - 60))" "$((now - 510))" > "$QD/claude-statusline-quota-$UID-DEV"
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "a 7d window past its reset shows the 5h again" "DEV 12% (8m ago)" "$got"
 printf 'garbage\n' > "$QD/claude-statusline-quota-$UID-DEV"
 printf 'WORK w@x abc 1 -1 -1 5\n' > "$QD/claude-statusline-quota-$UID-WORK"
 payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
