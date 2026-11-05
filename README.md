@@ -182,55 +182,112 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 
 ### Status line
 
-A two-line status line covering account identity, model, git state, context usage, subscription rate limits, and session cost.
+A status line covering account identity, model, git state, context usage and tokens left before auto-compact, subscription rate limits with a run-out time, the other accounts' usage when this one is running low, and session, daily and hourly cost. Icons, Catppuccin colours and dim `│` dividers are borrowed from [CCometixLine](https://github.com/Haleclipse/CCometixLine).
 
 ```
-PERSONAL  chrisgen19 (chrisgen19)  [Opus 5] 1M hi think v2.1.235 id:fff7b432 fix login flow  ~/projects/my-app | main ~3 ?2 wt:fix-login  #42 approved
-█░░░░░░░░░░░░░░ 7% | 5h 41% →196% (3h58m) 7d 3% (4d3h) | cache 14:30 hit 94% | $1.64 | 26m 57s | +273 -3
-▶ localhost:3000
+PERSONAL  chrisgen19 (chrisgen19)  ◆ [Opus 5.5] 1M hi think ◎ explanatory v NORMAL @ reviewer v2.1.330 id:4f7b85aa # statusline upgrade │ ▣ ~/claude-global │ ⎇ feature/statusline ^2 +1 ~3 ?2 │ ⑂ wt:icons │ ⇄ #42 approved
+▰▰▰▰▰▰▰▰▱▱ 87% (in: 12k, cache: 180k) ⇲ 26k to compact ~3 turns │ ◷ 5h 72% ⇡34% ⇥ out 14:20 (2h05m)  7d 71% (1d6h) │ ≈ cache 14:02 hit 88% │ $ $9.84 · ∑ today $46.10 · ∂ $7.90/h │ ◷ 1h 14m │ +880 -212
+⇆ other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)
+▶ localhost:3000 localhost:5173
 ```
 
-**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), and open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
+Shown with the Unicode tier (`STATUSLINE_GLYPHS=unicode`). The default tier uses Nerd Font icons instead of these symbols, so a terminal without a Nerd Font shows boxes: set `STATUSLINE_GLYPHS=unicode` there.
 
-**Line 2** — context usage bar (adds `(in: 12k, cache: 170k)` from 85%; reads 0% right after `/compact` until the next reply, because Claude Code sends no token counts until then), rate limit windows with reset countdowns and usage pace, the gateway spend limit when one is set (`spend 63% $314/$500`), prompt cache expiry and hit rate (both hidden until a response has reported cache tokens), session cost, elapsed wall clock, lines added/removed.
+**Line 1** — account label, git user with the Claude account in parens, model with context window size and session flags (`fast` / effort / `think`), output style (hidden when `default`), vim mode, agent name, Claude Code version, session id (first 8 characters, enough for [`claude-handoff`](#session-handoff-between-accounts-claude-handoff); `claude --resume` needs the full id, which `claude-handoff list` and `brief` resolve), session name (`/rename` or the generated title, capped at 30 characters), working directory, git branch with dirty counts (`+staged ~modified ?untracked`), worktree (`wt:name`), and open PR number with its review state (`approved`, `changes`, `pending`, `draft`). The branch and PR number are OSC 8 links (Cmd+click in iTerm2): the PR uses `pr.url`, the branch is built from `workspace.repo` for github.com and gitlab.com, and is linked only when it tracks a branch on `origin` (the remote `workspace.repo` describes), pointing at that upstream branch rather than the local name. A branch tracking another remote, a local-only branch and a detached HEAD show plain text. If links show but do not click, Claude Code may not have detected the terminal's hyperlink support: launch it as `FORCE_HYPERLINK=1 claude`. Claude Code reads that variable, not this script ([docs](https://code.claude.com/docs/en/statusline#osc-8-links-not-clickable)).
 
-**Line 3**: the dev servers running in the session's project (`▶ localhost:3000`, at most three, then `+N`), each an OSC 8 link to `http://localhost:<port>`. The line is left out when none are running. It used to end line 1, where a narrow terminal cut it off. See the Notes at the end of [iTerm2 tab status](#iterm2-tab-status) for how they are found.
+Each group has an icon, and the folder, git, worktree and PR groups are separated by dim `│` dividers.
 
-Usage pace projects each window's used percentage to its reset. `→196%` means the current rate runs out the limit before the window resets (red above 100%, yellow from 90%), which is the cue to switch accounts. The marker shows only when the projection is above the current percent, so `95%` a minute before the reset (projecting to 95%) shows no `→95%`. It stays silent below 10% used, where a projection is noise. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
+**Line 2** — context usage bar (10 cells, `▰▱`) with the tokens used (adds `(in: 12k, cache: 170k)` from 85%; reads 0% right after `/compact` until the next reply, because Claude Code sends no token counts until then), tokens left before auto-compact (`⇲ 26k to compact ~3 turns`, from 85% context), rate limit windows with reset countdowns, pace and run-out time, the gateway spend limit when one is set (`spend 63% $314/$500`), prompt cache expiry and hit rate (both hidden until a response has reported cache tokens), session cost with today's cost across all sessions and the current $/h, elapsed wall clock, lines added/removed.
+
+**Line 3**: the other accounts' last-known 5h usage (`⇆ other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)`), only while this session's own 5h segment is yellow or red, which is the moment to switch. Each account shows its label in its own colour, its 5h percentage in its own severity colour and the age of that number, because it is only as fresh as that account's last render. A window that has already reset shows `reset` instead of a stale percentage, an account with no data yet is left out, and so is one whose number is older than 5h. An account that shares this session's login email is never listed, so the account you are on is not offered as the one to switch to. A bare `claude` or VS Code session (the router, labelled `CLAUDE`) is matched to its real account by Claude email, and leaves that account out of the line.
+
+**Line 4**: the dev servers running in the session's project (`▶ localhost:3000`, at most three, then `+N`), each an OSC 8 link to `http://localhost:<port>`. The line is left out when none are running, and moves up to line 3 when there is no other-accounts line. It used to end line 1, where a narrow terminal cut it off. See the Notes at the end of [iTerm2 tab status](#iterm2-tab-status) for how they are found.
+
+**Pace and run-out time.** Pace is how far the window's used percentage is ahead of or behind the clock: `⇡34%` means 34 points more used than time elapsed, `⇣6%` means 6 points behind, `±0%` is on pace. When the current average rate would hit 100% before the window resets, `⇥ out 14:20` shows the local clock time it runs out (with the weekday, `out Thu 14:20`, when that is more than 24h away). It is coloured by the same severity as the segment: red above 100% projected or from 90% used, yellow from 70% used or 90% projected. Together they are the cue to switch accounts. Pace and the run-out time stay silent below 10% used, where a projection is noise, and the run-out time is hidden when the projection stays at or below 100%. The weekly and daily spend limits get the same treatment; a monthly one does not. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
+
+**Cost and today.** `$ $9.84` is this session's `cost.total_cost_usd`. `∑ today $46.10` adds up every session's spend since local midnight, across all three accounts. On a Pro or Max subscription these figures are API-equivalent cost, what the same tokens would cost at API prices, not a bill. A session that started before midnight counts only what it spent since. After a cost drop (for example `/clear`) the spend so far is banked and counting restarts from zero, so `today` never goes down. `∂ $7.90/h` is the spend rate over the last hour of samples, shown once those cover at least 2 minutes, muted and turning yellow above $10/h. Each session keeps its own small state file (one per session, so concurrent sessions never overwrite each other), and cost samples are thinned to at most one every 2 minutes per session so the render time stays bounded. The state for earlier days is deleted on the first render of a new day. After midnight $/h starts low again, because only today's sessions count.
+
+**Tokens to auto-compact.** From 85% context the line shows `⇲ 26k to compact`, yellow at 20k or less and `compact due` in red at 0, plus `~3 turns` (the left tokens divided by the average growth per turn over recent turns since the context last shrank, needing at least 3 samples). The compact point is the context window minus 20k (output reserve) minus 13k (buffer): 167k on a 200k window and 967k on 1M. It follows [CCometixLine](https://github.com/Haleclipse/CCometixLine)'s reading of Claude Code and **has not been checked against a real auto-compact**: treat the number as an estimate until that is done. The point moves with:
+
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (env, clamped to 100k..1M) or `autoCompactWindow` in the account's `settings.json` or `.claude.json`: caps the window.
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (env): moves the point earlier, never later.
+- `DISABLE_COMPACT`, `DISABLE_AUTO_COMPACT` (env) or `autoCompactEnabled: false`: hides the segment.
+
+The env vars are read from the status line's own environment, and the two settings from `$CLAUDE_CONFIG_DIR/settings.json` and `.claude.json`. Project-level `.claude/settings*.json` is not read. A corrupt `settings.json` hides the compact segment, and a corrupt `.claude.json` hides only the account email.
 
 Every string from the payload is sanitised in the single `jq` pass: escape sequences, C0/C1 controls and bidi marks are stripped, so a crafted cwd, session name or `pr.url` cannot recolour the line, move the cursor or plant a link.
 
 Every segment hides itself when its data is absent, so the line stays short outside a git repo, on API billing, or early in a session.
 
-| Colour | Meaning |
-|--------|---------|
-| Green | under 70% |
-| Yellow | 70% or more |
-| Red | 90% or more |
+#### Environment variables
 
-Applies to both the context bar and each rate limit window.
+| Variable | Values | Default | Effect |
+|----------|--------|---------|--------|
+| `STATUSLINE_GLYPHS` | `nerd`, `unicode`, `ascii` | `nerd` | Icon set. `unicode` swaps Nerd Font icons for plain symbols, `ascii` prints no icons and 7-bit text only (`\|` dividers, `^`/`v`/`+-` pace, `[==--]`-style bar, `>` for dev servers). An unknown value falls back to `nerd`. |
+| `STATUSLINE_PALETTE` | `catppuccin`, `ansi` | `catppuccin` | `catppuccin` is 24-bit colour. `ansi` keeps the 8-colour output for a terminal without true colour, and ignores `ACCOUNT_COLOR`. There is no auto-detection, because whether Claude Code passes `COLORTERM` to the command is unverified and a wrong guess would silently drop the palette. |
+| `CLAUDE_STATUSLINE_STATE_DIR` | a directory | `/tmp` | Where the per-session cost files, the per-account quota files and the context samples live. The tests point it at a throwaway directory. |
+
+Set them in the `statusLine.command` string, per machine or per account:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "STATUSLINE_GLYPHS=unicode STATUSLINE_PALETTE=ansi bash ~/.claude-work/statusline.sh"
+  }
+}
+```
+
+or `export` them in the shell profile that starts `claude`.
+
+#### Colours
+
+Catppuccin Mocha, from CCometixLine's `catppuccin-mocha` palette (matches the published [Catppuccin](https://github.com/catppuccin/catppuccin) palette, MIT). Under `STATUSLINE_PALETTE=ansi` the categories that had no colour before stay plain and the rest keep the old 8-colour codes (green, yellow, red, cyan).
+
+| Colour | Hex | Meaning |
+|--------|-----|---------|
+| ok | `#a6e3a1` | under 70%, staged, lines added, dev servers, DEV label |
+| warn | `#f9e2af` | 70% or more, modified, ahead, $/h above $10, WORK label |
+| crit | `#f38ba8` | 90% or more, projected over the limit, untracked, conflicts, lines removed, bypass mode |
+| accent | `#89b4fa` | PR number, plan mode |
+| muted | `#6c7086` | labels, dim text, ages |
+| separator | `#7f849c` | `│` and `·` |
+| text | `#cdd6f4` | plain values |
+| identity | `#b4befe` | model |
+| workspace | `#94e2d5` | folder |
+| vcs | `#74c7ec` | branch |
+| context | `#cba6f7` | tokens to compact |
+| quota | `#fab387` | quota icon, vim mode |
+| cost | `#f9e2af` | cost, today |
+| cache | `#89dceb` | cache icon, PERSONAL label |
+| session | `#f5c2e7` | session name, worktree |
+| timing | `#f2cdcd` | duration |
+
+The context bar and each rate limit window go green under 70%, yellow from 70% and red from 90%. `ACCOUNT_COLOR` is a 24-bit escape in the same ANSI-C quoted form, for example `ACCOUNT_COLOR=$'\033[38;2;249;226;175m'` for WORK.
+
+Credits: layout ideas, icons and the palette come from [CCometixLine](https://github.com/Haleclipse/CCometixLine), the colours from [Catppuccin](https://github.com/catppuccin/catppuccin), the icon codepoints from [Nerd Fonts](https://www.nerdfonts.com/).
 
 #### Setup
 
 ```bash
 # Personal account
 cp statusline.sh ~/.claude-personal/statusline.sh
-# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR=$'\033[36m' (cyan)
+# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR=$'\033[38;2;137;220;235m' (Catppuccin sky)
 
 # Work account
 cp statusline.sh ~/.claude-work/statusline.sh
-# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR=$'\033[33m' (yellow)
+# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR=$'\033[38;2;249;226;175m' (Catppuccin yellow)
 
 # Dev account
 cp statusline.sh ~/.claude-dev/statusline.sh
-# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[32m' (green)
+# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[38;2;166;227;161m' (Catppuccin green)
 ```
 
-The `$'...'` quoting is required, not a style choice. The script prints its two
+The `$'...'` quoting is required, not a style choice. The script prints its
 lines with `printf '%s'`, so `ACCOUNT_COLOR` has to hold a real ESC byte
-already. A plain-single-quoted `'\033[36m'` is the eight characters backslash,
-zero, three, three, and so on, and the label renders as the visible text
-`\033[36mPERSONAL`.
+already. A plain-single-quoted `'\033[38;2;137;220;235m'` is literal characters
+(backslash, zero, three, three, and so on), and the label renders as the
+visible text `\033[38;2;137;220;235mPERSONAL`.
 
 Then enable it in each account's `settings.json`:
 ```json
@@ -255,11 +312,11 @@ gen() {  # $1=account dir  $2=ACCOUNT_NAME line  $3=ACCOUNT_COLOR line
 }
 
 gen claude-personal 'ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[36m'   # Cyan PERSONAL, \$'\\033[33m' Yellow WORK, \$'\\033[32m' Green DEV"
+  "ACCOUNT_COLOR=\$'\\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161"
 gen claude-work 'ACCOUNT_NAME="WORK"         # or "PERSONAL" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[33m'   # Yellow WORK, \$'\\033[36m' Cyan PERSONAL, \$'\\033[32m' Green DEV"
+  "ACCOUNT_COLOR=\$'\\033[38;2;249;226;175m'   # Catppuccin: WORK 249;226;175, PERSONAL 137;220;235, DEV 166;227;161"
 gen claude-dev 'ACCOUNT_NAME="DEV"          # or "PERSONAL" / "WORK"' \
-  "ACCOUNT_COLOR=\$'\\033[32m'   # Green DEV, \$'\\033[36m' Cyan PERSONAL, \$'\\033[33m' Yellow WORK"
+  "ACCOUNT_COLOR=\$'\\033[38;2;166;227;161m'   # Catppuccin: DEV 166;227;161, PERSONAL 137;220;235, WORK 249;226;175"
 ```
 
 Run it from the repo root: it regenerates the tracked `claude-*/statusline.sh`
@@ -267,9 +324,9 @@ copies, which is what CI diff-checks and what `./install.sh` deploys. Writing
 straight into `~/.claude-*` instead would fix the live files while leaving the
 tracked ones behind, and `./install.sh --check` would then report drift.
 
-The `\$'\\033[36m'` escaping is what produces a literal `$'\033[36m'` in the
+The `\$'\\033[38;2;137;220;235m'` escaping is what produces a literal `$'\033[38;2;137;220;235m'` in the
 generated line, which is what the script needs. Regenerating with plain
-`'\033[36m'` renders the label as visible text instead of colouring it.
+`'\033[38;2;137;220;235m'` renders the label as visible text instead of colouring it.
 
 The `head -13` / `tail -n +16` split assumes the config block sits on lines 14-15. Keep it there when editing the template header, or every regenerated copy loses its label.
 
@@ -285,6 +342,11 @@ done
 
 - **Requires** bash 3.2+ (macOS stock `/bin/bash` works), `jq`, and `git`. Developed against Claude Code 2.1.235; the PR and rate limit fields need a recent version.
 - Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
+- Cost, quota and context state lives under `CLAUDE_STATUSLINE_STATE_DIR` (default `/tmp`) in files keyed by uid. A render where nothing changed rewrites no state file and adds no `mv`; the suite asserts the git, ledger, quota and formatting paths of a warm render stay under 5 times a baseline measured in the same run (a bash, one `jq` and one `date`; `STATUSLINE_PERF_FACTOR`), which catches a heavy regression but not a single extra fork. The dev-server section is excluded: a hot dev cache in the suite would write fixture servers into the shared `/tmp` cache, so a fork added there is not caught.
+- The other-accounts line only knows what each account last rendered, so an account you have not used recently is missing or shows an old age.
+- **Known limits.**
+  - *Midnight gap:* a session that started before midnight starts counting `today` from its first render after midnight, so spend between midnight and that render is not counted. With `"refreshInterval": 60` an open session renders at least once a minute, so the gap is at most one refresh interval of activity.
+  - *Daylight saving:* local times use the UTC offset at render time. On a daylight-saving change day, `today`'s midnight boundary can be an hour off, and an `out` time on the other side of a change (a 7d or weekly run-out days away) shows an hour off, near midnight possibly with the wrong weekday. Converting through the timezone would add a `date` fork per render. Timezones without daylight saving are not affected.
 - All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
 
 ### iTerm2 tab status
@@ -463,7 +525,7 @@ Colours are the `tabcolor r g b` calls in each branch of the `case`.
   (printing the badge list itself once filled all five slots with dead links), and a
   server started outside the session never got one. A GitHub Actions run badge had the
   same problem: CI run URLs from `gh pr checks` filled every slot.
-- Instead, line 3 of the status line shows `▶ localhost:3000` for each dev server
+- Instead, the last line of the status line (line 4, or line 3 when there is no other-accounts line) shows `▶ localhost:3000` for each dev server
   actually listening whose working directory is the session's project or inside it
   (`workspace.project_dir`, else the cwd), each an OSC 8 link to `http://localhost:<port>`,
   at most three, lowest port first. It works on any port with no list to maintain.

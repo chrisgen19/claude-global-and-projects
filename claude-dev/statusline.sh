@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Comprehensive developer statusline for Claude Code
-# Line 1: Account | Git user (Claude) | Model + flags + mode | Version | Session id + name | Dir | Git branch/sync/status | Worktree | PR | Dev servers
-# Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache expiry + hit rate | Cost | Duration | Lines
-#
+# Line 1: Account | Git user (Claude) | Model + flags, style, vim, agent, mode | Version | Session id + name | Dir | Git | Worktree | PR
+# Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache | Cost, today, $/h | Duration | Lines
+# Line 3: other accounts (only when this 5h is warn or crit). Dev servers come last: line 3, or line 4 after that one.
 # Setup: Copy to each account's config directory and set the account label:
 #   for a in personal work dev; do cp statusline.sh ~/.claude-$a/statusline.sh; done
-#   Labels: PERSONAL (cyan)  WORK (yellow)  DEV (green)
+#   Labels: PERSONAL (sky)  WORK (yellow)  DEV (green)
 # Then edit the ACCOUNT_NAME and ACCOUNT_COLOR variables below per account.
 
 input=$(cat)
 
 # ── CONFIG (edit per account) ────────────────────────────────────────
 ACCOUNT_NAME="DEV"          # or "PERSONAL" / "WORK"
-ACCOUNT_COLOR=$'\033[32m'   # Green DEV, $'\033[36m' Cyan PERSONAL, $'\033[33m' Yellow WORK
+ACCOUNT_COLOR=$'\033[38;2;166;227;161m'   # Catppuccin: DEV 166;227;161, PERSONAL 137;220;235, WORK 249;226;175
 # ─────────────────────────────────────────────────────────────────────
 # Those two assignments must stay on lines 14 and 15: CI diffs each account
 # copy against this file with `sed '14,15d'` on both, so a header edit that
@@ -20,27 +20,130 @@ ACCOUNT_COLOR=$'\033[32m'   # Green DEV, $'\033[36m' Cyan PERSONAL, $'\033[33m' 
 
 # A caller (e.g. the ~/.claude router) can override the label when the session
 # is not running under one of the named account dirs, so the line never claims
-# to be an account it is not.
+# to be an account it is not. The colour is picked by account_color below.
+LABEL_OVERRIDDEN=""
 if [ -n "$ACCOUNT_LABEL_OVERRIDE" ]; then
   ACCOUNT_NAME="$ACCOUNT_LABEL_OVERRIDE"
-  ACCOUNT_COLOR=$'\033[37m'  # neutral white — not one of the account colours
+  LABEL_OVERRIDDEN=1
 fi
 
-# -- ANSI colors --
+# -- Palette and glyph tier (environment, set per machine) --
+# STATUSLINE_PALETTE=catppuccin|ansi, default catppuccin (24-bit). ansi keeps
+# the 8-colour codes for a terminal without true colour. There is no automatic
+# detection: whether Claude Code passes COLORTERM to this command is unverified
+# and a wrong guess would silently drop the palette. Unknown values fall back
+# to catppuccin, like an empty one.
+# STATUSLINE_GLYPHS=nerd|unicode|ascii, default nerd. Unknown falls back to nerd.
+case "$STATUSLINE_PALETTE" in
+  ansi) PALETTE=ansi ;;
+  *)    PALETTE=catppuccin ;;
+esac
+case "$STATUSLINE_GLYPHS" in
+  unicode) GLYPHS=unicode ;;
+  ascii)   GLYPHS=ascii ;;
+  *)       GLYPHS=nerd ;;
+esac
+
+# Per-session and per-account state files (quota, cost ledger) live here so a
+# test run can point them at a throwaway directory. Trailing slashes trimmed so
+# "$STATE_DIR/name" never doubles one.
+STATE_DIR="${CLAUDE_STATUSLINE_STATE_DIR:-/tmp}"
+while [ "${#STATE_DIR}" -gt 1 ] && [ "${STATE_DIR%/}" != "$STATE_DIR" ]; do STATE_DIR="${STATE_DIR%/}"; done
+
+# -- Colours --
 # ANSI-C quoting ($'...') puts the real ESC byte in the variable at assignment
 # time, so the final lines print with `printf '%s'`. With `%b` instead, printf
 # expands backslash escapes in *every* interpolated value, including the cwd,
 # the branch name and the git email: a directory named `bad\tdir` rendered a
 # literal tab, and a `\n` or `\e` in a path broke the layout or injected
 # arbitrary escape codes. Keep these as $'...' and never print them with %b.
-CYAN=$'\033[36m'
-GREEN=$'\033[32m'
-YELLOW=$'\033[33m'
-RED=$'\033[31m'
-MAGENTA=$'\033[35m'
+#
+# Catppuccin Mocha, from CCometixLine's catppuccin-mocha palette. Under ansi
+# the category colours that had no colour before stay empty (plain text), and
+# the ones that did keep today's code.
+if [ "$PALETTE" = "ansi" ]; then
+  C_OK=$'\033[32m';     C_WARN=$'\033[33m';  C_CRIT=$'\033[31m'
+  C_ACCENT=$'\033[36m'; C_MUTED=$'\033[2m';  C_SEP=$'\033[2m'
+  C_TEXT="";            C_IDENT="";          C_WORKSP=""
+  C_VCS=$'\033[36m';    C_CTX="";             C_QUOTA=""
+  C_COST=$'\033[33m';   C_CACHE="";           C_SESS=$'\033[35m'
+  C_TIMING=""
+else
+  C_OK=$'\033[38;2;166;227;161m';    C_WARN=$'\033[38;2;249;226;175m'
+  C_CRIT=$'\033[38;2;243;139;168m';  C_ACCENT=$'\033[38;2;137;180;250m'
+  C_MUTED=$'\033[38;2;108;112;134m'; C_SEP=$'\033[38;2;127;132;156m'
+  C_TEXT=$'\033[38;2;205;214;244m';  C_IDENT=$'\033[38;2;180;190;254m'
+  C_WORKSP=$'\033[38;2;148;226;213m'; C_VCS=$'\033[38;2;116;199;236m'
+  C_CTX=$'\033[38;2;203;166;247m';   C_QUOTA=$'\033[38;2;250;179;135m'
+  C_COST=$'\033[38;2;249;226;175m';  C_CACHE=$'\033[38;2;137;220;235m'
+  C_SESS=$'\033[38;2;245;194;231m';  C_TIMING=$'\033[38;2;242;205;205m'
+fi
+# The names the rest of the script already uses stay as aliases.
+GREEN=$C_OK
+YELLOW=$C_WARN
+RED=$C_CRIT
+CYAN=$C_VCS
 DIM=$'\033[2m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
+
+# account_color <outvar> <LABEL>: the label colour under the active palette.
+# Under catppuccin the current account uses ACCOUNT_COLOR (line 15) and the
+# other named accounts their own colour, so a later "other accounts" line can
+# colour each one; anything else (the router's CLAUDE) is plain text. Under
+# ansi, line 15 is ignored and the 8-colour code comes from the label alone.
+account_color() {
+  local _c
+  if [ "$PALETTE" = "ansi" ]; then
+    case "$2" in
+      WORK) _c=$'\033[33m' ;; PERSONAL) _c=$'\033[36m' ;; DEV) _c=$'\033[32m' ;;
+      *)    _c=$'\033[37m' ;;
+    esac
+  elif [ -n "$LABEL_OVERRIDDEN" ] && [ "$2" = "$ACCOUNT_NAME" ]; then
+    _c=$C_TEXT
+  elif [ "$2" = "$ACCOUNT_NAME" ]; then
+    _c=$ACCOUNT_COLOR
+  else
+    case "$2" in
+      WORK) _c=$'\033[38;2;249;226;175m' ;; PERSONAL) _c=$'\033[38;2;137;220;235m' ;;
+      DEV)  _c=$'\033[38;2;166;227;161m' ;; *) _c=$C_TEXT ;;
+    esac
+  fi
+  printf -v "$1" '%s' "$_c"
+}
+
+# -- Icons and glyphs --
+# Each I_* ends in one space, or is empty under ascii, so a segment can write
+# "${I_GIT}${branch}" with no tier check. Nerd Font codepoints as CCometixLine
+# uses them (Nerd Fonts 3.x), written as byte escapes so the file stays 7-bit
+# and bash 3.2 (no \u escapes there) can still build them.
+case "$GLYPHS" in
+  nerd)
+    I_MODEL=$'\xee\xbc\xa3 ';    I_NAME=$'\xef\x80\xab ';     I_DIR=$'\xf3\xb0\x89\x8b '
+    I_GIT=$'\xf3\xb0\x8a\xa2 ';  I_WT=$'\xef\x86\xbb ';       I_PR=$'\xef\x90\x87 '
+    I_STYLE=$'\xf3\xb1\x8b\xb5 '; I_VIM=$'\xee\x98\xab ';     I_AGENT=$'\xef\x80\x87 '
+    I_COMPACT=$'\xef\x81\xa6 '; I_QUOTA=$'\xf3\xb0\x94\xa0 '; I_ETA=$'\xef\x89\x92 '
+    I_COST=$'\xee\xbb\x81 ';    I_TODAY=$'\xef\x81\xb3 ';     I_RATE=$'\xef\x83\xa4 '
+    I_CACHE=$'\xef\x87\x80 ';   I_TIME=$'\xf3\xb1\xa6\xbb ';  I_SWITCH=$'\xef\x83\xac '
+    I_DEV="▶ " ;;
+  unicode)
+    I_MODEL="◆ "; I_NAME="# "; I_DIR="▣ "; I_GIT="⎇ "; I_WT="⑂ "; I_PR="⇄ "
+    I_STYLE="◎ "; I_VIM="v "; I_AGENT="@ "; I_COMPACT="⇲ "; I_QUOTA="◷ "; I_ETA="⇥ "
+    I_COST="$ "; I_TODAY="∑ "; I_RATE="∂ "; I_CACHE="≈ "; I_TIME="◷ "; I_SWITCH="⇆ "
+    I_DEV="▶ " ;;
+  *)
+    I_MODEL=""; I_NAME=""; I_DIR=""; I_GIT=""; I_WT=""; I_PR=""
+    I_STYLE=""; I_VIM=""; I_AGENT=""; I_COMPACT=""; I_QUOTA=""; I_ETA=""
+    I_COST=""; I_TODAY=""; I_RATE=""; I_CACHE=""; I_TIME=""; I_SWITCH=""
+    I_DEV="> " ;;
+esac
+if [ "$GLYPHS" = "ascii" ]; then
+  G_FULL="="; G_EMPTY="-"; G_UP="^"; G_DOWN="v"; G_EVEN="+-"; G_DOT="-"; G_ELLIPSIS="..."
+  SEP="${C_SEP} | ${RESET}"
+else
+  G_FULL="▰"; G_EMPTY="▱"; G_UP="⇡"; G_DOWN="⇣"; G_EVEN="±"; G_DOT="·"; G_ELLIPSIS="…"
+  SEP="${C_SEP} │ ${RESET}"
+fi
 
 # -- Which config dir this session runs under, needed by the jq pass below --
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -136,19 +239,44 @@ JQ_FIELDS='
     (opt(.rate_limits.spend_limit.limit_usd | numbers) // ""),
     (opt(.rate_limits.spend_limit.period | strings)    // ""),
     (opt(.pr.review_state | strings)               // ""),
-    (opt(.workspace.project_dir | strings)         // "")
+    (opt(.workspace.project_dir | strings)         // ""),
+    (opt(.output_style.name | strings)             // ""),
+    (opt(.vim.mode | strings)                      // ""),
+    (opt(.agent.name | strings)                    // ""),
+    (opt($set[0].autoCompactEnabled | booleans | tostring)
+      // opt($acct[0].autoCompactEnabled | booleans | tostring) // ""),
+    ((opt($set[0].autoCompactWindow | numbers | floor)
+      // opt($acct[0].autoCompactWindow | numbers | floor)) // ""),
+    ([opt(.cost.total_cost_usd | numbers)] | if length > 0 then "1" else "" end)
   ] | .[] | if type == "string" then clean else tostring end'
 # Numbers and booleans cannot hold control characters, so only strings go
 # through clean().
 
 acct_file="$config_dir/.claude.json"
 [ -f "$acct_file" ] || acct_file=/dev/null
-_fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" "$JQ_FIELDS" 2>/dev/null)
-# A half-written or corrupt .claude.json makes jq exit 2 with no output at all,
-# which would blank every field on the line rather than just the email. Retry
-# without it so a bad account file costs only the thing it describes.
+# settings.json holds the auto-compact switch and window; /dev/null stands in
+# for a missing file here too.
+set_file="$config_dir/settings.json"
+[ -f "$set_file" ] || set_file=/dev/null
+_fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" --slurpfile set "$set_file" "$JQ_FIELDS" 2>/dev/null)
+# A half-written or corrupt .claude.json or settings.json makes jq exit 2 with
+# no output at all, which would blank every field on the line rather than just
+# what that file describes. Retry with one file dropped at a time, then both,
+# so a bad file costs only the thing it describes (a corrupt settings.json
+# keeps the email, a corrupt .claude.json keeps the compact setting). When
+# settings.json had to be dropped its auto-compact switch is unknown, so the
+# compact segment is hidden rather than guessed (settings_bad).
+settings_bad=""
 if [ -z "$_fields" ]; then
-  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null "$JQ_FIELDS" 2>/dev/null)
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" --slurpfile set /dev/null "$JQ_FIELDS" 2>/dev/null)
+  [ -n "$_fields" ] && [ "$set_file" != /dev/null ] && settings_bad=1
+fi
+if [ -z "$_fields" ]; then
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null --slurpfile set "$set_file" "$JQ_FIELDS" 2>/dev/null)
+fi
+if [ -z "$_fields" ]; then
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null --slurpfile set /dev/null "$JQ_FIELDS" 2>/dev/null)
+  [ "$set_file" != /dev/null ] && settings_bad=1
 fi
 
 # `mapfile` is bash 4+; macOS ships bash 3.2, so read the lines in a loop.
@@ -175,6 +303,13 @@ sl_pct="${F[33]}";      sl_at="${F[34]}"
 sl_used="${F[35]}";     sl_limit="${F[36]}";     sl_period="${F[37]}"
 pr_review="${F[38]}"
 project_dir="${F[39]}"
+output_style="${F[40]}"; vim_mode="${F[41]}";    agent_name="${F[42]}"
+ac_enabled="${F[43]}";  ac_window="${F[44]}"
+# "1" only when cost.total_cost_usd is a real number. The cost above falls back
+# to 0 when it is missing, which the ledger would read as a cost drop: banking
+# the spend and counting it again when the value comes back. So a render
+# without a cost leaves the ledger alone.
+cost_present="${F[45]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -191,6 +326,7 @@ _int cache_exp -1
 _int cache_hit -1
 _int cu_input 0
 _int cu_cache 0
+_int ac_window 0
 _int sl_pct -1
 _int sl_at -1
 # Dollar amounts are floats like the session cost; anything else is dropped.
@@ -235,14 +371,28 @@ fi
 # (BSD and GNU also disagree on how to format a given epoch). It is the offset
 # now, which is also right at an expiry at most an hour away, barring a DST
 # switch inside that hour.
-read -r now tz_off < <(date '+%s %z')
+read -r now tz_off today < <(date '+%s %z %Y-%m-%d')
 [[ "$now" =~ ^[0-9]+$ ]] || now=0
+[[ "$today" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || today=""
 tz_secs=0
 if [[ "$tz_off" =~ ^([-+])([0-9]{2})([0-9]{2})$ ]]; then
   # 10# forces base ten: a bare 08 or 09 is an invalid octal literal.
   tz_secs=$(( 10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60 ))
   [ "${BASH_REMATCH[1]}" = "-" ] && tz_secs=$(( -tz_secs ))
 fi
+# Local midnight as an epoch, by arithmetic on the offset read above.
+midnight=$(( now - ((now + tz_secs) % 86400) ))
+
+# Local HH:MM of an epoch, with the weekday in front when it is more than 24h
+# away (1970-01-01 was a Thursday, hence the + 4). Pure arithmetic: no `date`.
+fmt_clock() {  # $1=outvar  $2=epoch
+  local _l=$(( ($2 + tz_secs) % 86400 )) _wd=""
+  if [ $(( $2 - now )) -gt 86400 ]; then
+    local _names=(Sun Mon Tue Wed Thu Fri Sat)
+    _wd="${_names[$(( (($2 + tz_secs) / 86400 + 4) % 7 ))]} "
+  fi
+  printf -v "$1" '%s%02d:%02d' "$_wd" $((_l / 3600)) $(((_l % 3600) / 60))
+}
 
 # -- Git info (cached PER DIRECTORY) --
 # The cache key includes the cwd and uid, so concurrent sessions in
@@ -441,6 +591,12 @@ osc8() {  # $1=outvar  $2=url  $3=text  [$4=local]
   fi
 }
 
+# Coloured icon, or nothing at all when the tier has no icon (ascii), so no
+# empty colour/reset pair is emitted.
+icon() {  # $1=outvar  $2=colour  $3=icon
+  if [ -n "$3" ]; then printf -v "$1" '%s' "${2}${3}${RESET}"; else printf -v "$1" '%s' ""; fi
+}
+
 # Percent-encode a branch name for a URL path, keeping `/` so feature/x stays a
 # path. LC_ALL=C makes ${s:i:1} walk bytes, so a multibyte character becomes
 # its UTF-8 %XX sequence instead of one unencoded character.
@@ -494,8 +650,9 @@ if [ -n "$git_branch" ]; then
   [ "${git_modified:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${YELLOW}~${git_modified}${RESET}")
   [ "${git_untracked:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${RED}?${git_untracked}${RESET}")
   [ "${git_conflicts:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${BOLD}${RED}!${git_conflicts}${RESET}")
-  osc8 _branch_txt "$branch_url" "${CYAN}${git_branch}${RESET}"
-  git_info=" | ${_branch_txt}"
+  osc8 _branch_txt "$branch_url" "${C_VCS}${git_branch}${RESET}"
+  icon _ic "$C_VCS" "$I_GIT"
+  git_info="${SEP}${_ic}${_branch_txt}"
   [ ${#git_parts[@]} -gt 0 ] && git_info="${git_info} ${git_parts[*]}"
 fi
 
@@ -504,8 +661,9 @@ pr_info=""
 # pr.url comes straight from Claude Code (a GitLab merge request URL in a
 # GitLab repo), so the PR links on any forge, not just the two above.
 if [ -n "$pr_number" ]; then
-  osc8 _pr_txt "$pr_url" "${MAGENTA}#${pr_number}${RESET}"
-  pr_info="  ${_pr_txt}"
+  osc8 _pr_txt "$pr_url" "${C_ACCENT}#${pr_number}${RESET}"
+  icon _ic "$C_ACCENT" "$I_PR"
+  pr_info="${SEP}${_ic}${_pr_txt}"
   # Review state, which the docs say can be absent even when pr is present.
   # Kept outside the link so only the number is the click target. For a GitLab
   # merge request Claude Code maps mergeable to approved and any other open
@@ -691,7 +849,8 @@ if [ -n "$_dev_list" ]; then
       _dev_txt+="${_dev_txt:+ }${_dl}"
     done
     [ ${#_dev_ports[@]} -gt 3 ] && _dev_txt+=" ${DIM}+$(( ${#_dev_ports[@]} - 3 ))${RESET}"
-    dev_info="${GREEN}▶${RESET} ${_dev_txt}"
+    icon _dev_ic "$GREEN" "$I_DEV"
+    dev_info="${_dev_ic}${_dev_txt}"
   fi
 fi
 
@@ -708,6 +867,17 @@ esac
 [ "$thinking" = "true" ] && flag_parts+=("think")
 flags_info=""
 [ ${#flag_parts[@]} -gt 0 ] && flags_info=" ${DIM}${flag_parts[*]}${RESET}"
+
+# -- Output style, vim mode and agent name --
+# Each is optional and hides itself when absent; the default output style is
+# the ordinary case and stays silent, like the default permission mode.
+style_info=""
+[ -n "$output_style" ] && [ "$output_style" != "default" ] \
+  && style_info=" ${C_MUTED}${I_STYLE}${output_style}${RESET}"
+vim_info=""
+[ -n "$vim_mode" ] && vim_info=" ${C_QUOTA}${I_VIM}${vim_mode}${RESET}"
+agent_info=""
+[ -n "$agent_name" ] && agent_info=" ${C_ACCENT}${I_AGENT}${agent_name}${RESET}"
 
 # -- Permission mode --
 # Carried on the payload as .permission_mode. "default" is the ordinary case
@@ -758,14 +928,61 @@ if [ "$pct" -ge 85 ] && [ $((cu_input + cu_cache)) -gt 0 ]; then
   tok_info=" ${DIM}(in: ${_tin}, cache: ${_tca})${RESET}"
 fi
 
-BAR_WIDTH=15
+# -- Tokens left before auto-compact --
+# The compact point is the usable window (window minus the 20k output
+# reserve) minus a 13k buffer, with the window capped by
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW (100k..1M) or the autoCompactWindow setting.
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (1..100) can only move the point earlier.
+# These env vars are read from this script's own environment. compact_left is
+# -1 when there is no segment, else the tokens left (0 or below means due).
+compact_left=-1
+_cshow=""
+compact_off=""
+for _v in "${DISABLE_COMPACT:-}" "${DISABLE_AUTO_COMPACT:-}"; do
+  case "$_v" in
+    1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]) compact_off=1 ;;
+  esac
+done
+[ "$ac_enabled" = "false" ] && compact_off=1
+[ -n "$settings_bad" ] && compact_off=1
+_cused=$((cu_input + cu_cache))
+if [ -z "$compact_off" ] && [ "$pct" -ge 85 ] && [ "$_cused" -gt 0 ] && [ "$cw_size" -gt 0 ]; then
+  _cwin=$cw_size
+  _ccap=$ac_window
+  [[ "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" =~ ^[0-9]+$ ]] && _ccap=$((10#$CLAUDE_CODE_AUTO_COMPACT_WINDOW))
+  if [ "$_ccap" -gt 0 ]; then
+    [ "$_ccap" -lt 100000 ] && _ccap=100000
+    [ "$_ccap" -gt 1000000 ] && _ccap=1000000
+    [ "$_ccap" -lt "$_cwin" ] && _cwin=$_ccap
+  fi
+  _cusable=$((_cwin - 20000))
+  _cpoint=$((_cusable - 13000))
+  if [[ "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" =~ ^[0-9]+$ ]]; then
+    _cpct=$((10#$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE))
+    if [ "$_cpct" -gt 0 ] && [ "$_cpct" -le 100 ] && [ $((_cusable * _cpct / 100)) -lt "$_cpoint" ]; then
+      _cpoint=$((_cusable * _cpct / 100))
+    fi
+  fi
+  compact_left=$((_cpoint - _cused))
+  if [ "$compact_left" -le 0 ]; then
+    _ccol=$C_CRIT; _ctxt="compact due"
+  else
+    fmt_tok _cleft "$compact_left"
+    _ctxt="${_cleft} to compact"
+    if [ "$compact_left" -le 20000 ]; then _ccol=$C_WARN; else _ccol=$C_CTX; fi
+  fi
+  _cshow=1   # appended to tok_info after the ledger, which adds the turns estimate
+fi
+
+BAR_WIDTH=10
 filled=$((pct * BAR_WIDTH / 100))
 [ "$filled" -gt "$BAR_WIDTH" ] && filled=$BAR_WIDTH
 [ "$filled" -lt 0 ] && filled=0
 empty=$((BAR_WIDTH - filled))
 bar=""
-for ((i=0; i<filled; i++)); do bar+="█"; done
-for ((i=0; i<empty; i++)); do bar+="░"; done
+for ((i=0; i<filled; i++)); do bar+="$G_FULL"; done
+for ((i=0; i<empty; i++)); do bar+="$G_EMPTY"; done
+[ "$GLYPHS" = "ascii" ] && bar="[${bar}]"
 
 # -- Rate limits (Claude.ai Pro/Max only; absent windows are skipped) --
 # The countdown is time-based, so set "refreshInterval": 60 alongside statusLine
@@ -782,43 +999,58 @@ fmt_left() {  # $1=outvar  $2=epoch seconds when the window resets
   fi
 }
 
-# Usage pace, after claude-hud's getUsagePace: project the used percentage
-# linearly to the window's reset. 40% used one hour into a 5h window projects
-# to 200%, which the raw percentage alone shows as a calm green. Projection
-# above 100% (the limit runs out before the reset) is red, 90% or more is
-# yellow, and the percent takes whichever of threshold or pace is worse. When
-# pace raises an alert the projection is shown as `→200%`, which is the cue to
-# switch accounts, but only when it is above the current percent: right before
-# a reset almost no time is left to project over, so 95% projects to 95% and
-# `5h 95% →95%` would say nothing. That case needs 90% or more used, where the
-# threshold colour is already red, so hiding the marker loses no colour either.
-# Below 10% used a projection is noise (3% five minutes in
-# "projects" 180%), and a reset already past or a full window away has no
-# elapsed time to project from, so neither grades pace.
+# Usage pace, after claude-hud's getUsagePace: how far the used percentage is
+# ahead of or behind the clock (`used% - elapsed%` of the window), as `⇡20%`,
+# `⇣12%` or `±0%`. 40% used one hour into a 5h window is 20 points ahead, which
+# the raw percentage alone shows as a calm green. The severity still comes from
+# the linear projection to the reset: over 100% (the limit runs out first) is
+# red, 90% or more is yellow, and the percent takes whichever of threshold or
+# pace is worse. When the projection is over 100% the time it reaches 100% at
+# the current average rate is shown as `out HH:MM`, the cue to switch accounts.
+# Below 10% used a projection is noise (3% five minutes in "projects" 180%),
+# and a reset already past or a full window away has no elapsed time to
+# project from, so neither grades pace. Sets RL_LAST_SEV (0 ok, 1 warn,
+# 2 crit) for the window just formatted.
 fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)  $5=window seconds
-  local _sev=0 _psev=0 _c="$GREEN" _pc="" _rem _proj=0 left="" _pace=""
+  local _sev=0 _psev=0 _c="$C_OK" _pc="$C_OK" _rem _el _proj=0 _delta=0 _graded=0
+  local left="" _pace="" _eta="" _clk
   if [ "$3" -ge 90 ]; then _sev=2; elif [ "$3" -ge 70 ]; then _sev=1; fi
   if [ "$4" -ge 0 ] && [ "$3" -ge 10 ]; then
     _rem=$(( $4 - now ))
     if [ "$_rem" -gt 0 ] && [ "$_rem" -lt "$5" ]; then
-      _proj=$(( $3 * $5 / ($5 - _rem) ))
+      _graded=1
+      _el=$(( $5 - _rem ))
+      _proj=$(( $3 * $5 / _el ))
+      _delta=$(( $3 - _el * 100 / $5 ))
       if [ "$_proj" -gt 100 ]; then _psev=2; elif [ "$_proj" -ge 90 ]; then _psev=1; fi
     fi
   fi
   [ "$_psev" -gt "$_sev" ] && _sev=$_psev
-  case "$_sev" in 2) _c="$RED" ;; 1) _c="$YELLOW" ;; esac
-  if [ "$_psev" -gt 0 ] && [ "$_proj" -gt "$3" ]; then
-    [ "$_psev" -eq 2 ] && _pc="$RED" || _pc="$YELLOW"
-    [ "$_proj" -gt 999 ] && _proj=999
-    _pace=" ${_pc}→${_proj}%${RESET}"
+  RL_LAST_SEV=$_sev
+  case "$_sev" in 2) _c="$C_CRIT" ;; 1) _c="$C_WARN" ;; esac
+  case "$_psev" in 2) _pc="$C_CRIT" ;; 1) _pc="$C_WARN" ;; esac
+  if [ "$_graded" = 1 ]; then
+    if   [ "$_delta" -gt 0 ]; then _pace=" ${_pc}${G_UP}${_delta}%${RESET}"
+    elif [ "$_delta" -lt 0 ]; then _pace=" ${C_OK}${G_DOWN}$(( -_delta ))%${RESET}"
+    else                           _pace=" ${C_MUTED}${G_EVEN}0%${RESET}"
+    fi
+    # At 100% or more the run-out is already now or past: no ETA to show.
+    if [ "$_proj" -gt 100 ] && [ "$3" -lt 100 ]; then
+      fmt_clock _clk $(( now - _el + _el * 100 / $3 ))
+      _eta=" ${_pc}${I_ETA}out ${_clk}${RESET}"
+    fi
   fi
   [ "$4" -ge 0 ] && fmt_left left "$4"
-  [ -n "$left" ] && left=" ${DIM}(${left})${RESET}"
-  printf -v "$1" '%s%s%s %s%s%%%s%s%s' "$DIM" "$2" "$RESET" "$_c" "$3" "$RESET" "$_pace" "$left"
+  [ -n "$left" ] && left=" ${C_MUTED}(${left})${RESET}"
+  printf -v "$1" '%s%s%s %s%s%%%s%s%s%s' "$C_MUTED" "$2" "$RESET" "$_c" "$3" "$RESET" "$_pace" "$_eta" "$left"
 }
 
 rl_parts=()
-if [ "$rl_5h" -ge 0 ]; then fmt_rl _rl5 "5h" "$rl_5h" "$rl_5h_at" 18000; rl_parts+=("$_rl5"); fi
+_sev5=0
+if [ "$rl_5h" -ge 0 ]; then
+  fmt_rl _rl5 "5h" "$rl_5h" "$rl_5h_at" 18000; rl_parts+=("$_rl5")
+  _sev5=$RL_LAST_SEV
+fi
 if [ "$rl_7d" -ge 0 ]; then fmt_rl _rl7 "7d" "$rl_7d" "$rl_7d_at" 604800; rl_parts+=("$_rl7"); fi
 
 # Spend limit: only sent behind a Claude apps gateway that sets one, so on a
@@ -840,8 +1072,108 @@ if [ "$sl_pct" -ge 0 ]; then
   fi
   rl_parts+=("$_rls")
 fi
+# -- Quota files and the other accounts line --
+# Each account leaves its last 5h and 7d usage in one small file, so a session
+# nearing its limit can show what the other accounts have left:
+#   $STATE_DIR/claude-statusline-quota-${UID}-<LABEL>
+#   label email p5 at5 p7 at7 seen      (missing values -1, empty email -)
+# The files of the other accounts are untrusted input: every field is checked
+# as a plain integer (or token) before it reaches arithmetic or the screen,
+# and a bad file is skipped without a word.
+QL=(PERSONAL WORK DEV)
+QOK=(0 0 0); QE=("" "" ""); QP5=("" "" ""); QA5=("" "" ""); QP7=("" "" ""); QA7=("" "" ""); QS=("" "" "")
+
+# quota_int <value>: -1, 0, or digits with no leading zero (so no octal trap).
+quota_int() {
+  case "$1" in -1|0) return 0 ;; ''|0*|*[!0-9]*) return 1 ;; esac
+  [ "${#1}" -le 10 ]
+}
+
+# quota_read <index>: loads one label's file into the Q* arrays; QOK is 1 only
+# when every field is valid. Builtin read, so no fork.
+quota_read() {
+  local _f="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$1]}" _l="" _e="" _a="" _b="" _c="" _d="" _s="" _x=""
+  QOK[$1]=0
+  [ -f "$_f" ] && [ -O "$_f" ] || return 0
+  { IFS=' ' read -r _l _e _a _b _c _d _s _x; } 2>/dev/null < "$_f"
+  [ "$_l" = "${QL[$1]}" ] && [ -z "$_x" ] || return 0
+  case "$_e" in ''|*[!A-Za-z0-9@._+-]*) return 0 ;; esac
+  quota_int "$_a" && quota_int "$_b" && quota_int "$_c" && quota_int "$_d" && quota_int "$_s" || return 0
+  QE[$1]=$_e; QP5[$1]=$_a; QA5[$1]=$_b; QP7[$1]=$_c; QA7[$1]=$_d; QS[$1]=$_s; QOK[$1]=1
+}
+
+# The email as written to and compared against the files: never a space.
+_q_email="${claude_email//[!A-Za-z0-9@._+-]/-}"
+[ -n "$_q_email" ] || _q_email="-"
+
+# Which file is this session's: its own label when that is one of the three,
+# else (the router's CLAUDE) the label whose file holds this session's email,
+# else none, so no file is ever named after an override value.
+_q_self=-1; _q_all=0
+for _i in 0 1 2; do [ "${QL[$_i]}" = "$ACCOUNT_NAME" ] && _q_self=$_i; done
+[ "$_sev5" -ge 1 ] && _q_all=1
+[ "$_q_self" -lt 0 ] && [ -n "$claude_email" ] && _q_all=1
+if [ "$_q_all" = 1 ]; then
+  for _i in 0 1 2; do quota_read "$_i"; done
+elif [ "$_q_self" -ge 0 ]; then
+  quota_read "$_q_self"
+fi
+if [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ]; then
+  for _i in 0 1 2; do
+    if [ "${QOK[$_i]}" = 1 ] && [ "${QE[$_i]}" = "$_q_email" ]; then _q_self=$_i; break; fi
+  done
+fi
+
+# Write only when a value changed or the stored time is a minute old, so a
+# render where nothing changed adds no fork. Own temp file plus mv.
+if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
+  _q_new="$_q_email $rl_5h $rl_5h_at $rl_7d $rl_7d_at"
+  _q_old="${QE[$_q_self]} ${QP5[$_q_self]} ${QA5[$_q_self]} ${QP7[$_q_self]} ${QA7[$_q_self]}"
+  if [ "${QOK[$_q_self]}" != 1 ] || [ "$_q_new" != "$_q_old" ] || [ $(( now - QS[_q_self] )) -ge 60 ]; then
+    _q_file="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$_q_self]}"
+    # noclobber (set -C) makes > refuse an existing path, so on a shared /tmp
+    # a symlink planted at the predictable temp name is never written through.
+    # Builtin, no fork. A refused write falls through to the rm, as before.
+    { set -C; printf '%s %s %s\n' "${QL[$_q_self]}" "$_q_new" "$now" > "$_q_file.$$"; _q_w=$?; set +C; [ "$_q_w" = 0 ]; } 2>/dev/null \
+      && mv -f "$_q_file.$$" "$_q_file" 2>/dev/null || rm -f "$_q_file.$$" 2>/dev/null
+  fi
+fi
+
+# The line itself: only when this session's 5h is warn or crit. This session's
+# own account is skipped, as is any file holding this session's email, and so
+# is anything missing, corrupt, or older than five hours.
+other_info=""
+if [ "$_sev5" -ge 1 ]; then
+  for _i in 0 1 2; do
+    [ "${QOK[$_i]}" = 1 ] || continue
+    [ "$_i" = "$_q_self" ] && continue
+    # Same login as this session (whatever the label): the same quota, never offered.
+    [ "$_q_email" != "-" ] && [ "${QE[$_i]}" = "$_q_email" ] && continue
+    [ "${QP5[$_i]}" -ge 0 ] || continue
+    _age=$(( now - QS[_i] )); [ "$_age" -lt 0 ] && _age=0
+    [ "$_age" -gt 18000 ] && continue
+    account_color _qc "${QL[$_i]}"
+    if [ "${QA5[$_i]}" -ge 0 ] && [ "${QA5[$_i]}" -le "$now" ]; then
+      _qv="${C_OK}reset${RESET}"
+    else
+      _qpc=$C_OK
+      if [ "${QP5[$_i]}" -ge 90 ]; then _qpc=$C_CRIT; elif [ "${QP5[$_i]}" -ge 70 ]; then _qpc=$C_WARN; fi
+      _qv="${_qpc}${QP5[$_i]}%${RESET}"
+    fi
+    if [ "$_age" -ge 3600 ]; then _qa="$(( _age / 3600 ))h ago"; else _qa="$(( _age / 60 ))m ago"; fi
+    other_info+="${other_info:+  }${BOLD}${_qc}${QL[$_i]}${RESET} ${_qv} ${C_MUTED}(${_qa})${RESET}"
+  done
+  if [ -n "$other_info" ]; then
+    icon _sw_ic "$C_MUTED" "$I_SWITCH"
+    other_info="${_sw_ic}${C_MUTED}other accounts:${RESET} ${other_info}"
+  fi
+fi
+
 rl_info=""
-[ ${#rl_parts[@]} -gt 0 ] && rl_info=" | ${rl_parts[*]}"
+if [ ${#rl_parts[@]} -gt 0 ]; then
+  icon _ic "$C_QUOTA" "$I_QUOTA"
+  rl_info="${SEP}${_ic}${rl_parts[*]}"
+fi
 
 # -- Prompt cache: when it goes cold, and the session hit rate --
 # A clock time, not a countdown, as claude-hud's promptCacheLine does: the line
@@ -856,12 +1188,11 @@ if [ "$cache_observed" = "true" ]; then
   if [ "$_cache_left" -gt 0 ]; then
     case "$cache_ttl" in 1h) _ttl=3600 ;; *) _ttl=300 ;; esac
     _warn=$((_ttl / 5)); [ "$_warn" -lt 60 ] && _warn=60
-    _local=$(( (cache_exp + tz_secs) % 86400 ))
-    printf -v _hhmm '%02d:%02d' $((_local / 3600)) $(((_local % 3600) / 60))
-    _cc="$GREEN"; [ "$_cache_left" -le "$_warn" ] && _cc="$YELLOW"
-    cache_info="${DIM}cache${RESET} ${_cc}${_hhmm}${RESET}"
+    fmt_clock _hhmm "$cache_exp"
+    _cc="$C_OK"; [ "$_cache_left" -le "$_warn" ] && _cc="$C_WARN"
+    cache_info="${C_MUTED}cache${RESET} ${_cc}${_hhmm}${RESET}"
   else
-    cache_info="${DIM}cache cold${RESET}"
+    cache_info="${C_MUTED}cache cold${RESET}"
   fi
 fi
 # Gated on caching_observed like the expiry above: with caching off, or a
@@ -869,13 +1200,214 @@ fi
 # `hit 0%` would read as a cache doing badly rather than one not in play.
 if [ "$cache_observed" = "true" ] && [ "$cache_hit" -ge 0 ]; then
   [ "$cache_hit" -gt 100 ] && cache_hit=100
-  _hit="${DIM}hit${RESET} ${cache_hit}%"
+  _hit="${C_MUTED}hit${RESET} ${cache_hit}%"
   cache_info="${cache_info:+${cache_info} }${_hit}"
 fi
-[ -n "$cache_info" ] && cache_info=" | ${cache_info}"
+if [ -n "$cache_info" ]; then
+  icon _ic "$C_CACHE" "$I_CACHE"
+  cache_info="${SEP}${_ic}${cache_info}"
+fi
 
 # -- Format cost --
-cost_fmt=$(printf '$%.2f' "$cost")
+printf -v cost_fmt '$%.2f' "$cost"
+
+# -- Cost today and $/h --
+# Bash has no floats, so the ledger counts whole micro-dollars.
+# usd_to_micros <outvar> <usd>: by string surgery. The exponent form jq prints
+# for tiny costs (1e-07), a negative and anything unparsable count as 0.
+usd_to_micros() {
+  local _i="${2%%.*}" _f=""
+  case "$2" in *.*) _f="${2#*.}" ;; esac
+  _f="${_f}000000"; _f="${_f:0:6}"
+  if [[ "$_i" =~ ^[0-9]{1,12}$ && "$_f" =~ ^[0-9]{6}$ ]]; then
+    printf -v "$1" '%d' $(( 10#$_i * 1000000 + 10#$_f ))
+  else
+    printf -v "$1" '%d' 0
+  fi
+}
+# fmt_usd <outvar> <micros>: $D.CC, cents rounded half up.
+fmt_usd() {
+  local _c=$(( ($2 + 5000) / 10000 ))
+  printf -v "$1" '$%d.%02d' $(( _c / 100 )) $(( _c % 100 ))
+}
+# ledger_read <file>: one session's state file into _lg_base _lg_total
+# _lg_banked, its cost samples ("epoch micros", oldest first) into _lg_c and
+# its reserved context lines (token counts) into _lg_x. _lg_base is empty when
+# the file is missing or its first line is malformed. Builtin read: no fork.
+# File format, one per session and day:
+#   base total banked     (micros)
+#   c <epoch> <micros>    cost samples, last hour
+#   x <tokens>            context samples (last 10) for the compact estimate
+ledger_read() {
+  local _a _b _c _t
+  _lg_base=""; _lg_total=0; _lg_banked=0; _lg_c=(); _lg_x=()
+  [ -f "$1" ] || return 0
+  {
+    read -r _a _b _c
+    if [[ "$_a" =~ ^[0-9]{1,15}$ && "$_b" =~ ^[0-9]{1,15}$ && "$_c" =~ ^[0-9]{1,15}$ ]]; then
+      _lg_base=$((10#$_a)); _lg_total=$((10#$_b)); _lg_banked=$((10#$_c))
+    fi
+    while read -r _t _a _b; do
+      case "$_t" in
+        c) [[ "$_a" =~ ^[0-9]{1,12}$ && "$_b" =~ ^[0-9]{1,15}$ ]] && _lg_c+=("$((10#$_a)) $((10#$_b))") ;;
+        x) [[ "$_a" =~ ^[0-9]{1,12}$ ]] && _lg_x+=("$((10#$_a))") ;;
+      esac
+    done
+  } 2>/dev/null < "$1"
+  return 0
+}
+# ledger_tally: add the session held in _lg_* to today_micros, and its spend
+# over the last hour to _rate_sum. That spend runs from the oldest sample in
+# the hour, restarting at any drop (a /clear), to its total; _rate_from keeps
+# the earliest such start across sessions.
+ledger_tally() {
+  local _s _e _v _prev=-1 _se=-1 _sv=0 _d
+  _d=$(( _lg_total - _lg_base )); [ "$_d" -lt 0 ] && _d=0
+  today_micros=$(( today_micros + _lg_banked + _d ))
+  for _s in "${_lg_c[@]}"; do
+    _e=${_s% *}; _v=${_s#* }
+    [ "$_e" -lt $(( now - 3600 )) ] && continue
+    if [ "$_se" -lt 0 ] || [ "$_v" -lt "$_prev" ]; then _se=$_e; _sv=$_v; fi
+    _prev=$_v
+  done
+  [ "$_se" -lt 0 ] && return 0
+  _d=$(( _lg_total - _sv )); [ "$_d" -lt 0 ] && _d=0
+  _rate_sum=$(( _rate_sum + _d ))
+  if [ "$_rate_from" -lt 0 ] || [ "$_se" -lt "$_rate_from" ]; then _rate_from=$_se; fi
+  return 0
+}
+
+# One state file per session, so concurrent sessions never rewrite the same
+# file; today is the sum over today's folder. A first sight today starts from
+# 0 if the session began after local midnight, else from its current cost, so
+# yesterday's spend is not counted. A lower cost (after /clear) banks what was
+# spent and starts again from 0. The file is rewritten (temp file plus one
+# `mv`) only when something in it changed; an unchanged render forks nothing.
+# The session id is payload text: only [A-Za-z0-9-] reaches the path, spelled
+# out because a bracket range like A-Z follows the locale's collation.
+today_micros=-1
+rate_micros_per_hour=-1
+usd_to_micros cost_micros "$cost"
+sid="${session_id//[^ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-]/}"
+sid="${sid:0:128}"
+if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
+  _ledger="$STATE_DIR/claude-statusline-cost-${UID}"
+  _day="$_ledger/$today"
+  _new_day=""
+  if [ ! -d "$_day" ]; then
+    # Both levels are named, so each gets 700; -p only fills in STATE_DIR.
+    # shellcheck disable=SC2174
+    mkdir -p -m 700 "$_ledger" "$_day" 2>/dev/null
+    _new_day=1
+  fi
+  # A shared /tmp: use the folder only if it is ours and not a symlink.
+  if [ -d "$_day" ] && [ -O "$_ledger" ] && [ ! -L "$_ledger" ]; then
+    if [ -n "$_new_day" ]; then
+      _old=()
+      for _f in "$_ledger"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
+        # Strictly older than today only, compared as numbers (no locale collation).
+        _n="${_f##*/}"; _n="${_n//-/}"
+        [ -d "$_f" ] && [ "$(( 10#$_n ))" -lt "$(( 10#${today//-/} ))" ] && _old+=("$_f")
+      done
+      [ "${#_old[@]}" -gt 0 ] && rm -rf "${_old[@]}" 2>/dev/null
+    fi
+    _state="$_day/$sid"
+    ledger_read "$_state"
+    _ledger_dirty=""
+    if [ -z "$cost_present" ]; then
+      :  # No cost in this payload: nothing to record (see cost_present).
+    elif [ -z "$_lg_base" ]; then
+      if [ $(( now - duration_ms / 1000 )) -ge "$midnight" ]; then _lg_base=0; else _lg_base=$cost_micros; fi
+      _lg_total=$cost_micros; _lg_banked=0; _ledger_dirty=1
+    elif [ "$cost_micros" -ne "$_lg_total" ]; then
+      if [ "$cost_micros" -lt "$_lg_total" ]; then
+        _d=$(( _lg_total - _lg_base )); [ "$_d" -gt 0 ] && _lg_banked=$(( _lg_banked + _d ))
+        _lg_base=0
+      fi
+      _lg_total=$cost_micros; _ledger_dirty=1
+    fi
+    # Context samples for the compact estimate: one per distinct token count,
+    # the last 10 kept. A change alone makes the file dirty.
+    _nx=${#_lg_x[@]}
+    if [ -n "$cost_present" ] && [ "$_cused" -gt 0 ] && { [ "$_nx" -eq 0 ] || [ "${_lg_x[_nx - 1]}" -ne "$_cused" ]; }; then
+      _lg_x+=("$_cused"); _ledger_dirty=1
+      [ "${#_lg_x[@]}" -gt 10 ] && _lg_x=("${_lg_x[@]:${#_lg_x[@]}-10}")
+    fi
+    # Turns left: growth per sample since the last drop (a /clear or compact),
+    # from at least 3 samples. Computed here because ledger_read below
+    # replaces _lg_x with other sessions' samples.
+    if [ -n "$_cshow" ] && [ "$compact_left" -gt 0 ]; then
+      _xn=0; _xfirst=0; _xlast=-1
+      for _s in "${_lg_x[@]}"; do
+        if [ "$_xlast" -ge 0 ] && [ "$_s" -lt "$_xlast" ]; then _xn=0; fi
+        [ "$_xn" -eq 0 ] && _xfirst=$_s
+        _xn=$((_xn + 1)); _xlast=$_s
+      done
+      if [ "$_xn" -ge 3 ]; then
+        _xper=$(( (_xlast - _xfirst) / (_xn - 1) ))
+        [ "$_xper" -gt 0 ] && _ctxt="${_ctxt} ~$(( (compact_left + _xper - 1) / _xper )) turns"
+      fi
+    fi
+    if [ -n "$_ledger_dirty" ]; then
+      # Thinning, so a busy session's file (read on every render) stays near
+      # 60 samples an hour: the newest sample is overwritten instead of
+      # appended to while the one before it is under 120s old. Then any two
+      # samples one apart are at least 120s apart. Never when the cost dropped
+      # or the newest sample starts a run (it is below the one before), so the
+      # start of a measured span never moves.
+      _n=${#_lg_c[@]}
+      _thin=""
+      if [ "$_n" -ge 2 ]; then
+        _l=${_lg_c[_n - 1]}; _p=${_lg_c[_n - 2]}
+        [ "${_p% *}" -gt $(( now - 120 )) ] && [ "${_l#* }" -ge "${_p#* }" ] \
+          && [ "$cost_micros" -ge "${_l#* }" ] && _thin=1
+      fi
+      if [ -n "$_thin" ]; then _lg_c[_n - 1]="$now $cost_micros"; else _lg_c+=("$now $cost_micros"); fi
+      _kept=(); _body="$_lg_base $_lg_total $_lg_banked"
+      for _s in "${_lg_c[@]}"; do
+        [ "${_s% *}" -lt $(( now - 3600 )) ] && continue
+        _kept+=("$_s"); _body+=$'\n'"c $_s"
+      done
+      _lg_c=("${_kept[@]}")
+      for _s in "${_lg_x[@]}"; do _body+=$'\n'"x $_s"; done
+      # The temp file is a dotfile so the tally glob below never reads it, not
+      # while another session is mid-write and not if a render was killed
+      # between the write and the mv (that left a second copy counted all day).
+      _lg_tmp="$_day/.$sid.$$"
+      { printf '%s\n' "$_body" > "$_lg_tmp"; } 2>/dev/null \
+        && mv -f "$_lg_tmp" "$_state" 2>/dev/null || rm -f "$_lg_tmp" 2>/dev/null
+    fi
+    today_micros=0; _rate_sum=0; _rate_from=-1
+    # A first render with no cost has no entry of its own yet.
+    [ -n "$_lg_base" ] && ledger_tally
+    # The glob skips dotfiles, so a temp file (see above) is never read.
+    for _f in "$_day"/*; do
+      [ "$_f" = "$_state" ] && continue
+      [ -f "$_f" ] || continue
+      ledger_read "$_f"
+      [ -n "$_lg_base" ] && ledger_tally
+    done
+    # Shown once the samples cover 2 minutes (CCometixLine's RATE_MIN_SPAN).
+    if [ "$_rate_from" -ge 0 ] && [ $(( now - _rate_from )) -ge 120 ]; then
+      rate_micros_per_hour=$(( _rate_sum * 3600 / (now - _rate_from) ))
+    fi
+  fi
+fi
+
+[ -n "$_cshow" ] && tok_info="${tok_info} ${_ccol}${I_COMPACT}${_ctxt}${_ccol:+${RESET}}"
+
+cost_info="${C_COST}${cost_fmt}${RESET}"
+if [ "$today_micros" -ge 0 ]; then
+  fmt_usd _usd "$today_micros"
+  icon _ic "$C_COST" "$I_TODAY"
+  cost_info+=" ${C_SEP}${G_DOT}${RESET} ${_ic}${C_MUTED}today${RESET} ${C_COST}${_usd}${RESET}"
+  if [ "$rate_micros_per_hour" -ge 0 ]; then
+    fmt_usd _usd "$rate_micros_per_hour"
+    # Muted, or warn above $10/h.
+    _rc=$C_MUTED; [ "$rate_micros_per_hour" -gt 10000000 ] && _rc=$C_WARN
+    cost_info+=" ${C_SEP}${G_DOT}${RESET} ${_rc}${I_RATE}${_usd}/h${RESET}"
+  fi
+fi
 
 # -- Format duration --
 duration_sec=$((duration_ms / 1000))
@@ -894,7 +1426,7 @@ fi
 # -- Lines changed --
 lines_info=""
 if [ "$lines_added" -gt 0 ] || [ "$lines_removed" -gt 0 ]; then
-  lines_info=" | ${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
+  lines_info="${SEP}${C_OK}+${lines_added}${RESET} ${C_CRIT}-${lines_removed}${RESET}"
 fi
 
 # -- Version tag --
@@ -916,15 +1448,16 @@ fi
 # UTF-8 locale, so the cut does not split a multibyte character there.
 name_info=""
 if [ -n "$session_name" ]; then
-  [ ${#session_name} -gt 30 ] && session_name="${session_name:0:29}…"
-  name_info=" ${MAGENTA}${session_name}${RESET}"
+  # 30 characters in all: 29 plus a one-character ellipsis, 27 plus "...".
+  [ ${#session_name} -gt 30 ] && session_name="${session_name:0:$((30 - ${#G_ELLIPSIS}))}${G_ELLIPSIS}"
+  name_info=" ${C_SESS}${I_NAME}${session_name}${RESET}"
 fi
 
 # -- Worktree (superpowers and EnterWorktree sessions) --
 # workspace.git_worktree can be a path, so keep only its last segment.
 wt_info=""
 if [ -n "$worktree" ]; then
-  wt_info=" ${DIM}wt:${RESET}${MAGENTA}${worktree##*/}${RESET}"
+  wt_info="${SEP}${C_SESS}${I_WT}${DIM}wt:${RESET}${C_SESS}${worktree##*/}${RESET}"
 fi
 
 # -- Git email prefix (username only, strip @domain) --
@@ -940,16 +1473,26 @@ if [ -n "$claude_email" ]; then
 fi
 
 # -- Account label --
-account_label="${BOLD}${ACCOUNT_COLOR}${ACCOUNT_NAME}${RESET}"
+account_color _acct_col "$ACCOUNT_NAME"
+account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 
-# -- LINE 1: Account | Git user (Claude account) | Model + flags + mode | Version | Session id | Dir | Git | PR --
-# Dev servers get line 3: at the end of line 1 a narrow terminal cut them off.
+# -- LINE 1: Account | Git user (Claude account) | Model + flags, style, vim, agent, mode | Version | Session id + name | Dir | Git | Worktree | PR --
+# Dev servers get the last line: at the end of line 1 a narrow terminal cut them off.
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
+# Dividers come only from the segments that are present (git, worktree and PR
+# each carry their own SEP). The model icon sits inside the model colour so
+# ascii, where the icon is empty, leaves no empty colour/reset pair.
+icon _dir_ic "$C_WORKSP" "$I_DIR"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${name_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
 
-# -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
-printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info} | ${YELLOW}${cost_fmt}${RESET} | ${time_fmt}${lines_info}"
+# -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost, today, $/h | Duration | Lines --
+icon _cost_ic "$C_COST" "$I_COST"
+icon _time_ic "$C_TIMING" "$I_TIME"
+printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${_cost_ic}${cost_info}${SEP}${_time_ic}${C_TIMING}${time_fmt}${C_TIMING:+${RESET}}${lines_info}"
 
-# -- LINE 3: Dev servers running in the project, only when there are any --
+# -- LINE 3: other accounts' 5h usage, only when this session is near its limit --
+if [ -n "$other_info" ]; then printf '\n%s' "$other_info"; fi
+
+# -- LINE 3 or 4: Dev servers running in the project, only when there are any --
 if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi

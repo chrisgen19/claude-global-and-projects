@@ -57,6 +57,8 @@ jobs:
       # footguns. It cannot see that the rendered line is wrong, and the %b
       # escape bug (#81) was shellcheck-clean for as long as it existed. These
       # tests build fixture repos and assert on what the script actually prints.
+      # The warm-render guard compares against a baseline timed in the same run
+      # (see statusline-tests/README.md), so it needs no runner-specific budget.
       - name: statusline behaviour tests
         run: ./statusline-tests/run.sh
 

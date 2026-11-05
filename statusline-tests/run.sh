@@ -45,6 +45,14 @@ RUN_BASH="$BASH"
 # from a previous run looked up dead fixture pids.
 export CLAUDE_STATUSLINE_DEV_MAX_AGE=0
 
+# Existing colour assertions use the 8-colour codes; new sections set their own.
+export STATUSLINE_PALETTE=ansi STATUSLINE_GLYPHS=unicode
+# The script reads these from its own environment: never inherit them from the
+# developer's shell.
+unset DISABLE_COMPACT DISABLE_AUTO_COMPACT CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+STATE=$(mktemp -d) || exit 1
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
 pass=0
 fail=0
 
@@ -52,6 +60,7 @@ fail=0
 # with whatever is installed on the machine running the tests.
 CONFIG_DIR=$(mktemp -d) || exit 1
 FIX=$(mktemp -d) || exit 1
+QROOT=$(mktemp -d) || exit 1
 
 # Removing the fixtures is not enough: the script writes a cache entry per
 # directory it renders, so every run used to leave ~11 orphans behind in /tmp.
@@ -75,7 +84,7 @@ cleanup() {
     wait "$p" 2>/dev/null
     rm -f /tmp/claude-statusline-devcwd-"${UID}"-"$p"
   done
-  rm -rf "$FIX" "$CONFIG_DIR"
+  rm -rf "$FIX" "$CONFIG_DIR" "$STATE" "$QROOT"
   # The variables stay quoted and only the * are bare, so the pattern expands
   # without word-splitting the path. With no match bash passes the pattern
   # through literally and `rm -f` ignores it.
@@ -117,10 +126,30 @@ line2() {
   render "$1" "${2:-}" | sed -n '2p'
 }
 
-# devseg <dir> [extra-json] -- line 3 (the dev servers), colours stripped
+# devseg <dir> [extra-json] -- the dev servers line, colours stripped. It is the
+# last line, after the other accounts line when that is present, so it is
+# picked by its marker: a render with no dev servers gives an empty string,
+# never line 2 or the other accounts line. Pair an excludes on it with a
+# positive check on the same render.
 devseg() {
-  render "$1" "${2:-}" | sed -n '3p'
+  render "$1" "${2:-}" | sed -n '/^▶/p'
 }
+
+# qdir: a fresh state dir for one case. qfile <LABEL> <email> <p5> <at5> <seen>.
+qdir() { QD=$(mktemp -d "$QROOT/q.XXXXXX") || exit 1; export CLAUDE_STATUSLINE_STATE_DIR="$QD"; }
+qfile() { printf '%s %s %s %s -1 -1 %s
+' "$1" "$2" "$3" "$4" "$5" > "$QD/claude-statusline-quota-$UID-$1"; }
+# rl5 <percent> <seconds until reset>
+rl5() { printf '"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s}}' "$1" "$((now + $2))"; }
+# render_acct <dir> <config dir> <extra-json> -- as the CLAUDE router would run it
+render_acct() {
+  local payload
+  payload=$(jq -nc --arg d "$1" --argjson x "{$3}"     '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}} * $x')
+  printf '%s' "$payload" | ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$2" "$RUN_BASH" "$SCRIPT" | strip_ansi
+}
+n_lines() { printf '%s
+' "$1" | wc -l | tr -d ' '; }
+
 
 ok()   { pass=$((pass + 1)); printf 'ok    %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf 'FAIL  %s\n' "$1"; }
@@ -202,7 +231,8 @@ git -C "$FIX/sync" remote add origin "$FIX/bare"
 git -C "$FIX/sync" push -q -u origin main
 
 got=$(seg "$FIX/sync")
-contains "tracking branch in sync names the branch" "| main" "$got"
+contains "tracking branch in sync names the branch" "⎇ main" "$got"
+contains "branch after a divider" " │ ⎇ main" "$(render "$FIX/sync" | sed -n 1p)"
 excludes "tracking branch in sync: no ahead marker" "^" "$got"
 excludes "tracking branch in sync: no no-upstream" "no-upstream" "$got"
 
@@ -292,7 +322,7 @@ excludes "detached HEAD does not claim no-upstream" "no-upstream" "$got"
 echo "-- outside a repo --"
 mkdir -p "$FIX/plain" || exit 1
 got=$(seg "$FIX/plain")
-excludes "a non-repo shows no branch separator" "|" "$got"
+excludes "a non-repo shows no branch icon" "⎇" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- permission mode --"
@@ -358,6 +388,24 @@ out=$(printf '%s' \
   "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')" \
   | ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p')
 contains "ACCOUNT_LABEL_OVERRIDE wins over the built-in label" "CLAUDE" "$out"
+
+# The label colour follows the palette: 24-bit Catppuccin by default, the
+# 8-colour codes under ansi. Line 15 only decides the current account's colour
+# under catppuccin; the override label is neutral text in both palettes.
+for spec in "personal:PERSONAL:137;220;235:36" "work:WORK:249;226;175:33" "dev:DEV:166;227;161:32"; do
+  IFS=: read -r acct label rgb ansi <<EOF_SPEC
+$spec
+EOF_SPEC
+  copy="$REPO_ROOT/claude-$acct/statusline.sh"
+  payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')
+  out=$(printf '%s' "$payload" | STATUSLINE_PALETTE=catppuccin CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$copy" | sed -n '1p')
+  contains "claude-$acct label is 24-bit under catppuccin" "${ESC}[38;2;${rgb}m${label}" "$out"
+  out=$(printf '%s' "$payload" | STATUSLINE_PALETTE=ansi CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$copy" | sed -n '1p')
+  contains "claude-$acct label is 8-colour under ansi" "${ESC}[${ansi}m${label}" "$out"
+done
+out=$(printf '%s' "$payload" \
+  | STATUSLINE_PALETTE=catppuccin ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | sed -n '1p')
+contains "override label is neutral text under catppuccin" "${ESC}[38;2;205;214;244mCLAUDE" "$out"
 
 # ---------------------------------------------------------------------------
 echo "-- the Claude account email --"
@@ -548,37 +596,83 @@ RED="${ESC}[31m"; YELLOW="${ESC}[33m"; GREEN="${ESC}[32m"; DIM="${ESC}[2m"; RST=
 
 # ---------------------------------------------------------------------------
 echo "-- usage pace --"
-# 40% used one hour into a 5h window projects to 200%: red, with the
-# projection shown. Over 100 means the limit runs out before the reset.
+# eta_want <epoch> -- the local HH:MM for an epoch under TZ=UTC0, as plain
+# arithmetic. The script may read the clock a second after the suite, which
+# moves a projected ETA by up to a minute, so callers accept epoch and epoch+60.
+eta_want() {
+  local e l
+  for e in "$1" "$(($1 + 60))"; do
+    l=$(( e % 86400 ))
+    printf '%02d:%02d\n' $((l / 3600)) $(((l % 3600) / 60))
+  done
+}
+# eta_has <name> <epoch> <output> -- passes when "out HH:MM" holds for either
+eta_has() {
+  local w1 w2
+  { read -r w1; read -r w2; } < <(eta_want "$2")
+  if [ "${3#*"out $w1"}" != "$3" ] || [ "${3#*"out $w2"}" != "$3" ]; then
+    ok "$1"
+  else
+    bad "$1"
+    printf '        want out %s or out %s\n        got: %s\n' "$w1" "$w2" "$3"
+  fi
+}
+# 40% used one hour into a 5h window: 20% of the window elapsed, so 20 points
+# ahead of the clock. The projection is 200%: red, and it runs out after 90
+# more minutes (now + 5400).
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))}}")
 contains "5h on course to run out is red" "${RED}40%" "$got"
-contains "5h on course to run out shows the projection" "→" "$(printf '%s' "$got" | strip_ansi)"
-# 60% at day 4.5 of 7 projects to 93%: amber, from 90.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))}}")
+contains "5h ahead of the clock" "5h 40% ⇡20%" "$got"
+eta_has "5h run-out time is local" $((now + 5400)) "$got"
+# 60% at day 4.5 of 7: 64% elapsed, 4 points behind; projects to 93%: amber
+# from 90, but under 100 so no ETA.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"seven_day\":{\"used_percentage\":60,\"resets_at\":$((now + 216000))}}")
 contains "7d heading for 93% is yellow" "${YELLOW}60%" "$got"
-contains "7d heading for 93% shows it" "→93%" "$(printf '%s' "$got" | strip_ansi)"
-# 40% with 30 minutes left projects to 44%: on track, no marker.
+plain_got=$(printf '%s' "$got" | strip_ansi)
+contains "7d heading for 93% is behind the clock" "7d 60% ⇣4%" "$plain_got"
+excludes "7d heading for 93% shows no ETA" "out " "$plain_got"
+# 40% with 30 minutes left: 90% elapsed, 50 points behind.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 1800))}}")
 contains "5h on track stays green" "${GREEN}40%" "$got"
-excludes "5h on track shows no projection" "→" "$(printf '%s' "$got" | strip_ansi)"
+excludes "5h on track shows no ETA" "out " "$(printf '%s' "$got" | strip_ansi)"
+# 24% with 3h12m left: 36% elapsed, 12 points behind, no ETA.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":24,\"resets_at\":$((now + 11520))}}")
+contains "behind the clock" "5h 24% ⇣12%" "$got"
+excludes "behind the clock shows no ETA" "out " "$got"
 # Below 10% a projection is noise (3% five minutes in "projects" 180%).
 # The positive check first, so a payload that failed to parse cannot pass the
 # exclusion by rendering no window at all.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":5,\"resets_at\":$((now + 17700))}}")
 contains "under 10% used still shows the window" "5h 5%" "$got"
-excludes "under 10% used grades no pace" "→" "$got"
+excludes "under 10% used shows no pace marker" "⇡" "$got"
+excludes "under 10% used shows no behind marker" "⇣" "$got"
+excludes "under 10% used shows no ETA" "out " "$got"
 # Pace never lowers the threshold colour: a minute before the reset, 95%
 # projects to 95% (a yellow pace grade), and the percent stays red.
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":95,\"resets_at\":$((now + 60))}}")
 contains "pace never lowers a red threshold" "${RED}95%" "$got"
-# That projection equals the current percent, so `5h 95% →95%` would repeat
-# it. The marker shows only when the projection is above the percent.
+# The projection equals the percent, so there is no run-out to announce.
 contains "a projection equal to the percent still shows the window" "5h 95%" "$(printf '%s' "$got" | strip_ansi)"
-excludes "a projection equal to the percent shows no marker" "→" "$(printf '%s' "$got" | strip_ansi)"
-# The guard must not hide a high percent that is still climbing: 90% four
-# hours into 5h projects to 112%.
-got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":90,\"resets_at\":$((now + 3600))}}")
-contains "a projection above a high percent still shows" "5h 90% →112%" "$got"
+excludes "a projection equal to the percent shows no ETA" "out " "$(printf '%s' "$got" | strip_ansi)"
+# 90% four hours into 5h: 80% elapsed, 10 ahead, projects to 112%, so it runs
+# out 1600s from now.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":90,\"resets_at\":$((now + 3600))}}")
+contains "a high percent still climbing is ahead" "5h 90% ⇡10%" "$got"
+eta_has "a high percent still climbing shows its run-out" $((now + 1600)) "$got"
+# 7d 70% with 3d left: 4d elapsed, runs out 148114s from now, more than 24h
+# away, so the weekday comes first. 1970-01-01 was a Thursday.
+got=$(TZ=UTC0 line2 "$FIX/plain" "\"rate_limits\":{\"seven_day\":{\"used_percentage\":70,\"resets_at\":$((now + 259200))}}")
+contains "7d ahead of the clock" "7d 70% ⇡13%" "$got"
+dnames=(Sun Mon Tue Wed Thu Fri Sat)
+_e=$((now + 148114))
+want_day=${dnames[$(( (_e / 86400 + 4) % 7 ))]}
+_e1=$((now + 148114 + 60))
+want_day1=${dnames[$(( (_e1 / 86400 + 4) % 7 ))]}
+case "$got" in *"out $want_day "*|*"out $want_day1 "*) ok "an ETA over 24h away carries the weekday" ;; *) bad "an ETA over 24h away carries the weekday"; printf '        got: %s\n' "$got" ;; esac
+# On pace exactly: no marker sign beyond +-0.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":50,\"resets_at\":$((now + 9000))}}")
+contains "on pace reads plus-minus zero" "5h 50% ±0%" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- prompt cache --"
@@ -609,18 +703,28 @@ contains "cache about to expire is yellow" "${DIM}cache${RST} ${YELLOW}" "$got"
 got=$(line2 "$FIX/plain" "\"prompt_cache\":{\"warm\":true,\"caching_observed\":true,\"ttl\":\"5m\",\"expires_at\":$((now - 10))}")
 contains "an expiry already passed reads cold" "cache cold" "$got"
 
+# At 100% or more there is no run-out ahead: an ETA would land in the past.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":100,\"resets_at\":$((now + 14400))}}")
+contains "5h at 100% still shows the window" "5h 100%" "$got"
+excludes "5h at 100% shows no ETA" "out " "$got"
+
 # ---------------------------------------------------------------------------
 echo "-- spend limit --"
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":104,\"resets_at\":$((now + 1728000)),\"used_usd\":520.4,\"limit_usd\":500,\"period\":\"monthly\"}}")
 contains "spend over the limit shows its percent" "spend 104%" "$got"
 contains "spend shows used over limit in whole dollars" '$520/$500' "$got"
 # Months run 28 to 31 days, so a monthly period grades no pace.
-excludes "a monthly period grades no pace" "→" "$got"
+excludes "a monthly period shows no pace marker" "⇡" "$got"
+excludes "a monthly period shows no ETA" "out " "$got"
 got=$(raw "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":104,\"resets_at\":$((now + 1728000)),\"period\":\"monthly\"}}")
 contains "spend over the limit is red" "${RED}104%" "$got"
-# 50% three days into a week projects to 116%.
+# 50% three days into a week: 42% elapsed, 8 points ahead, projects to 116%.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600)),\"period\":\"weekly\"}}")
-contains "a weekly period grades pace" "→116%" "$got"
+contains "a weekly period grades pace" "spend 50% ⇡8%" "$got"
+contains "a weekly period shows its run-out" "out " "$got"
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":120,\"resets_at\":$((now + 345600)),\"period\":\"weekly\"}}")
+contains "a weekly spend at 120% still shows its percent" "spend 120%" "$got"
+excludes "a weekly spend at 120% shows no ETA" "out " "$got"
 # The dollar amounts arrive up to five minutes after the percentage.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600))}}")
 contains "spend without dollars still shows its percent" "spend 50%" "$got"
@@ -639,6 +743,94 @@ contains "a million or more reads as M" "(in: 150k, cache: 1.6M)" \
 # After /compact current_usage is null: nothing to break down.
 excludes "no breakdown without current_usage" "(in:" \
   "$(line2 "$FIX/plain" '"context_window":{"context_window_size":200000,"used_percentage":91,"current_usage":null}')"
+
+# ---------------------------------------------------------------------------
+echo "-- auto-compact --"
+# ctx <pct> <input> <cache> [size] -- a context_window fragment (200k default)
+ctx() {
+  printf '"context_window":{"context_window_size":%s,"used_percentage":%s,"current_usage":{"input_tokens":%s,"cache_read_input_tokens":%s}}' "${4:-200000}" "$1" "$2" "$3"
+}
+ctx1m() { ctx "$1" "$2" "$3" 1000000; }
+# 141k used: point 167k, 26k left
+contains "tokens left before compact" "⇲ 26k to compact" "$(line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+# 150k used: 17k left. The colour must sit right before the icon and text.
+contains "20k or less left is yellow" "${YELLOW}⇲ 17k to compact" "$(raw "$FIX/plain" "$(ctx 90 1000 149000)" | sed -n 2p)"
+contains "past the point reads compact due" "compact due" "$(line2 "$FIX/plain" "$(ctx 95 4000 170000)")"
+contains "compact due is red" "${RED}⇲ compact due" "$(raw "$FIX/plain" "$(ctx 95 4000 170000)" | sed -n 2p)"
+excludes "below 85% shows no compact" "compact" "$(line2 "$FIX/plain" "$(ctx 84 1000 140000)")"
+contains "pct override moves the point earlier" "⇲ 9k to compact" \
+  "$(CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50 line2 "$FIX/plain" "$(ctx 86 1000 80000)")"   # point 90k, 9k left
+contains "pct override cannot move the point later" "⇲ 26k to compact" \
+  "$(CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=100 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000 on a 1M window: point 117k
+contains "window cap" "⇲ 16k to compact" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000 line2 "$FIX/plain" "$(ctx1m 90 1000 100000)")"
+excludes "DISABLE_AUTO_COMPACT hides it" "compact" "$(DISABLE_AUTO_COMPACT=1 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+excludes "DISABLE_COMPACT=TRUE hides it, any case" "compact" "$(DISABLE_COMPACT=TRUE line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+contains "DISABLE_AUTO_COMPACT=0 leaves it on" "to compact" "$(DISABLE_AUTO_COMPACT=0 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+excludes "no current_usage: no compact segment" "compact" \
+  "$(line2 "$FIX/plain" '"context_window":{"context_window_size":200000,"used_percentage":91,"current_usage":null}')"
+# Turns until compact: the state file keeps "x <tokens>" samples. Each scenario
+# gets a fresh state dir; the seeded cost is 0 so only the tokens move.
+tx_n=0
+tx_day=$(date '+%Y-%m-%d')
+tx_new() {
+  tx_n=$((tx_n + 1))
+  TXL="$STATE/turns$tx_n"
+  TXD="$TXL/claude-statusline-cost-${UID}/$tx_day"
+  # Both ledger levels are named, so each gets 700 as the script makes them.
+  # shellcheck disable=SC2174
+  mkdir -p -m 700 "$TXL/claude-statusline-cost-${UID}" "$TXD" || exit 1
+}
+# tx_render <cache tokens> -- line 2 for session tx1 at 88% with 1000 input tokens
+tx_render() {
+  local p
+  p=$(jq -nc --arg d "$FIX/plain" --argjson c "$1" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"tx1",cost:{total_cost_usd:0,total_duration_ms:60000},context_window:{context_window_size:200000,used_percentage:88,current_usage:{input_tokens:1000,cache_read_input_tokens:$c}}}')
+  printf '%s' "$p" | CLAUDE_STATUSLINE_STATE_DIR="$TXL" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n 2p
+}
+tx_new
+printf '0 0 0\nx 100000\nx 110000\nx 120000\nx 130000\n' > "$TXD/tx1"
+got=$(tx_render 140000)
+contains "turns until compact from the growth per sample" "⇲ 26k to compact ~3 turns" "$got"
+equals "the new token count is appended" "x 141000" "$(tail -n 1 "$TXD/tx1")"
+tx_new
+printf '0 0 0\nx 130000\n' > "$TXD/tx1"
+got=$(tx_render 140000)
+contains "two samples still show tokens left" "⇲ 26k to compact" "$got"
+excludes "two samples show no turns" "turns" "$got"
+tx_new
+printf '0 0 0\nx 150000\nx 60000\nx 70000\n' > "$TXD/tx1"
+got=$(tx_render 69000)
+contains "after a drop the tokens left still show" "to compact" "$got"
+excludes "only samples after a drop count" "turns" "$got"
+equals "an unchanged token count is not rewritten" "3" "$(grep -c '^x ' "$TXD/tx1")"
+tx_new
+{ printf '0 0 0\n'; for _i in 1 2 3 4 5 6 7 8 9 10; do printf 'x %s\n' $((_i * 1000)); done; } > "$TXD/tx1"
+tx_render 140000 >/dev/null
+equals "the last 10 samples are kept" "10" "$(grep -c '^x ' "$TXD/tx1")"
+equals "the oldest sample is dropped" "x 2000" "$(grep -m1 '^x ' "$TXD/tx1")"
+
+# settings.json lives in its own config dir
+ACCFG=$(mktemp -d) || exit 1
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(ctx 88 1000 100000)}" \
+  '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+run_cfg() { printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$ACCFG" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n "${1:-2}p"; }
+printf '{"autoCompactEnabled":false}' > "$ACCFG/settings.json"
+got=$(run_cfg)
+excludes "settings autoCompactEnabled false hides it" "compact" "$got"
+printf '{"autoCompactWindow":150000}' > "$ACCFG/settings.json"
+got=$(run_cfg)
+contains "settings autoCompactWindow caps the window" "⇲ 16k to compact" "$got"   # point 117k, 101k used
+# Review Focus 5: a corrupt settings.json hides only the compact segment and keeps the email
+printf '{"oauthAccount":{"emailAddress":"someone@example.com"}}' > "$ACCFG/.claude.json"
+printf '{' > "$ACCFG/settings.json"
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$ACCFG" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "a corrupt settings.json: no stderr" "" "$err"
+got=$(run_cfg 1)
+contains "a corrupt settings.json keeps the email" "(someone)" "$got"
+got=$(run_cfg 2)
+excludes "a corrupt settings.json hides compact" "compact" "$got"
+rm -rf "$ACCFG"
 
 # ---------------------------------------------------------------------------
 echo "-- OSC 8 links --"
@@ -762,7 +954,7 @@ echo "-- home directory --"
 # $FIX so the cache entries these renders write are cleaned up on exit.
 home_line() {
   jq -nc --arg d "$1" '{workspace:{current_dir:$d},model:{display_name:"M"}}' \
-    | HOME="$FIX/me" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p' | sed 's/^.*\[M\] *//'
+    | HOME="$FIX/me" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p' | sed 's/^.*\[M\] .*│ ▣ //'
 }
 equals "the home directory is ~" "~" "$(home_line "$FIX/me")"
 # The literal ~/p is the expected text, not a path to expand, so SC2088's
@@ -907,6 +1099,15 @@ else
   got=$(devseg "$FIX/devproj" "$dev_proj_slash")
   contains "a trailing slash on project_dir still matches" "localhost:$P_ROOT" "$got"
 
+  # With the other accounts line present the dev servers move to line 4.
+  qdir
+  qfile WORK w@x 12 $((now + 9000)) $((now - 510))
+  got=$(render "$FIX/devproj" "$dev_proj_slash,$(rl5 72 7500)")
+  contains "other accounts line is line 3" "other accounts: WORK" "$(printf '%s\n' "$got" | sed -n 3p)"
+  contains "dev servers move to line 4" "localhost:$P_ROOT" "$(printf '%s\n' "$got" | sed -n 4p)"
+  contains "devseg still finds the dev line" "localhost:$P_ROOT" "$(devseg "$FIX/devproj" "$dev_proj_slash,$(rl5 72 7500)")"
+  export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
   # Without project_dir the cwd is the project: from apps/ only apps/web counts.
   got=$(devseg "$FIX/devproj/apps" "")
   contains "without project_dir the cwd is used" "localhost:$P_SUB" "$got"
@@ -915,6 +1116,12 @@ else
   got=$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
   contains "each session sees its own project's server" "localhost:$P_OTHER" "$got"
   excludes "and not the servers of another project" "localhost:$P_ROOT" "$got"
+
+  # ascii: the dev line leads with > and the whole render stays 7-bit.
+  got=$(STATUSLINE_GLYPHS=ascii render "$FIX/devproj" "$dev_proj")
+  contains "ascii dev servers line leads with >" "> localhost:" "$(printf '%s' "$got" | strip_links)"
+  excludes "ascii dev servers line has no triangle" "▶" "$got"
+  equals "ascii dev servers render is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
 
   # A home-directory session is not a project: everything under ~ would match.
   got=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
@@ -976,8 +1183,10 @@ else
 
   # A stopped server disappears on the next scan.
   kill "$PID_OTHER" 2>/dev/null; wait "$PID_OTHER" 2>/dev/null
-  got=$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  got=$(render "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
   excludes "a stopped server is no longer shown" "localhost:$P_OTHER" "$got"
+  contains "a stopped server: the render itself is intact" "[M]" "$got"
+  equals "a stopped server leaves no dev line" "" "$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")"
 
   err=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
     | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
@@ -992,7 +1201,7 @@ equals "without dev servers the status line has two lines" "2" "$n_lines"
 # payload URL never gets it.
 got=$(raw "$FIX/plain" '"pr":{"number":5,"url":"http://localhost:1234"}')
 excludes "a pr.url of http://localhost is not linked" "${ESC}]8;;" "$got"
-contains "a session with no dev server shows no marker" "#5" "$(printf '%s' "$got" | strip_ansi)"
+contains "a session with no dev server shows no marker" "⇄ #5" "$(printf '%s' "$got" | strip_ansi)"
 excludes "a session with no dev server shows no ▶" "▶" "$(printf '%s' "$got" | strip_ansi)"
 got=$(seg "$FIX/plain" '"workspace":{"project_dir":{"a":1}}')
 contains "a wrongly typed project_dir falls back to the cwd" "plain" "$got"
@@ -1010,6 +1219,441 @@ err=$(printf '%s' "$full" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT
 equals "no stderr: every new segment at once" "" "$err"
 equals "every new segment at once is still two lines" \
   "1" "$(printf '%s' "$full" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------------------
+echo "-- palette and glyphs --"
+got=$(STATUSLINE_PALETTE='' STATUSLINE_GLYPHS='' raw "$FIX/plain")
+contains "default palette is catppuccin (ok green)" "${ESC}[38;2;166;227;161m" "$got"
+contains "default glyphs are nerd (model icon)" $'\xee\xbc\xa3' "$got"
+contains "unicode tier divider" " │ " "$(render "$FIX/plain" | sed -n 2p)"
+contains "unicode bar glyphs" "▰▰▰▰▱▱▱▱▱▱ 40%" "$(line2 "$FIX/plain")"
+got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain")
+contains "ascii bar" "[====------] 40%" "$got"
+excludes "ascii prints no box divider" "│" "$got"
+equals "ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+# A full payload: every optional segment, so a non-ASCII glyph in any of them
+# fails here. The contains pairs keep a failed render from passing as empty.
+got=$(STATUSLINE_GLYPHS=ascii TZ=UTC0 render "$FIX/sync" "\"output_style\":{\"name\":\"explanatory\"},\"vim\":{\"mode\":\"NORMAL\"},\"agent\":{\"name\":\"reviewer\"},\"session_name\":\"icons\",\"worktree\":{\"name\":\"feat-x\"},\"pr\":{\"number\":42,\"review_state\":\"approved\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":40,\"resets_at\":$((now + 14400))},\"seven_day\":{\"used_percentage\":24,\"resets_at\":$((now + 259200))}},\"prompt_cache\":{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$((now + 1800)),\"hit_ratio\":0.88},\"cost\":{\"total_lines_added\":5,\"total_lines_removed\":2}")
+contains "full ascii payload renders the pace marker" "5h 40% ^20%" "$got"
+contains "full ascii payload renders the ETA" "out " "$got"
+contains "full ascii payload renders the branch" "main" "$got"
+contains "full ascii payload renders the cache" "cache " "$got"
+contains "full ascii payload renders the style" "explanatory" "$got"
+equals "full ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+contains "unknown glyph tier falls back to nerd" $'\xee\xbc\xa3' "$(STATUSLINE_GLYPHS=bogus raw "$FIX/plain")"
+contains "ansi palette keeps 8-colour green" "${ESC}[32m" "$(raw "$FIX/plain")"
+
+# ---------------------------------------------------------------------------
+echo "-- line 1 extras --"
+got=$(render "$FIX/plain" '"output_style":{"name":"explanatory"},"vim":{"mode":"NORMAL"},"agent":{"name":"reviewer"}')
+contains "output style shown" "◎ explanatory" "$got"
+contains "vim mode shown" "v NORMAL" "$got"
+contains "agent shown" "@ reviewer" "$got"
+excludes "default output style hidden" "◎" "$(render "$FIX/plain" '"output_style":{"name":"default"}')"
+contains "model icon" "◆ [M]" "$(render "$FIX/plain" | sed -n 1p)"
+contains "folder after a divider" " │ ▣ " "$(render "$FIX/plain" | sed -n 1p)"
+# Review Focus 5: wrong types hide their own segment, nothing on stderr
+bad_types='"output_style":{"name":7},"vim":"NORMAL","agent":[1]'
+# Payload assigned first: no \" inside a double-quoted $(...) (bash 3.2)
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{${bad_types}}" '{workspace:{current_dir:$d},model:{display_name:"M"}} * $x')
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "wrongly typed extras: no stderr" "" "$err"
+got=$(render "$FIX/plain" "$bad_types")
+contains "wrongly typed extras still render the model" "[M]" "$got"
+excludes "wrongly typed extras show no vim" "NORMAL" "$got"
+got=$(render "$FIX/plain" '"worktree":{"name":"feat-x"},"pr":{"number":42}')
+contains "worktree after a divider" " │ ⑂ wt:feat-x" "$got"
+contains "PR after a divider" " │ ⇄ #42" "$got"
+got=$(STATUSLINE_GLYPHS=ascii raw "$FIX/plain")
+excludes "ascii emits no empty colour pair before the model" "${ESC}[0m${ESC}[1m[M]" "$got"
+
+# ---------------------------------------------------------------------------
+echo "-- cost today --"
+# cost_payload <sid> <cost> <duration_ms> -- a payload with those cost fields
+cost_payload() {
+  jq -nc --arg d "$FIX/plain" --arg s "$1" --argjson c "$2" --argjson ms "$3" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:$s,cost:{total_cost_usd:$c,total_duration_ms:$ms},context_window:{used_percentage:40}}'
+}
+# rnd <sid> <cost> <duration_ms> -- line 2, colours stripped; rndraw keeps them
+rnd() {
+  local p
+  p=$(cost_payload "$1" "$2" "$3")
+  printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n 2p
+}
+rndraw() {
+  local p
+  p=$(cost_payload "$1" "$2" "$3")
+  printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | sed -n 2p
+}
+# newledger -- a fresh state dir for one scenario, under $STATE so the exit
+# trap removes it. Sets L (the state dir) and DAY (today's ledger folder).
+ledger_n=0
+newledger() {
+  ledger_n=$((ledger_n + 1))
+  L="$STATE/ledger$ledger_n"
+  mkdir -p "$L" || exit 1
+  export CLAUDE_STATUSLINE_STATE_DIR="$L"
+  DAY="$L/claude-statusline-cost-${UID}/$tday"
+}
+# Local date and midnight, the same way the script works them out.
+read -r now tz_off tday < <(date '+%s %z %Y-%m-%d')
+tz_secs=$(( 10#${tz_off:1:2} * 3600 + 10#${tz_off:3:2} * 60 ))
+[ "${tz_off:0:1}" = "-" ] && tz_secs=$(( -tz_secs ))
+midnight=$(( now - ((now + tz_secs) % 86400) ))
+
+newledger
+contains "a new session counts its whole cost" "today \$1.50" "$(rnd s1 1.5 60000)"
+rnd s2 2.25 60000 >/dev/null
+contains "sessions sum" "today \$3.75" "$(rnd s1 1.5 60000)"
+contains "the session cost stays its own" "\$ \$1.50 · ∑ today" "$(rnd s1 1.5 60000)"
+
+# Review Focus 2: /clear drops the cost, today keeps what was spent
+newledger
+rnd s3 4 60000 >/dev/null
+contains "a cost drop is banked" "today \$4.50" "$(rnd s3 0.5 60000)"
+
+# Review Focus 3: started before midnight, so that spend is not today's
+newledger
+rnd s4 10 $(( (now - midnight + 3600) * 1000 )) >/dev/null
+contains "pre-midnight spend is not today's" "today \$2.00" "$(rnd s4 12 $(( (now - midnight + 3700) * 1000 )))"
+
+# A render killed between writing its temp file and the mv leaves the temp
+# behind. A stand-in mv that does nothing reproduces that. The leftover must be
+# a dotfile, so the tally glob never counts the session twice.
+newledger
+rnd s5 2 60000 >/dev/null
+mkdir -p "$L/bin" || exit 1
+printf '#!/bin/sh\nexit 0\n' > "$L/bin/mv" && chmod +x "$L/bin/mv"
+PATH="$L/bin:$PATH" rnd s5 3 60000 >/dev/null
+s5_left=""
+for _f in "$DAY"/.s5.*; do [ -f "$_f" ] && s5_left=1; done
+equals "a leftover ledger temp file is a dotfile" "1" "$s5_left"
+contains "a leftover temp file is not counted twice" "today \$3.00" "$(rnd s5 3 60000)"
+
+# No cost in the payload must not read as a cost drop: that banked the spend
+# and counted it again when the cost came back.
+newledger
+rnd s7 4 60000 >/dev/null
+s7_none=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"s7",cost:{},context_window:{used_percentage:40}}')
+got=$(printf '%s' "$s7_none" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 | strip_ansi | sed -n 2p)
+contains "a render with no cost still renders" "\$0.00" "$got"
+contains "a render with no cost keeps today" "today \$4.00" "$got"
+contains "a cost that comes back is not counted twice" "today \$4.50" "$(rnd s7 4.5 60000)"
+newledger
+got=$(printf '%s' "$s7_none" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 | strip_ansi | sed -n 2p)
+contains "a first render with no cost still renders" "\$0.00" "$got"
+contains "a first render with no cost still totals the other sessions" "today \$0.00" "$got"
+s7_files=""
+for _f in "$DAY"/*; do [ -e "$_f" ] && s7_files=1; done
+equals "a first render with no cost writes no ledger file" "" "$s7_files"
+
+# Review Focus 1: a hostile session id stays inside the day folder
+newledger
+rnd '../../evil/x' 1 60000 >/dev/null
+equals "no file escapes the ledger folder" "" "$(find "$L" -path '*evil*' ! -path "$DAY/evilx")"
+equals "a hostile id is written sanitised" "evilx" "$(ls "$DAY")"
+got=$(rnd '///' 1 60000)
+contains "an empty sanitised id still shows the session cost" "\$1.00" "$got"
+excludes "an empty sanitised id shows no today" "today" "$got"
+excludes "no session id shows no today" "today" "$(line2 "$FIX/plain")"
+
+# Old date folders go on the first render of a new day; other names stay
+newledger
+mkdir -p "$L/claude-statusline-cost-${UID}/2000-01-01" "$L/claude-statusline-cost-${UID}/keep"
+: > "$L/claude-statusline-cost-${UID}/2000-01-01/old"
+rnd s5 1 60000 >/dev/null
+equals "an old date folder is removed" "no" "$([ -e "$L/claude-statusline-cost-${UID}/2000-01-01" ] && echo yes || echo no)"
+equals "a non-date folder is left alone" "yes" "$([ -d "$L/claude-statusline-cost-${UID}/keep" ] && echo yes || echo no)"
+
+# Only folders older than today go: a newer one (another session whose clock or
+# TZ is ahead, or a render that read the clock before midnight) must survive.
+newledger
+LD="$L/claude-statusline-cost-${UID}"
+mkdir -p "$LD/2000-01-01" "$LD/2999-12-31"
+rnd s5b 1 60000 >/dev/null
+equals "today's folder is kept" "yes" "$([ -d "$DAY" ] && echo yes || echo no)"
+equals "a newer date folder is kept" "yes" "$([ -d "$LD/2999-12-31" ] && echo yes || echo no)"
+equals "an older date folder is still removed" "no" "$([ -e "$LD/2000-01-01" ] && echo yes || echo no)"
+
+# $/h: hidden until the samples cover 2 minutes
+newledger
+excludes "a single sample shows no rate" "/h" "$(rnd s6 1 60000)"
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 1000000 0\nc %s 1000000\n' "$((now - 60))" > "$DAY/s7"
+excludes "a minute of samples shows no rate" "/h" "$(rnd s7 2.0 60000)"
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 1000000 0\nc %s 1000000\nx 12345\n' "$((now - 1800))" > "$DAY/s8"
+contains "half an hour of samples shows the rate" "today \$2.00 · ∂ \$2.00/h" "$(rnd s8 2.0 60000)"
+contains "the rate is muted" "${DIM}∂ \$2.00/h" "$(rndraw s8 2.0 60000)"
+got=$(cat "$DAY/s8")
+contains "a rewrite keeps the reserved x lines" "x 12345" "$got"
+equals "a rewrite appends a cost sample" "2" "$(grep -c '^c ' "$DAY/s8")"
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 0 0\nc %s 0\n' "$((now - 1800))" > "$DAY/s9"
+# 6 dollars in half an hour: about 12/h, over the 10/h warn line
+contains "over 10/h is yellow" "${YELLOW}∂ \$1" "$(rndraw s9 6 60000)"
+
+# Thinning: 30 cost increases in quick succession after a sample 50 minutes
+# old keep the file at 3 samples (the old start, one kept, one overwritten),
+# and $/h still runs from the old start: $5 over 3000s is $6.00/h. The script
+# reads the clock up to a few seconds after the seed, so 5.80 to 6.00 passes;
+# a rate from a recent sample would be hidden or far higher.
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 0 0\nc %s 0\n' "$((now - 3000))" > "$DAY/s12"
+i=1
+while [ "$i" -le 29 ]; do
+  rnd s12 "0.$((i / 10))$((i % 10))" 60000 >/dev/null
+  i=$((i + 1))
+done
+got=$(rnd s12 5 60000)
+equals "quick increases keep the samples bounded" "3" "$(grep -c '^c ' "$DAY/s12")"
+equals "thinning keeps the oldest sample" "c $((now - 3000)) 0" "$(sed -n 2p "$DAY/s12")"
+r=${got##*∂ \$}; r=${r%%/h*}; r=${r/./}
+if [[ "$r" =~ ^[0-9]+$ ]] && [ "$((10#$r))" -ge 580 ] && [ "$((10#$r))" -le 600 ]; then
+  ok "after thinning \$/h runs from the oldest sample"
+else
+  bad "after thinning \$/h runs from the oldest sample"
+  printf '        want about $6.00/h\n        got: %s\n' "$got"
+fi
+# A drop is never overwritten: it starts a new run
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 2000000 0\nc %s 1000000\nc %s 2000000\n' "$((now - 30))" "$((now - 20))" > "$DAY/s13"
+rnd s13 0.5 60000 >/dev/null
+rnd s13 0.75 60000 >/dev/null
+equals "a drop sample is kept as a run start" "c 500000" "$(sed -n 4p "$DAY/s13" | cut -d' ' -f1,3)"
+
+# A render where nothing changed leaves the file alone (same inode)
+newledger
+rnd s10 1 60000 >/dev/null
+if [ -f "$DAY/s10" ]; then
+  i1=$(ls -i "$DAY/s10")
+  rnd s10 1 60000 >/dev/null
+  equals "an unchanged render does not rewrite the file" "$i1" "$(ls -i "$DAY/s10")"
+  rnd s10 1.25 60000 >/dev/null
+  i2=$(ls -i "$DAY/s10")
+  if [ "$i2" != "$i1" ]; then ok "a changed render replaces the file"; else bad "a changed render replaces the file"; fi
+else
+  bad "the first render writes a state file"
+fi
+
+# A corrupt state file starts over; an unusable state dir hides today. Neither
+# prints to stderr.
+newledger
+mkdir -p "$DAY"
+printf 'garbage\n' > "$DAY/s11"
+p=$(cost_payload s11 1 60000)
+err=$(printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "a corrupt state file: no stderr" "" "$err"
+contains "a corrupt state file starts over" "today \$1.00" "$(rnd s11 1 60000)"
+: > "$STATE/notadir"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE/notadir"
+err=$(printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "an unusable state dir: no stderr" "" "$err"
+got=$(rnd s11 1 60000)
+excludes "an unusable state dir shows no today" "today" "$got"
+contains "an unusable state dir keeps the session cost" "\$1.00" "$got"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
+# ---------------------------------------------------------------------------
+echo "-- other accounts --"
+now=$(date +%s)
+qdir
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+got=$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")
+contains "own quota file written" "PERSONAL - 20 $((now + 9000)) -1 -1 " "$got"
+
+qdir
+qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "other accounts listed" "⇆ other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+excludes "current account not listed" "PERSONAL" "$got"
+got=$(render "$FIX/plain" "$(rl5 20 9000)")
+equals "calm session has no line 3" "2" "$(n_lines "$got")"
+
+# ascii: line 3 stays 7-bit
+got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "ascii other accounts line" "other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+equals "ascii other accounts line is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+
+# reset, stale, corrupt
+qdir
+qfile WORK w@x 50 $((now - 60)) $((now - 600))
+qfile DEV d@x 40 $((now + 9000)) $((now - 20000))
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+contains "a window past its reset shows reset" "WORK reset" "$got"
+excludes "a file older than 5h is omitted" "DEV" "$got"
+printf 'garbage\n' > "$QD/claude-statusline-quota-$UID-DEV"
+printf 'WORK w@x abc 1 -1 -1 5\n' > "$QD/claude-statusline-quota-$UID-WORK"
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "corrupt quota files: no stderr" "" "$err"
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+equals "no qualifying account: no line 3" "2" "$(n_lines "$got")"
+excludes "a corrupt file is not listed" "DEV" "$got"
+printf 'WORK w@x 08 -1 -1 -1 %s\n' "$now" > "$QD/claude-statusline-quota-$UID-WORK"
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+equals "a leading-zero field is skipped, not octal" "2" "$(n_lines "$got")"
+
+# only the current account's own file: no line 3, and the red-quota line count holds
+qdir
+got=$(render "$FIX/plain" "$(rl5 95 7500)")
+equals "own file only: two lines" "2" "$(n_lines "$got")"
+
+# write gating: unchanged and fresh keeps the file, unchanged and old refreshes seen
+qdir
+printf 'PERSONAL - 20 %s -1 -1 %s\n' "$((now + 9000))" "$((now - 10))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+equals "an unchanged fresh file is not rewritten" "PERSONAL - 20 $((now + 9000)) -1 -1 $((now - 10))" "$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")"
+printf 'PERSONAL - 20 %s -1 -1 %s\n' "$((now + 9000))" "$((now - 100))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+got=$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")
+excludes "a file a minute old is refreshed" "$((now - 100))" "$got"
+render "$FIX/plain" "$(rl5 25 9000)" >/dev/null
+contains "a changed value is rewritten" "PERSONAL - 25 " "$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")"
+equals "no temp files are left behind" "1" "$(ls "$QD" | wc -l | tr -d ' ')"
+
+# the CLAUDE router: the email picks the file, and no file is named CLAUDE
+RCFG=$(mktemp -d "$QROOT/cfg.XXXXXX")
+printf '{"oauthAccount":{"emailAddress":"w@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile PERSONAL p@x 30 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "CLAUDE session lists the other two" "other accounts: PERSONAL 30% (8m ago)  DEV 3% (2h ago)" "$(printf '%s\n' "$got" | sed -n 3p)"
+excludes "CLAUDE session skips its matched account" "WORK 12" "$got"
+contains "CLAUDE session writes the matched file" "WORK w@x 72 " "$(cat "$QD/claude-statusline-quota-$UID-WORK")"
+equals "CLAUDE session never writes a CLAUDE file" "" "$(ls "$QD" | sed -n '/CLAUDE/p')"
+
+printf '{"oauthAccount":{"emailAddress":"other@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile PERSONAL p@x 30 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "unmatched CLAUDE session lists every account" "other accounts: PERSONAL 30% (8m ago)  WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+contains "unmatched CLAUDE session leaves WORK untouched" "WORK w@x 12 " "$(cat "$QD/claude-statusline-quota-$UID-WORK")"
+equals "unmatched CLAUDE session writes no new file" "3" "$(ls "$QD" | wc -l | tr -d ' ')"
+
+# Two files sharing the current login: the same quota is never offered to switch to.
+printf '{"oauthAccount":{"emailAddress":"p@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile DEV p@x 3 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510))
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+got=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$RCFG" "$RUN_BASH" "$SCRIPT" | strip_ansi)
+contains "named session: a third account is still listed" "WORK 12%" "$got"
+excludes "named session: another file with its email is not listed" "DEV" "$got"
+
+qdir
+qfile PERSONAL x@x 30 $((now + 9000)) $((now - 510)); qfile WORK p@x 12 $((now + 9000)) $((now - 510)); qfile DEV p@x 3 $((now + 9000)) $((now - 510))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "matched CLAUDE session: a third account is still listed" "PERSONAL 30%" "$got"
+excludes "matched CLAUDE session: a second file with its email is not listed" "DEV 3%" "$got"
+excludes "matched CLAUDE session: the matched file is not listed" "WORK 12%" "$got"
+
+# A symlink planted at the quota temp name (predictable on a shared /tmp) must
+# not be written through. The script's $$ is known when a subshell execs it:
+# exec keeps the pid, and $BASHPID is that pid. Needs bash 4 for $BASHPID.
+if [ -z "${BASHPID:-}" ]; then
+  echo "SKIP  quota temp symlink (BASHPID is not set, bash 3.2)"
+else
+  qdir
+  printf 'keep\n' > "$QD/victim"
+  q_payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 30 9000)}" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}} * $x')
+  got=$( (
+    ln -s "$QD/victim" "$QD/claude-statusline-quota-$UID-PERSONAL.$BASHPID"
+    CLAUDE_CONFIG_DIR="$CONFIG_DIR" exec "$RUN_BASH" "$SCRIPT" <<<"$q_payload"
+  ) | strip_ansi | sed -n 1p)
+  contains "a planted quota temp symlink: the line still renders" "[M]" "$got"
+  equals "a planted quota temp symlink is not written through" "keep" "$(cat "$QD/victim")"
+fi
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
+# ---------------------------------------------------------------------------
+echo "-- performance --"
+# A warm render (git cache hot, cost and quota unchanged) must stay fast and
+# must not rewrite its state files. Wall time needs EPOCHREALTIME (bash 5), so
+# bash 3.2 prints SKIP.
+#
+# Speed is judged against a baseline measured in the same run, not a fixed
+# number of ms: the GitHub runner measured 15.9ms one run and 22.6ms the next,
+# so any fixed budget either flakes or guards nothing. The baseline is the
+# floor every render pays (a bash, one jq and one date on the same payload),
+# and the two are timed alternately so a busy runner slows both. The minimum
+# of 20 of each is compared, as a single slow sample says more about the
+# runner than the script. The render may take STATUSLINE_PERF_FACTOR times
+# the baseline (default 5; about 3.8 measured on a WSL2 dev box). That catches
+# a heavy regression on the warm path (a second jq, a git call, several
+# forks), not a single extra fork, which adds about 0.3 of a baseline.
+# The unchanged-file check compares inodes: a rewrite is a temp file plus mv,
+# which always gives the file a new inode, while mtime can tie within a second.
+if [ -z "${EPOCHREALTIME:-}" ]; then
+  echo "SKIP  performance (EPOCHREALTIME is not set, bash 3.2)"
+else
+  qdir
+  PERF_FACTOR="${STATUSLINE_PERF_FACTOR:-5}"
+  [[ "$PERF_FACTOR" =~ ^[0-9]+$ ]] || PERF_FACTOR=5
+  perf_payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 30 7500)}" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"perf1",cost:{total_cost_usd:1.5,total_duration_ms:60000},context_window:{used_percentage:40}} * $x')
+  # HOME is the session's own directory: a home-directory session is not a
+  # project and skips the dev-server scan. The suite runs that scan afresh on
+  # every render (max age 0, so fixture servers never reach the shared /tmp
+  # cache), which is a cold cost of tens of ms and not what a warm render pays.
+  # So this guard covers the git, ledger, quota and formatting paths only; a
+  # fork added to the dev-server section is not caught here.
+  perf_render() { printf '%s' "$perf_payload" | HOME="$FIX/plain" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" >/dev/null; }
+  perf_base() { printf '%s' "$perf_payload" | "$RUN_BASH" -c 'jq -r .model >/dev/null; date "+%s %z %Y-%m-%d" >/dev/null'; }
+  perf_render
+  perf_ledger="$QD/claude-statusline-cost-${UID}/$tday/perf1"
+  perf_quota="$QD/claude-statusline-quota-${UID}-PERSONAL"
+  perf_ino_before="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
+  perf_min=""; perf_base_min=""
+  for _i in $(seq 1 20); do
+    _t0=${EPOCHREALTIME/./}
+    perf_base
+    _t1=${EPOCHREALTIME/./}
+    _us=$((_t1 - _t0))
+    if [ -z "$perf_base_min" ] || [ "$_us" -lt "$perf_base_min" ]; then perf_base_min=$_us; fi
+    _t0=${EPOCHREALTIME/./}
+    perf_render
+    _t1=${EPOCHREALTIME/./}
+    _us=$((_t1 - _t0))
+    if [ -z "$perf_min" ] || [ "$_us" -lt "$perf_min" ]; then perf_min=$_us; fi
+    # After every render, not once at the end: a filesystem hands a freed inode
+    # number straight to the next temp file, so two rewrites can swap between
+    # two numbers and a single before/after comparison sees nothing.
+    perf_ino_after="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
+    [ "$perf_ino_after" = "$perf_ino_before" ] || break
+  done
+  # Ratio in hundredths, integer arithmetic only.
+  perf_ratio=$(( perf_min * 100 / perf_base_min ))
+  printf '        warm render minimum: %d.%03d ms, baseline %d.%03d ms, ratio %d.%02d (limit %s)\n' \
+    $((perf_min / 1000)) $((perf_min % 1000)) $((perf_base_min / 1000)) $((perf_base_min % 1000)) \
+    $((perf_ratio / 100)) $((perf_ratio % 100)) "$PERF_FACTOR"
+  if [ "$perf_ratio" -lt $((PERF_FACTOR * 100)) ]; then
+    ok "warm render stays under ${PERF_FACTOR}x the baseline"
+  else
+    bad "warm render stays under ${PERF_FACTOR}x the baseline"
+  fi
+  if [ "$(printf '%s\n' "$perf_ino_before" | wc -l | tr -d ' ')" = 2 ]; then
+    ok "perf fixture wrote both state files"
+  else
+    bad "perf fixture wrote both state files"
+  fi
+  if [ "$perf_ino_before" = "$perf_ino_after" ]; then
+    ok "an unchanged render does not rewrite the ledger or quota file"
+  else
+    bad "an unchanged render does not rewrite the ledger or quota file"
+    printf '        inodes before: %s\n        inodes after:  %s\n' "$perf_ino_before" "$perf_ino_after"
+  fi
+  export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+fi
 
 echo
 echo "$pass passed, $fail failed"
