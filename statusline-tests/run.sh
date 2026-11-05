@@ -1180,6 +1180,129 @@ contains "PR after a divider" " │ ⇄ #42" "$got"
 got=$(STATUSLINE_GLYPHS=ascii raw "$FIX/plain")
 excludes "ascii emits no empty colour pair before the model" "${ESC}[0m${ESC}[1m[M]" "$got"
 
+# ---------------------------------------------------------------------------
+echo "-- cost today --"
+# cost_payload <sid> <cost> <duration_ms> -- a payload with those cost fields
+cost_payload() {
+  jq -nc --arg d "$FIX/plain" --arg s "$1" --argjson c "$2" --argjson ms "$3" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:$s,cost:{total_cost_usd:$c,total_duration_ms:$ms},context_window:{used_percentage:40}}'
+}
+# rnd <sid> <cost> <duration_ms> -- line 2, colours stripped; rndraw keeps them
+rnd() {
+  local p
+  p=$(cost_payload "$1" "$2" "$3")
+  printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n 2p
+}
+rndraw() {
+  local p
+  p=$(cost_payload "$1" "$2" "$3")
+  printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | sed -n 2p
+}
+# newledger -- a fresh state dir for one scenario, under $STATE so the exit
+# trap removes it. Sets L (the state dir) and DAY (today's ledger folder).
+ledger_n=0
+newledger() {
+  ledger_n=$((ledger_n + 1))
+  L="$STATE/ledger$ledger_n"
+  mkdir -p "$L" || exit 1
+  export CLAUDE_STATUSLINE_STATE_DIR="$L"
+  DAY="$L/claude-statusline-cost-${UID}/$tday"
+}
+# Local date and midnight, the same way the script works them out.
+read -r now tz_off tday < <(date '+%s %z %Y-%m-%d')
+tz_secs=$(( 10#${tz_off:1:2} * 3600 + 10#${tz_off:3:2} * 60 ))
+[ "${tz_off:0:1}" = "-" ] && tz_secs=$(( -tz_secs ))
+midnight=$(( now - ((now + tz_secs) % 86400) ))
+
+newledger
+contains "a new session counts its whole cost" "today \$1.50" "$(rnd s1 1.5 60000)"
+rnd s2 2.25 60000 >/dev/null
+contains "sessions sum" "today \$3.75" "$(rnd s1 1.5 60000)"
+contains "the session cost stays its own" "\$ \$1.50 · ∑ today" "$(rnd s1 1.5 60000)"
+
+# Review Focus 2: /clear drops the cost, today keeps what was spent
+newledger
+rnd s3 4 60000 >/dev/null
+contains "a cost drop is banked" "today \$4.50" "$(rnd s3 0.5 60000)"
+
+# Review Focus 3: started before midnight, so that spend is not today's
+newledger
+rnd s4 10 $(( (now - midnight + 3600) * 1000 )) >/dev/null
+contains "pre-midnight spend is not today's" "today \$2.00" "$(rnd s4 12 $(( (now - midnight + 3700) * 1000 )))"
+
+# Review Focus 1: a hostile session id stays inside the day folder
+newledger
+rnd '../../evil/x' 1 60000 >/dev/null
+equals "no file escapes the ledger folder" "" "$(find "$L" -path '*evil*' ! -path "$DAY/evilx")"
+equals "a hostile id is written sanitised" "evilx" "$(ls "$DAY")"
+got=$(rnd '///' 1 60000)
+contains "an empty sanitised id still shows the session cost" "\$1.00" "$got"
+excludes "an empty sanitised id shows no today" "today" "$got"
+excludes "no session id shows no today" "today" "$(line2 "$FIX/plain")"
+
+# Old date folders go on the first render of a new day; other names stay
+newledger
+mkdir -p "$L/claude-statusline-cost-${UID}/2000-01-01" "$L/claude-statusline-cost-${UID}/keep"
+: > "$L/claude-statusline-cost-${UID}/2000-01-01/old"
+rnd s5 1 60000 >/dev/null
+equals "an old date folder is removed" "no" "$([ -e "$L/claude-statusline-cost-${UID}/2000-01-01" ] && echo yes || echo no)"
+equals "a non-date folder is left alone" "yes" "$([ -d "$L/claude-statusline-cost-${UID}/keep" ] && echo yes || echo no)"
+
+# $/h: hidden until the samples cover 2 minutes
+newledger
+excludes "a single sample shows no rate" "/h" "$(rnd s6 1 60000)"
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 1000000 0\nc %s 1000000\n' "$((now - 60))" > "$DAY/s7"
+excludes "a minute of samples shows no rate" "/h" "$(rnd s7 2.0 60000)"
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 1000000 0\nc %s 1000000\nx 12345\n' "$((now - 1800))" > "$DAY/s8"
+contains "half an hour of samples shows the rate" "today \$2.00 · ∂ \$2.00/h" "$(rnd s8 2.0 60000)"
+contains "the rate is muted" "${DIM}∂ \$2.00/h" "$(rndraw s8 2.0 60000)"
+got=$(cat "$DAY/s8")
+contains "a rewrite keeps the reserved x lines" "x 12345" "$got"
+equals "a rewrite appends a cost sample" "2" "$(grep -c '^c ' "$DAY/s8")"
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 0 0\nc %s 0\n' "$((now - 1800))" > "$DAY/s9"
+# 6 dollars in half an hour: about 12/h, over the 10/h warn line
+contains "over 10/h is yellow" "${YELLOW}∂ \$1" "$(rndraw s9 6 60000)"
+
+# A render where nothing changed leaves the file alone (same inode)
+newledger
+rnd s10 1 60000 >/dev/null
+if [ -f "$DAY/s10" ]; then
+  i1=$(ls -i "$DAY/s10")
+  rnd s10 1 60000 >/dev/null
+  equals "an unchanged render does not rewrite the file" "$i1" "$(ls -i "$DAY/s10")"
+  rnd s10 1.25 60000 >/dev/null
+  i2=$(ls -i "$DAY/s10")
+  if [ "$i2" != "$i1" ]; then ok "a changed render replaces the file"; else bad "a changed render replaces the file"; fi
+else
+  bad "the first render writes a state file"
+fi
+
+# A corrupt state file starts over; an unusable state dir hides today. Neither
+# prints to stderr.
+newledger
+mkdir -p "$DAY"
+printf 'garbage\n' > "$DAY/s11"
+p=$(cost_payload s11 1 60000)
+err=$(printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "a corrupt state file: no stderr" "" "$err"
+contains "a corrupt state file starts over" "today \$1.00" "$(rnd s11 1 60000)"
+: > "$STATE/notadir"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE/notadir"
+err=$(printf '%s' "$p" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "an unusable state dir: no stderr" "" "$err"
+got=$(rnd s11 1 60000)
+excludes "an unusable state dir shows no today" "today" "$got"
+contains "an unusable state dir keeps the session cost" "\$1.00" "$got"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
 echo
 echo "$pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then

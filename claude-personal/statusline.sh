@@ -1102,6 +1102,157 @@ fi
 # -- Format cost --
 cost_fmt=$(printf '$%.2f' "$cost")
 
+# -- Cost today and $/h --
+# Bash has no floats, so the ledger counts whole micro-dollars.
+# usd_to_micros <outvar> <usd>: by string surgery. The exponent form jq prints
+# for tiny costs (1e-07), a negative and anything unparsable count as 0.
+usd_to_micros() {
+  local _i="${2%%.*}" _f=""
+  case "$2" in *.*) _f="${2#*.}" ;; esac
+  _f="${_f}000000"; _f="${_f:0:6}"
+  if [[ "$_i" =~ ^[0-9]{1,12}$ && "$_f" =~ ^[0-9]{6}$ ]]; then
+    printf -v "$1" '%d' $(( 10#$_i * 1000000 + 10#$_f ))
+  else
+    printf -v "$1" '%d' 0
+  fi
+}
+# fmt_usd <outvar> <micros>: $D.CC, cents rounded half up.
+fmt_usd() {
+  local _c=$(( ($2 + 5000) / 10000 ))
+  printf -v "$1" '$%d.%02d' $(( _c / 100 )) $(( _c % 100 ))
+}
+# ledger_read <file>: one session's state file into _lg_base _lg_total
+# _lg_banked, its cost samples ("epoch micros", oldest first) into _lg_c and
+# its reserved context lines (token counts) into _lg_x. _lg_base is empty when
+# the file is missing or its first line is malformed. Builtin read: no fork.
+# File format, one per session and day:
+#   base total banked     (micros)
+#   c <epoch> <micros>    cost samples, last hour
+#   x <tokens>            context samples, kept as they are for the compact estimate
+ledger_read() {
+  local _a _b _c _t
+  _lg_base=""; _lg_total=0; _lg_banked=0; _lg_c=(); _lg_x=()
+  [ -f "$1" ] || return 0
+  {
+    read -r _a _b _c
+    if [[ "$_a" =~ ^[0-9]{1,15}$ && "$_b" =~ ^[0-9]{1,15}$ && "$_c" =~ ^[0-9]{1,15}$ ]]; then
+      _lg_base=$((10#$_a)); _lg_total=$((10#$_b)); _lg_banked=$((10#$_c))
+    fi
+    while read -r _t _a _b; do
+      case "$_t" in
+        c) [[ "$_a" =~ ^[0-9]{1,12}$ && "$_b" =~ ^[0-9]{1,15}$ ]] && _lg_c+=("$((10#$_a)) $((10#$_b))") ;;
+        x) [[ "$_a" =~ ^[0-9]{1,12}$ ]] && _lg_x+=("$((10#$_a))") ;;
+      esac
+    done
+  } 2>/dev/null < "$1"
+  return 0
+}
+# ledger_tally: add the session held in _lg_* to today_micros, and its spend
+# over the last hour to _rate_sum. That spend runs from the oldest sample in
+# the hour, restarting at any drop (a /clear), to its total; _rate_from keeps
+# the earliest such start across sessions.
+ledger_tally() {
+  local _s _e _v _prev=-1 _se=-1 _sv=0 _d
+  _d=$(( _lg_total - _lg_base )); [ "$_d" -lt 0 ] && _d=0
+  today_micros=$(( today_micros + _lg_banked + _d ))
+  for _s in "${_lg_c[@]}"; do
+    _e=${_s% *}; _v=${_s#* }
+    [ "$_e" -lt $(( now - 3600 )) ] && continue
+    if [ "$_se" -lt 0 ] || [ "$_v" -lt "$_prev" ]; then _se=$_e; _sv=$_v; fi
+    _prev=$_v
+  done
+  [ "$_se" -lt 0 ] && return 0
+  _d=$(( _lg_total - _sv )); [ "$_d" -lt 0 ] && _d=0
+  _rate_sum=$(( _rate_sum + _d ))
+  if [ "$_rate_from" -lt 0 ] || [ "$_se" -lt "$_rate_from" ]; then _rate_from=$_se; fi
+  return 0
+}
+
+# One state file per session, so concurrent sessions never rewrite the same
+# file; today is the sum over today's folder. A first sight today starts from
+# 0 if the session began after local midnight, else from its current cost, so
+# yesterday's spend is not counted. A lower cost (after /clear) banks what was
+# spent and starts again from 0. The file is rewritten (temp file plus one
+# `mv`) only when something in it changed; an unchanged render forks nothing.
+# The session id is payload text: only [A-Za-z0-9-] reaches the path, spelled
+# out because a bracket range like A-Z follows the locale's collation.
+today_micros=-1
+rate_micros_per_hour=-1
+usd_to_micros cost_micros "$cost"
+sid="${session_id//[^ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-]/}"
+sid="${sid:0:128}"
+if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
+  _ledger="$STATE_DIR/claude-statusline-cost-${UID}"
+  _day="$_ledger/$today"
+  _new_day=""
+  if [ ! -d "$_day" ]; then
+    mkdir -p -m 700 "$_ledger" "$_day" 2>/dev/null
+    _new_day=1
+  fi
+  # A shared /tmp: use the folder only if it is ours and not a symlink.
+  if [ -d "$_day" ] && [ -O "$_ledger" ] && [ ! -L "$_ledger" ]; then
+    if [ -n "$_new_day" ]; then
+      _old=()
+      for _f in "$_ledger"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
+        [ -d "$_f" ] && [ "$_f" != "$_day" ] && _old+=("$_f")
+      done
+      [ "${#_old[@]}" -gt 0 ] && rm -rf "${_old[@]}" 2>/dev/null
+    fi
+    _state="$_day/$sid"
+    ledger_read "$_state"
+    _ledger_dirty=""
+    if [ -z "$_lg_base" ]; then
+      if [ $(( now - duration_ms / 1000 )) -ge "$midnight" ]; then _lg_base=0; else _lg_base=$cost_micros; fi
+      _lg_total=$cost_micros; _lg_banked=0; _ledger_dirty=1
+    elif [ "$cost_micros" -ne "$_lg_total" ]; then
+      if [ "$cost_micros" -lt "$_lg_total" ]; then
+        _d=$(( _lg_total - _lg_base )); [ "$_d" -gt 0 ] && _lg_banked=$(( _lg_banked + _d ))
+        _lg_base=0
+      fi
+      _lg_total=$cost_micros; _ledger_dirty=1
+    fi
+    if [ -n "$_ledger_dirty" ]; then
+      _lg_c+=("$now $cost_micros")
+      _kept=(); _body="$_lg_base $_lg_total $_lg_banked"
+      for _s in "${_lg_c[@]}"; do
+        [ "${_s% *}" -lt $(( now - 3600 )) ] && continue
+        _kept+=("$_s"); _body+=$'\n'"c $_s"
+      done
+      _lg_c=("${_kept[@]}")
+      for _s in "${_lg_x[@]}"; do _body+=$'\n'"x $_s"; done
+      { printf '%s\n' "$_body" > "$_state.$$"; } 2>/dev/null \
+        && mv -f "$_state.$$" "$_state" 2>/dev/null || rm -f "$_state.$$" 2>/dev/null
+    fi
+    today_micros=0; _rate_sum=0; _rate_from=-1
+    ledger_tally
+    # The glob skips dotfiles, so another session's half-written temp file
+    # is never read.
+    for _f in "$_day"/*; do
+      [ "$_f" = "$_state" ] && continue
+      [ -f "$_f" ] || continue
+      ledger_read "$_f"
+      [ -n "$_lg_base" ] && ledger_tally
+    done
+    # Shown once the samples cover 2 minutes (CCometixLine's RATE_MIN_SPAN).
+    if [ "$_rate_from" -ge 0 ] && [ $(( now - _rate_from )) -ge 120 ]; then
+      rate_micros_per_hour=$(( _rate_sum * 3600 / (now - _rate_from) ))
+    fi
+  fi
+fi
+
+cost_info="${C_COST}${cost_fmt}${RESET}"
+if [ "$today_micros" -ge 0 ]; then
+  fmt_usd _usd "$today_micros"
+  icon _ic "$C_COST" "$I_TODAY"
+  cost_info+=" ${C_SEP}${G_DOT}${RESET} ${_ic}${C_MUTED}today${RESET} ${C_COST}${_usd}${RESET}"
+  if [ "$rate_micros_per_hour" -ge 0 ]; then
+    fmt_usd _usd "$rate_micros_per_hour"
+    # Muted, or warn above $10/h.
+    _rc=$C_MUTED; [ "$rate_micros_per_hour" -gt 10000000 ] && _rc=$C_WARN
+    cost_info+=" ${C_SEP}${G_DOT}${RESET} ${_rc}${I_RATE}${_usd}/h${RESET}"
+  fi
+fi
+
 # -- Format duration --
 duration_sec=$((duration_ms / 1000))
 if [ "$duration_sec" -ge 3600 ]; then
@@ -1179,10 +1330,10 @@ account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 icon _dir_ic "$C_WORKSP" "$I_DIR"
 printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${name_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
 
-# -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
+# -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost, today, $/h | Duration | Lines --
 icon _cost_ic "$C_COST" "$I_COST"
 icon _time_ic "$C_TIMING" "$I_TIME"
-printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${_cost_ic}${C_COST}${cost_fmt}${RESET}${SEP}${_time_ic}${C_TIMING}${time_fmt}${C_TIMING:+${RESET}}${lines_info}"
+printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${_cost_ic}${cost_info}${SEP}${_time_ic}${C_TIMING}${time_fmt}${C_TIMING:+${RESET}}${lines_info}"
 
 # -- LINE 3: Dev servers running in the project, only when there are any --
 if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi
