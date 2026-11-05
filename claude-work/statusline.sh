@@ -930,6 +930,7 @@ fi
 # These env vars are read from this script's own environment. compact_left is
 # -1 when there is no segment, else the tokens left (0 or below means due).
 compact_left=-1
+_cshow=""
 compact_off=""
 for _v in "${DISABLE_COMPACT:-}" "${DISABLE_AUTO_COMPACT:-}"; do
   case "$_v" in
@@ -964,7 +965,7 @@ if [ -z "$compact_off" ] && [ "$pct" -ge 85 ] && [ "$_cused" -gt 0 ] && [ "$cw_s
     _ctxt="${_cleft} to compact"
     if [ "$compact_left" -le 20000 ]; then _ccol=$C_WARN; else _ccol=$C_CTX; fi
   fi
-  tok_info="${tok_info} ${_ccol}${I_COMPACT}${_ctxt}${_ccol:+${RESET}}"
+  _cshow=1   # appended to tok_info after the ledger, which adds the turns estimate
 fi
 
 BAR_WIDTH=10
@@ -1128,7 +1129,7 @@ fmt_usd() {
 # File format, one per session and day:
 #   base total banked     (micros)
 #   c <epoch> <micros>    cost samples, last hour
-#   x <tokens>            context samples, kept as they are for the compact estimate
+#   x <tokens>            context samples (last 10) for the compact estimate
 ledger_read() {
   local _a _b _c _t
   _lg_base=""; _lg_total=0; _lg_banked=0; _lg_c=(); _lg_x=()
@@ -1211,6 +1212,28 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
       fi
       _lg_total=$cost_micros; _ledger_dirty=1
     fi
+    # Context samples for the compact estimate: one per distinct token count,
+    # the last 10 kept. A change alone makes the file dirty.
+    _nx=${#_lg_x[@]}
+    if [ "$_cused" -gt 0 ] && { [ "$_nx" -eq 0 ] || [ "${_lg_x[_nx - 1]}" -ne "$_cused" ]; }; then
+      _lg_x+=("$_cused"); _ledger_dirty=1
+      [ "${#_lg_x[@]}" -gt 10 ] && _lg_x=("${_lg_x[@]:${#_lg_x[@]}-10}")
+    fi
+    # Turns left: growth per sample since the last drop (a /clear or compact),
+    # from at least 3 samples. Computed here because ledger_read below
+    # replaces _lg_x with other sessions' samples.
+    if [ -n "$_cshow" ] && [ "$compact_left" -gt 0 ]; then
+      _xn=0; _xfirst=0; _xlast=-1
+      for _s in "${_lg_x[@]}"; do
+        if [ "$_xlast" -ge 0 ] && [ "$_s" -lt "$_xlast" ]; then _xn=0; fi
+        [ "$_xn" -eq 0 ] && _xfirst=$_s
+        _xn=$((_xn + 1)); _xlast=$_s
+      done
+      if [ "$_xn" -ge 3 ]; then
+        _xper=$(( (_xlast - _xfirst) / (_xn - 1) ))
+        [ "$_xper" -gt 0 ] && _ctxt="${_ctxt} ~$(( (compact_left + _xper - 1) / _xper )) turns"
+      fi
+    fi
     if [ -n "$_ledger_dirty" ]; then
       # Thinning, so a busy session's file (read on every render) stays near
       # 60 samples an hour: the newest sample is overwritten instead of
@@ -1252,6 +1275,8 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
     fi
   fi
 fi
+
+[ -n "$_cshow" ] && tok_info="${tok_info} ${_ccol}${I_COMPACT}${_ctxt}${_ccol:+${RESET}}"
 
 cost_info="${C_COST}${cost_fmt}${RESET}"
 if [ "$today_micros" -ge 0 ]; then

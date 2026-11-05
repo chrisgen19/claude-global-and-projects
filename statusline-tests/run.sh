@@ -740,6 +740,45 @@ excludes "DISABLE_COMPACT=TRUE hides it, any case" "compact" "$(DISABLE_COMPACT=
 contains "DISABLE_AUTO_COMPACT=0 leaves it on" "to compact" "$(DISABLE_AUTO_COMPACT=0 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
 excludes "no current_usage: no compact segment" "compact" \
   "$(line2 "$FIX/plain" '"context_window":{"context_window_size":200000,"used_percentage":91,"current_usage":null}')"
+# Turns until compact: the state file keeps "x <tokens>" samples. Each scenario
+# gets a fresh state dir; the seeded cost is 0 so only the tokens move.
+tx_n=0
+tx_day=$(date '+%Y-%m-%d')
+tx_new() {
+  tx_n=$((tx_n + 1))
+  TXL="$STATE/turns$tx_n"
+  TXD="$TXL/claude-statusline-cost-${UID}/$tx_day"
+  mkdir -p -m 700 "$TXL/claude-statusline-cost-${UID}" "$TXD" || exit 1
+}
+# tx_render <cache tokens> -- line 2 for session tx1 at 88% with 1000 input tokens
+tx_render() {
+  local p
+  p=$(jq -nc --arg d "$FIX/plain" --argjson c "$1" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"tx1",cost:{total_cost_usd:0,total_duration_ms:60000},context_window:{context_window_size:200000,used_percentage:88,current_usage:{input_tokens:1000,cache_read_input_tokens:$c}}}')
+  printf '%s' "$p" | CLAUDE_STATUSLINE_STATE_DIR="$TXL" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n 2p
+}
+tx_new
+printf '0 0 0\nx 100000\nx 110000\nx 120000\nx 130000\n' > "$TXD/tx1"
+got=$(tx_render 140000)
+contains "turns until compact from the growth per sample" "⇲ 26k to compact ~3 turns" "$got"
+equals "the new token count is appended" "x 141000" "$(tail -n 1 "$TXD/tx1")"
+tx_new
+printf '0 0 0\nx 130000\n' > "$TXD/tx1"
+got=$(tx_render 140000)
+contains "two samples still show tokens left" "⇲ 26k to compact" "$got"
+excludes "two samples show no turns" "turns" "$got"
+tx_new
+printf '0 0 0\nx 150000\nx 60000\nx 70000\n' > "$TXD/tx1"
+got=$(tx_render 69000)
+contains "after a drop the tokens left still show" "to compact" "$got"
+excludes "only samples after a drop count" "turns" "$got"
+equals "an unchanged token count is not rewritten" "3" "$(grep -c '^x ' "$TXD/tx1")"
+tx_new
+{ printf '0 0 0\n'; for _i in 1 2 3 4 5 6 7 8 9 10; do printf 'x %s\n' $((_i * 1000)); done; } > "$TXD/tx1"
+tx_render 140000 >/dev/null
+equals "the last 10 samples are kept" "10" "$(grep -c '^x ' "$TXD/tx1")"
+equals "the oldest sample is dropped" "x 2000" "$(grep -m1 '^x ' "$TXD/tx1")"
+
 # settings.json lives in its own config dir
 ACCFG=$(mktemp -d) || exit 1
 payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(ctx 88 1000 100000)}" \
