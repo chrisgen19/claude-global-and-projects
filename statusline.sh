@@ -1198,7 +1198,7 @@ if [ -n "$cache_info" ]; then
 fi
 
 # -- Format cost --
-cost_fmt=$(printf '$%.2f' "$cost")
+printf -v cost_fmt '$%.2f' "$cost"
 
 # -- Cost today and $/h --
 # Bash has no floats, so the ledger counts whole micro-dollars.

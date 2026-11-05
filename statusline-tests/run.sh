@@ -1502,6 +1502,63 @@ excludes "matched CLAUDE session: the matched file is not listed" "WORK 12%" "$g
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
+# ---------------------------------------------------------------------------
+echo "-- performance --"
+# A warm render (git cache hot, cost and quota unchanged) must stay fast and
+# must not rewrite its state files. Wall time needs EPOCHREALTIME (bash 5), so
+# bash 3.2 prints SKIP. The minimum of 20 renders is compared with the budget,
+# because a single slow sample says more about the runner than the script.
+# The unchanged-file check compares inodes: a rewrite is a temp file plus mv,
+# which always gives the file a new inode, while mtime can tie within a second.
+if [ -z "${EPOCHREALTIME:-}" ]; then
+  echo "SKIP  performance (EPOCHREALTIME is not set, bash 3.2)"
+else
+  qdir
+  PERF_BUDGET_MS="${STATUSLINE_PERF_BUDGET_MS:-15}"
+  perf_payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 30 7500)}" \
+    '{workspace:{current_dir:$d},model:{display_name:"M"},session_id:"perf1",cost:{total_cost_usd:1.5,total_duration_ms:60000},context_window:{used_percentage:40}} * $x')
+  # HOME is the session's own directory: a home-directory session is not a
+  # project and skips the dev-server scan. The suite runs that scan afresh on
+  # every render (max age 0, so fixture servers never reach the shared /tmp
+  # cache), which is a cold cost of tens of ms and not what a warm render pays.
+  perf_render() { printf '%s' "$perf_payload" | HOME="$FIX/plain" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" >/dev/null; }
+  perf_render
+  perf_ledger="$QD/claude-statusline-cost-${UID}/$tday/perf1"
+  perf_quota="$QD/claude-statusline-quota-${UID}-PERSONAL"
+  perf_ino_before="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
+  perf_min=""
+  for _i in $(seq 1 20); do
+    _t0=${EPOCHREALTIME/./}
+    perf_render
+    _t1=${EPOCHREALTIME/./}
+    _us=$((_t1 - _t0))
+    if [ -z "$perf_min" ] || [ "$_us" -lt "$perf_min" ]; then perf_min=$_us; fi
+    # After every render, not once at the end: a filesystem hands a freed inode
+    # number straight to the next temp file, so two rewrites can swap between
+    # two numbers and a single before/after comparison sees nothing.
+    perf_ino_after="$(ls -i "$perf_ledger" "$perf_quota" | awk '{print $1}')"
+    [ "$perf_ino_after" = "$perf_ino_before" ] || break
+  done
+  printf '        warm render minimum: %d.%03d ms (budget %s ms)\n' $((perf_min / 1000)) $((perf_min % 1000)) "$PERF_BUDGET_MS"
+  if [ "$perf_min" -lt $((PERF_BUDGET_MS * 1000)) ]; then
+    ok "warm render stays under ${PERF_BUDGET_MS}ms"
+  else
+    bad "warm render stays under ${PERF_BUDGET_MS}ms"
+  fi
+  if [ "$(printf '%s\n' "$perf_ino_before" | wc -l | tr -d ' ')" = 2 ]; then
+    ok "perf fixture wrote both state files"
+  else
+    bad "perf fixture wrote both state files"
+  fi
+  if [ "$perf_ino_before" = "$perf_ino_after" ]; then
+    ok "an unchanged render does not rewrite the ledger or quota file"
+  else
+    bad "an unchanged render does not rewrite the ledger or quota file"
+    printf '        inodes before: %s\n        inodes after:  %s\n' "$perf_ino_before" "$perf_ino_after"
+  fi
+  export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+fi
+
 echo
 echo "$pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
