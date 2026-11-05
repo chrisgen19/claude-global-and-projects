@@ -243,19 +243,40 @@ JQ_FIELDS='
     (opt(.workspace.project_dir | strings)         // ""),
     (opt(.output_style.name | strings)             // ""),
     (opt(.vim.mode | strings)                      // ""),
-    (opt(.agent.name | strings)                    // "")
+    (opt(.agent.name | strings)                    // ""),
+    (opt($set[0].autoCompactEnabled | booleans | tostring)
+      // opt($acct[0].autoCompactEnabled | booleans | tostring) // ""),
+    ((opt($set[0].autoCompactWindow | numbers | floor)
+      // opt($acct[0].autoCompactWindow | numbers | floor)) // "")
   ] | .[] | if type == "string" then clean else tostring end'
 # Numbers and booleans cannot hold control characters, so only strings go
 # through clean().
 
 acct_file="$config_dir/.claude.json"
 [ -f "$acct_file" ] || acct_file=/dev/null
-_fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" "$JQ_FIELDS" 2>/dev/null)
-# A half-written or corrupt .claude.json makes jq exit 2 with no output at all,
-# which would blank every field on the line rather than just the email. Retry
-# without it so a bad account file costs only the thing it describes.
+# settings.json holds the auto-compact switch and window; /dev/null stands in
+# for a missing file here too.
+set_file="$config_dir/settings.json"
+[ -f "$set_file" ] || set_file=/dev/null
+_fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" --slurpfile set "$set_file" "$JQ_FIELDS" 2>/dev/null)
+# A half-written or corrupt .claude.json or settings.json makes jq exit 2 with
+# no output at all, which would blank every field on the line rather than just
+# what that file describes. Retry with one file dropped at a time, then both,
+# so a bad file costs only the thing it describes (a corrupt settings.json
+# keeps the email, a corrupt .claude.json keeps the compact setting). When
+# settings.json had to be dropped its auto-compact switch is unknown, so the
+# compact segment is hidden rather than guessed (settings_bad).
+settings_bad=""
 if [ -z "$_fields" ]; then
-  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null "$JQ_FIELDS" 2>/dev/null)
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct "$acct_file" --slurpfile set /dev/null "$JQ_FIELDS" 2>/dev/null)
+  [ -n "$_fields" ] && [ "$set_file" != /dev/null ] && settings_bad=1
+fi
+if [ -z "$_fields" ]; then
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null --slurpfile set "$set_file" "$JQ_FIELDS" 2>/dev/null)
+fi
+if [ -z "$_fields" ]; then
+  _fields=$(printf '%s' "$input" | jq -r --slurpfile acct /dev/null --slurpfile set /dev/null "$JQ_FIELDS" 2>/dev/null)
+  [ "$set_file" != /dev/null ] && settings_bad=1
 fi
 
 # `mapfile` is bash 4+; macOS ships bash 3.2, so read the lines in a loop.
@@ -283,6 +304,7 @@ sl_used="${F[35]}";     sl_limit="${F[36]}";     sl_period="${F[37]}"
 pr_review="${F[38]}"
 project_dir="${F[39]}"
 output_style="${F[40]}"; vim_mode="${F[41]}";    agent_name="${F[42]}"
+ac_enabled="${F[43]}";  ac_window="${F[44]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -299,6 +321,7 @@ _int cache_exp -1
 _int cache_hit -1
 _int cu_input 0
 _int cu_cache 0
+_int ac_window 0
 _int sl_pct -1
 _int sl_at -1
 # Dollar amounts are floats like the session cost; anything else is dropped.
@@ -897,6 +920,51 @@ tok_info=""
 if [ "$pct" -ge 85 ] && [ $((cu_input + cu_cache)) -gt 0 ]; then
   fmt_tok _tin "$cu_input"; fmt_tok _tca "$cu_cache"
   tok_info=" ${DIM}(in: ${_tin}, cache: ${_tca})${RESET}"
+fi
+
+# -- Tokens left before auto-compact --
+# The compact point is the usable window (window minus the 20k output
+# reserve) minus a 13k buffer, with the window capped by
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW (100k..1M) or the autoCompactWindow setting.
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (1..100) can only move the point earlier.
+# These env vars are read from this script's own environment. compact_left is
+# -1 when there is no segment, else the tokens left (0 or below means due).
+compact_left=-1
+compact_off=""
+for _v in "${DISABLE_COMPACT:-}" "${DISABLE_AUTO_COMPACT:-}"; do
+  case "$_v" in
+    1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]) compact_off=1 ;;
+  esac
+done
+[ "$ac_enabled" = "false" ] && compact_off=1
+[ -n "$settings_bad" ] && compact_off=1
+_cused=$((cu_input + cu_cache))
+if [ -z "$compact_off" ] && [ "$pct" -ge 85 ] && [ "$_cused" -gt 0 ] && [ "$cw_size" -gt 0 ]; then
+  _cwin=$cw_size
+  _ccap=$ac_window
+  [[ "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" =~ ^[0-9]+$ ]] && _ccap=$((10#$CLAUDE_CODE_AUTO_COMPACT_WINDOW))
+  if [ "$_ccap" -gt 0 ]; then
+    [ "$_ccap" -lt 100000 ] && _ccap=100000
+    [ "$_ccap" -gt 1000000 ] && _ccap=1000000
+    [ "$_ccap" -lt "$_cwin" ] && _cwin=$_ccap
+  fi
+  _cusable=$((_cwin - 20000))
+  _cpoint=$((_cusable - 13000))
+  if [[ "${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-}" =~ ^[0-9]+$ ]]; then
+    _cpct=$((10#$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE))
+    if [ "$_cpct" -gt 0 ] && [ "$_cpct" -le 100 ] && [ $((_cusable * _cpct / 100)) -lt "$_cpoint" ]; then
+      _cpoint=$((_cusable * _cpct / 100))
+    fi
+  fi
+  compact_left=$((_cpoint - _cused))
+  if [ "$compact_left" -le 0 ]; then
+    _ccol=$C_CRIT; _ctxt="compact due"
+  else
+    fmt_tok _cleft "$compact_left"
+    _ctxt="${_cleft} to compact"
+    if [ "$compact_left" -le 20000 ]; then _ccol=$C_WARN; else _ccol=$C_CTX; fi
+  fi
+  tok_info="${tok_info} ${_ccol}${I_COMPACT}${_ctxt}${_ccol:+${RESET}}"
 fi
 
 BAR_WIDTH=10

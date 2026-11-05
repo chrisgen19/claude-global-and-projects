@@ -47,6 +47,9 @@ export CLAUDE_STATUSLINE_DEV_MAX_AGE=0
 
 # Existing colour assertions use the 8-colour codes; new sections set their own.
 export STATUSLINE_PALETTE=ansi STATUSLINE_GLYPHS=unicode
+# The script reads these from its own environment: never inherit them from the
+# developer's shell.
+unset DISABLE_COMPACT DISABLE_AUTO_COMPACT CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
 STATE=$(mktemp -d) || exit 1
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
@@ -711,6 +714,53 @@ contains "a million or more reads as M" "(in: 150k, cache: 1.6M)" \
 # After /compact current_usage is null: nothing to break down.
 excludes "no breakdown without current_usage" "(in:" \
   "$(line2 "$FIX/plain" '"context_window":{"context_window_size":200000,"used_percentage":91,"current_usage":null}')"
+
+# ---------------------------------------------------------------------------
+echo "-- auto-compact --"
+# ctx <pct> <input> <cache> [size] -- a context_window fragment (200k default)
+ctx() {
+  printf '"context_window":{"context_window_size":%s,"used_percentage":%s,"current_usage":{"input_tokens":%s,"cache_read_input_tokens":%s}}' "${4:-200000}" "$1" "$2" "$3"
+}
+ctx1m() { ctx "$1" "$2" "$3" 1000000; }
+# 141k used: point 167k, 26k left
+contains "tokens left before compact" "⇲ 26k to compact" "$(line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+# 150k used: 17k left. The colour must sit right before the icon and text.
+contains "20k or less left is yellow" "${YELLOW}⇲ 17k to compact" "$(raw "$FIX/plain" "$(ctx 90 1000 149000)" | sed -n 2p)"
+contains "past the point reads compact due" "compact due" "$(line2 "$FIX/plain" "$(ctx 95 4000 170000)")"
+contains "compact due is red" "${RED}⇲ compact due" "$(raw "$FIX/plain" "$(ctx 95 4000 170000)" | sed -n 2p)"
+excludes "below 85% shows no compact" "compact" "$(line2 "$FIX/plain" "$(ctx 84 1000 140000)")"
+contains "pct override moves the point earlier" "⇲ 9k to compact" \
+  "$(CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50 line2 "$FIX/plain" "$(ctx 86 1000 80000)")"   # point 90k, 9k left
+contains "pct override cannot move the point later" "⇲ 26k to compact" \
+  "$(CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=100 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000 on a 1M window: point 117k
+contains "window cap" "⇲ 16k to compact" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000 line2 "$FIX/plain" "$(ctx1m 90 1000 100000)")"
+excludes "DISABLE_AUTO_COMPACT hides it" "compact" "$(DISABLE_AUTO_COMPACT=1 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+excludes "DISABLE_COMPACT=TRUE hides it, any case" "compact" "$(DISABLE_COMPACT=TRUE line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+contains "DISABLE_AUTO_COMPACT=0 leaves it on" "to compact" "$(DISABLE_AUTO_COMPACT=0 line2 "$FIX/plain" "$(ctx 88 1000 140000)")"
+excludes "no current_usage: no compact segment" "compact" \
+  "$(line2 "$FIX/plain" '"context_window":{"context_window_size":200000,"used_percentage":91,"current_usage":null}')"
+# settings.json lives in its own config dir
+ACCFG=$(mktemp -d) || exit 1
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(ctx 88 1000 100000)}" \
+  '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+run_cfg() { printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$ACCFG" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n "${1:-2}p"; }
+printf '{"autoCompactEnabled":false}' > "$ACCFG/settings.json"
+got=$(run_cfg)
+excludes "settings autoCompactEnabled false hides it" "compact" "$got"
+printf '{"autoCompactWindow":150000}' > "$ACCFG/settings.json"
+got=$(run_cfg)
+contains "settings autoCompactWindow caps the window" "⇲ 16k to compact" "$got"   # point 117k, 101k used
+# Review Focus 5: a corrupt settings.json hides only the compact segment and keeps the email
+printf '{"oauthAccount":{"emailAddress":"someone@example.com"}}' > "$ACCFG/.claude.json"
+printf '{' > "$ACCFG/settings.json"
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$ACCFG" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "a corrupt settings.json: no stderr" "" "$err"
+got=$(run_cfg 1)
+contains "a corrupt settings.json keeps the email" "(someone)" "$got"
+got=$(run_cfg 2)
+excludes "a corrupt settings.json hides compact" "compact" "$got"
+rm -rf "$ACCFG"
 
 # ---------------------------------------------------------------------------
 echo "-- OSC 8 links --"
