@@ -67,7 +67,7 @@ if [ "$PALETTE" = "ansi" ]; then
   C_TEXT="";            C_IDENT="";          C_WORKSP=""
   C_VCS=$'\033[36m';    C_CTX="";             C_QUOTA=""
   C_COST=$'\033[33m';   C_CACHE="";           C_SESS=$'\033[35m'
-  C_TIMING=""
+  C_TIMING="";          C_SUB=$'\033[2m'
 else
   C_OK=$'\033[38;2;166;227;161m';    C_WARN=$'\033[38;2;249;226;175m'
   C_CRIT=$'\033[38;2;243;139;168m';  C_ACCENT=$'\033[38;2;137;180;250m'
@@ -77,6 +77,10 @@ else
   C_CTX=$'\033[38;2;203;166;247m';   C_QUOTA=$'\033[38;2;250;179;135m'
   C_COST=$'\033[38;2;249;226;175m';  C_CACHE=$'\033[38;2;137;220;235m'
   C_SESS=$'\033[38;2;245;194;231m';  C_TIMING=$'\033[38;2;242;205;205m'
+  # Secondary text (git user, account, flags, version, token breakdown...).
+  # Subtext0 rather than the dim attribute: dim halves whatever the terminal's
+  # foreground is, which read as a washed-out grey outside the palette.
+  C_SUB=$'\033[38;2;166;173;200m'
 fi
 # The names the rest of the script already uses stay as aliases.
 GREEN=$C_OK
@@ -672,7 +676,7 @@ if [ -n "$pr_number" ]; then
     approved)          pr_info+=" ${GREEN}approved${RESET}" ;;
     changes_requested) pr_info+=" ${RED}changes${RESET}" ;;
     pending)           pr_info+=" ${YELLOW}pending${RESET}" ;;
-    draft)             pr_info+=" ${DIM}draft${RESET}" ;;
+    draft)             pr_info+=" ${C_SUB}draft${RESET}" ;;
   esac
 fi
 
@@ -866,7 +870,7 @@ case "$effort" in
 esac
 [ "$thinking" = "true" ] && flag_parts+=("think")
 flags_info=""
-[ ${#flag_parts[@]} -gt 0 ] && flags_info=" ${DIM}${flag_parts[*]}${RESET}"
+[ ${#flag_parts[@]} -gt 0 ] && flags_info=" ${C_SUB}${flag_parts[*]}${RESET}"
 
 # -- Output style, vim mode and agent name --
 # Each is optional and hides itself when absent; the default output style is
@@ -897,9 +901,9 @@ esac
 # -- Context window size label (distinguishes 1M models from 200k) --
 cw_label=""
 if [ "$cw_size" -ge 1000000 ]; then
-  cw_label=" ${DIM}1M${RESET}"
+  cw_label=" ${C_SUB}1M${RESET}"
 elif [ "$cw_size" -gt 0 ]; then
-  cw_label=" ${DIM}$((cw_size / 1000))k${RESET}"
+  cw_label=" ${C_SUB}$((cw_size / 1000))k${RESET}"
 fi
 
 # -- Context bar (color-coded by usage) --
@@ -925,7 +929,7 @@ fmt_tok() {  # $1=outvar  $2=token count
 tok_info=""
 if [ "$pct" -ge 85 ] && [ $((cu_input + cu_cache)) -gt 0 ]; then
   fmt_tok _tin "$cu_input"; fmt_tok _tca "$cu_cache"
-  tok_info=" ${DIM}(in: ${_tin}, cache: ${_tca})${RESET}"
+  tok_info=" ${C_SUB}(in: ${_tin}, cache: ${_tca})${RESET}"
 fi
 
 # -- Tokens left before auto-compact --
@@ -1068,7 +1072,7 @@ if [ "$sl_pct" -ge 0 ]; then
   esac
   fmt_rl _rls "spend" "$sl_pct" "$sl_at" "$_sl_win"
   if [ -n "$sl_used" ] && [ -n "$sl_limit" ]; then
-    _rls+=" ${DIM}$(printf '$%.0f/$%.0f' "$sl_used" "$sl_limit")${RESET}"
+    _rls+=" ${C_SUB}$(printf '$%.0f/$%.0f' "$sl_used" "$sl_limit")${RESET}"
   fi
   rl_parts+=("$_rls")
 fi
@@ -1432,13 +1436,13 @@ fi
 # -- Version tag --
 ver_info=""
 if [ -n "$version" ]; then
-  ver_info=" ${DIM}v${version}${RESET}"
+  ver_info=" ${C_SUB}v${version}${RESET}"
 fi
 
 # -- Session id (first 8 chars: enough for claude-handoff; --resume needs the full id) --
 id_info=""
 if [ -n "$session_id" ]; then
-  id_info=" ${DIM}id:${RESET}${session_id:0:8}"
+  id_info=" ${C_SUB}id:${RESET}${session_id:0:8}"
 fi
 
 # -- Session name (/rename, or the title Claude Code generated) --
@@ -1457,19 +1461,19 @@ fi
 # workspace.git_worktree can be a path, so keep only its last segment.
 wt_info=""
 if [ -n "$worktree" ]; then
-  wt_info="${SEP}${C_SESS}${I_WT}${DIM}wt:${RESET}${C_SESS}${worktree##*/}${RESET}"
+  wt_info="${SEP}${C_SESS}${I_WT}${C_SUB}wt:${RESET}${C_SESS}${worktree##*/}${RESET}"
 fi
 
 # -- Git email prefix (username only, strip @domain) --
 gh_prefix=""
 if [ -n "$gh_email" ]; then
-  gh_prefix="${DIM}${gh_email%%@*}${RESET}"
+  gh_prefix="${C_SUB}${gh_email%%@*}${RESET}"
 fi
 
 # -- Claude account prefix (username only, strip @domain) --
 claude_prefix=""
 if [ -n "$claude_email" ]; then
-  claude_prefix=" ${DIM}(${claude_email%%@*})${RESET}"
+  claude_prefix=" ${C_SUB}(${claude_email%%@*})${RESET}"
 fi
 
 # -- Account label --

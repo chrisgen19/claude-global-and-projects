@@ -1243,6 +1243,29 @@ equals "full ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\
 contains "unknown glyph tier falls back to nerd" $'\xee\xbc\xa3' "$(STATUSLINE_GLYPHS=bogus raw "$FIX/plain")"
 contains "ansi palette keeps 8-colour green" "${ESC}[32m" "$(raw "$FIX/plain")"
 
+# Secondary text is Catppuccin subtext0 under catppuccin, not the dim attribute
+# (which halves the terminal's own foreground and fell outside the palette).
+# ansi keeps plain dim. Lines 1-2 only: the dev servers +N count is out of scope.
+SUBC="${ESC}[38;2;166;173;200m"
+sub_extra='"version":"2.1.318","session_id":"4f7b85aa-0000","effort":{"level":"high"},
+  "pr":{"number":7,"review_state":"draft"},"worktree":{"name":"wt1"},
+  "context_window":{"context_window_size":1000000,"used_percentage":90,"current_usage":{"input_tokens":1000,"cache_read_input_tokens":2000}},
+  "rate_limits":{"spend_limit":{"used_percentage":50,"used_usd":1,"limit_usd":2,"period":"monthly"}}'
+got=$(STATUSLINE_PALETTE=catppuccin raw "$FIX/sync" "$sub_extra" | sed -n '1,2p')
+contains "catppuccin: git user is subtext0" "${SUBC}t${ESC}[0m" "$got"
+contains "catppuccin: context size is subtext0" "${SUBC}1M" "$got"
+contains "catppuccin: flags are subtext0" "${SUBC}hi" "$got"
+contains "catppuccin: version is subtext0" "${SUBC}v2.1.318" "$got"
+contains "catppuccin: id label is subtext0" "${SUBC}id:" "$got"
+contains "catppuccin: draft is subtext0" "${SUBC}draft" "$got"
+contains "catppuccin: wt label is subtext0" "${SUBC}wt:" "$got"
+contains "catppuccin: token breakdown is subtext0" "${SUBC}(in: 1k, cache: 2k)" "$got"
+contains "catppuccin: spend amounts are subtext0" "${SUBC}\$1/\$2" "$got"
+excludes "catppuccin: no plain dim on lines 1-2" "${ESC}[2m" "$got"
+got=$(STATUSLINE_PALETTE=ansi raw "$FIX/sync" "$sub_extra" | sed -n '1,2p')
+contains "ansi: version keeps plain dim" "${ESC}[2mv2.1.318" "$got"
+contains "ansi: git user keeps plain dim" "${ESC}[2mt${ESC}[0m" "$got"
+
 # ---------------------------------------------------------------------------
 echo "-- line 1 extras --"
 got=$(render "$FIX/plain" '"output_style":{"name":"explanatory"},"vim":{"mode":"NORMAL"},"agent":{"name":"reviewer"}')
