@@ -250,7 +250,8 @@ Catppuccin Mocha, from CCometixLine's `catppuccin-mocha` palette (matches the pu
 | warn | `#f9e2af` | 70% or more, modified, ahead, $/h above $10, WORK label |
 | crit | `#f38ba8` | 90% or more, projected over the limit, untracked, conflicts, lines removed, bypass mode |
 | accent | `#89b4fa` | PR number, plan mode |
-| muted | `#6c7086` | labels, dim text, ages |
+| muted | `#6c7086` | labels, ages |
+| subtext | `#a6adc8` | secondary text: git user and account, context size, flags, version, `id:`, `wt:`, `draft`, token breakdown, spend amounts (plain dim under `ansi`) |
 | separator | `#7f849c` | `│` and `·` |
 | text | `#cdd6f4` | plain values |
 | identity | `#b4befe` | model |
