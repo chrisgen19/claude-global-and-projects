@@ -344,6 +344,9 @@ done
 - Git state is cached for 5 seconds in `/tmp`, keyed per uid and per directory so concurrent sessions in different repos cannot overwrite each other's branch.
 - Cost, quota and context state lives under `CLAUDE_STATUSLINE_STATE_DIR` (default `/tmp`) in files keyed by uid. A render where nothing changed rewrites no state file and adds no `mv`; the suite asserts the git, ledger, quota and formatting paths of a warm render stay under 5 times a baseline measured in the same run (a bash, one `jq` and one `date`; `STATUSLINE_PERF_FACTOR`), which catches a heavy regression but not a single extra fork. The dev-server section is excluded: a hot dev cache in the suite would write fixture servers into the shared `/tmp` cache, so a fork added there is not caught.
 - The other-accounts line only knows what each account last rendered, so an account you have not used recently is missing or shows an old age.
+- **Known limits.**
+  - *Midnight gap:* a session that started before midnight starts counting `today` from its first render after midnight, so spend between midnight and that render is not counted. With `"refreshInterval": 60` an open session renders at least once a minute, so the gap is at most one refresh interval of activity.
+  - *Daylight saving:* local times use the UTC offset at render time. On a daylight-saving change day, `today`'s midnight boundary can be an hour off, and an `out` time on the other side of a change (a 7d or weekly run-out days away) shows an hour off, near midnight possibly with the wrong weekday. Converting through the timezone would add a `date` fork per render. Timezones without daylight saving are not affected.
 - All session data arrives as JSON on stdin from Claude Code. The script only formats it — see the [status line docs](https://code.claude.com/docs/en/statusline) for the full schema.
 
 ### iTerm2 tab status
