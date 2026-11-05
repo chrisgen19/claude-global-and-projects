@@ -207,7 +207,8 @@ git -C "$FIX/sync" remote add origin "$FIX/bare"
 git -C "$FIX/sync" push -q -u origin main
 
 got=$(seg "$FIX/sync")
-contains "tracking branch in sync names the branch" "| main" "$got"
+contains "tracking branch in sync names the branch" "⎇ main" "$got"
+contains "branch after a divider" " │ ⎇ main" "$(render "$FIX/sync" | sed -n 1p)"
 excludes "tracking branch in sync: no ahead marker" "^" "$got"
 excludes "tracking branch in sync: no no-upstream" "no-upstream" "$got"
 
@@ -297,7 +298,7 @@ excludes "detached HEAD does not claim no-upstream" "no-upstream" "$got"
 echo "-- outside a repo --"
 mkdir -p "$FIX/plain" || exit 1
 got=$(seg "$FIX/plain")
-excludes "a non-repo shows no branch separator" "|" "$got"
+excludes "a non-repo shows no branch icon" "⎇" "$got"
 
 # ---------------------------------------------------------------------------
 echo "-- permission mode --"
@@ -785,7 +786,7 @@ echo "-- home directory --"
 # $FIX so the cache entries these renders write are cleaned up on exit.
 home_line() {
   jq -nc --arg d "$1" '{workspace:{current_dir:$d},model:{display_name:"M"}}' \
-    | HOME="$FIX/me" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p' | sed 's/^.*\[M\] *//'
+    | HOME="$FIX/me" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p' | sed 's/^.*\[M\] .*│ ▣ //'
 }
 equals "the home directory is ~" "~" "$(home_line "$FIX/me")"
 # The literal ~/p is the expected text, not a path to expand, so SC2088's
@@ -1015,7 +1016,7 @@ equals "without dev servers the status line has two lines" "2" "$n_lines"
 # payload URL never gets it.
 got=$(raw "$FIX/plain" '"pr":{"number":5,"url":"http://localhost:1234"}')
 excludes "a pr.url of http://localhost is not linked" "${ESC}]8;;" "$got"
-contains "a session with no dev server shows no marker" "#5" "$(printf '%s' "$got" | strip_ansi)"
+contains "a session with no dev server shows no marker" "⇄ #5" "$(printf '%s' "$got" | strip_ansi)"
 excludes "a session with no dev server shows no ▶" "▶" "$(printf '%s' "$got" | strip_ansi)"
 got=$(seg "$FIX/plain" '"workspace":{"project_dir":{"a":1}}')
 contains "a wrongly typed project_dir falls back to the cwd" "plain" "$got"
@@ -1047,6 +1048,30 @@ excludes "ascii prints no box divider" "│" "$got"
 equals "ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
 contains "unknown glyph tier falls back to nerd" $'\xee\xbc\xa3' "$(STATUSLINE_GLYPHS=bogus raw "$FIX/plain")"
 contains "ansi palette keeps 8-colour green" "${ESC}[32m" "$(raw "$FIX/plain")"
+
+# ---------------------------------------------------------------------------
+echo "-- line 1 extras --"
+got=$(render "$FIX/plain" '"output_style":{"name":"explanatory"},"vim":{"mode":"NORMAL"},"agent":{"name":"reviewer"}')
+contains "output style shown" "◎ explanatory" "$got"
+contains "vim mode shown" "v NORMAL" "$got"
+contains "agent shown" "@ reviewer" "$got"
+excludes "default output style hidden" "◎" "$(render "$FIX/plain" '"output_style":{"name":"default"}')"
+contains "model icon" "◆ [M]" "$(render "$FIX/plain" | sed -n 1p)"
+contains "folder after a divider" " │ ▣ " "$(render "$FIX/plain" | sed -n 1p)"
+# Review Focus 5: wrong types hide their own segment, nothing on stderr
+bad_types='"output_style":{"name":7},"vim":"NORMAL","agent":[1]'
+# Payload assigned first: no \" inside a double-quoted $(...) (bash 3.2)
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{${bad_types}}" '{workspace:{current_dir:$d},model:{display_name:"M"}} * $x')
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "wrongly typed extras: no stderr" "" "$err"
+got=$(render "$FIX/plain" "$bad_types")
+contains "wrongly typed extras still render the model" "[M]" "$got"
+excludes "wrongly typed extras show no vim" "NORMAL" "$got"
+got=$(render "$FIX/plain" '"worktree":{"name":"feat-x"},"pr":{"number":42}')
+contains "worktree after a divider" " │ ⑂ wt:feat-x" "$got"
+contains "PR after a divider" " │ ⇄ #42" "$got"
+got=$(STATUSLINE_GLYPHS=ascii raw "$FIX/plain")
+excludes "ascii emits no empty colour pair before the model" "${ESC}[0m${ESC}[1m[M]" "$got"
 
 echo
 echo "$pass passed, $fail failed"

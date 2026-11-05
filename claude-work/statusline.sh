@@ -240,7 +240,10 @@ JQ_FIELDS='
     (opt(.rate_limits.spend_limit.limit_usd | numbers) // ""),
     (opt(.rate_limits.spend_limit.period | strings)    // ""),
     (opt(.pr.review_state | strings)               // ""),
-    (opt(.workspace.project_dir | strings)         // "")
+    (opt(.workspace.project_dir | strings)         // ""),
+    (opt(.output_style.name | strings)             // ""),
+    (opt(.vim.mode | strings)                      // ""),
+    (opt(.agent.name | strings)                    // "")
   ] | .[] | if type == "string" then clean else tostring end'
 # Numbers and booleans cannot hold control characters, so only strings go
 # through clean().
@@ -279,6 +282,7 @@ sl_pct="${F[33]}";      sl_at="${F[34]}"
 sl_used="${F[35]}";     sl_limit="${F[36]}";     sl_period="${F[37]}"
 pr_review="${F[38]}"
 project_dir="${F[39]}"
+output_style="${F[40]}"; vim_mode="${F[41]}";    agent_name="${F[42]}"
 
 # -- Guard the numerics so a malformed payload can't break arithmetic --
 _int() { local v="${!1}"; [[ "$v" =~ ^-?[0-9]+$ ]] || printf -v "$1" '%s' "$2"; }
@@ -545,6 +549,12 @@ osc8() {  # $1=outvar  $2=url  $3=text  [$4=local]
   fi
 }
 
+# Coloured icon, or nothing at all when the tier has no icon (ascii), so no
+# empty colour/reset pair is emitted.
+icon() {  # $1=outvar  $2=colour  $3=icon
+  if [ -n "$3" ]; then printf -v "$1" '%s' "${2}${3}${RESET}"; else printf -v "$1" '%s' ""; fi
+}
+
 # Percent-encode a branch name for a URL path, keeping `/` so feature/x stays a
 # path. LC_ALL=C makes ${s:i:1} walk bytes, so a multibyte character becomes
 # its UTF-8 %XX sequence instead of one unencoded character.
@@ -598,8 +608,9 @@ if [ -n "$git_branch" ]; then
   [ "${git_modified:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${YELLOW}~${git_modified}${RESET}")
   [ "${git_untracked:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${RED}?${git_untracked}${RESET}")
   [ "${git_conflicts:-0}" -gt 0 ] 2>/dev/null && git_parts+=("${BOLD}${RED}!${git_conflicts}${RESET}")
-  osc8 _branch_txt "$branch_url" "${CYAN}${git_branch}${RESET}"
-  git_info=" | ${_branch_txt}"
+  osc8 _branch_txt "$branch_url" "${C_VCS}${git_branch}${RESET}"
+  icon _ic "$C_VCS" "$I_GIT"
+  git_info="${SEP}${_ic}${_branch_txt}"
   [ ${#git_parts[@]} -gt 0 ] && git_info="${git_info} ${git_parts[*]}"
 fi
 
@@ -608,8 +619,9 @@ pr_info=""
 # pr.url comes straight from Claude Code (a GitLab merge request URL in a
 # GitLab repo), so the PR links on any forge, not just the two above.
 if [ -n "$pr_number" ]; then
-  osc8 _pr_txt "$pr_url" "${MAGENTA}#${pr_number}${RESET}"
-  pr_info="  ${_pr_txt}"
+  osc8 _pr_txt "$pr_url" "${C_ACCENT}#${pr_number}${RESET}"
+  icon _ic "$C_ACCENT" "$I_PR"
+  pr_info="${SEP}${_ic}${_pr_txt}"
   # Review state, which the docs say can be absent even when pr is present.
   # Kept outside the link so only the number is the click target. For a GitLab
   # merge request Claude Code maps mergeable to approved and any other open
@@ -812,6 +824,17 @@ esac
 [ "$thinking" = "true" ] && flag_parts+=("think")
 flags_info=""
 [ ${#flag_parts[@]} -gt 0 ] && flags_info=" ${DIM}${flag_parts[*]}${RESET}"
+
+# -- Output style, vim mode and agent name --
+# Each is optional and hides itself when absent; the default output style is
+# the ordinary case and stays silent, like the default permission mode.
+style_info=""
+[ -n "$output_style" ] && [ "$output_style" != "default" ] \
+  && style_info=" ${C_MUTED}${I_STYLE}${output_style}${RESET}"
+vim_info=""
+[ -n "$vim_mode" ] && vim_info=" ${C_QUOTA}${I_VIM}${vim_mode}${RESET}"
+agent_info=""
+[ -n "$agent_name" ] && agent_info=" ${C_ACCENT}${I_AGENT}${agent_name}${RESET}"
 
 # -- Permission mode --
 # Carried on the payload as .permission_mode. "default" is the ordinary case
@@ -1023,14 +1046,14 @@ name_info=""
 if [ -n "$session_name" ]; then
   # 30 characters in all: 29 plus a one-character ellipsis, 27 plus "...".
   [ ${#session_name} -gt 30 ] && session_name="${session_name:0:$((30 - ${#G_ELLIPSIS}))}${G_ELLIPSIS}"
-  name_info=" ${MAGENTA}${session_name}${RESET}"
+  name_info=" ${C_SESS}${I_NAME}${session_name}${RESET}"
 fi
 
 # -- Worktree (superpowers and EnterWorktree sessions) --
 # workspace.git_worktree can be a path, so keep only its last segment.
 wt_info=""
 if [ -n "$worktree" ]; then
-  wt_info=" ${DIM}wt:${RESET}${MAGENTA}${worktree##*/}${RESET}"
+  wt_info="${SEP}${C_SESS}${I_WT}${DIM}wt:${RESET}${C_SESS}${worktree##*/}${RESET}"
 fi
 
 # -- Git email prefix (username only, strip @domain) --
@@ -1053,7 +1076,11 @@ account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 # Dev servers get line 3: at the end of line 1 a narrow terminal cut them off.
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${RESET}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
+# Dividers come only from the segments that are present (git, worktree and PR
+# each carry their own SEP). The model icon sits inside the model colour so
+# ascii, where the icon is empty, leaves no empty colour/reset pair.
+icon _dir_ic "$C_WORKSP" "$I_DIR"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${style_info}${vim_info}${agent_info}${perm_info}${ver_info}${id_info}${name_info}${SEP}${_dir_ic}${C_WORKSP}${short_dir}${RESET}${git_info}${wt_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
 printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${YELLOW}${cost_fmt}${RESET}${SEP}${time_fmt}${lines_info}"
