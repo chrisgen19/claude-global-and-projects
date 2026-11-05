@@ -1153,11 +1153,15 @@ if [ "$_sev5" -ge 1 ]; then
     [ "$_i" = "$_q_self" ] && continue
     # Same login as this session (whatever the label): the same quota, never offered.
     [ "$_q_email" != "-" ] && [ "${QE[$_i]}" = "$_q_email" ] && continue
-    [ "${QP5[$_i]}" -ge 0 ] || continue
     _age=$(( now - QS[_i] )); [ "$_age" -lt 0 ] && _age=0
     [ "$_age" -gt 18000 ] && continue
     account_color _qc "${QL[$_i]}"
-    if [ "${QA5[$_i]}" -ge 0 ] && [ "${QA5[$_i]}" -le "$now" ]; then
+    if [ "${QP5[$_i]}" -lt 0 ]; then
+      # No 5h window in that account's last payload (it carried only 7d):
+      # nothing used in the current window, so it is the best one to switch
+      # to. Dropping it hid exactly that account.
+      _qv="${C_OK}fresh${RESET}"
+    elif [ "${QA5[$_i]}" -ge 0 ] && [ "${QA5[$_i]}" -le "$now" ]; then
       _qv="${C_OK}reset${RESET}"
     else
       _qpc=$C_OK

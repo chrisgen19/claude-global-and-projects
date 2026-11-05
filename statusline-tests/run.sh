@@ -1514,6 +1514,23 @@ qfile DEV d@x 40 $((now + 9000)) $((now - 20000))
 got=$(render "$FIX/plain" "$(rl5 72 7500)")
 contains "a window past its reset shows reset" "WORK reset" "$got"
 excludes "a file older than 5h is omitted" "DEV" "$got"
+
+# No 5h reading (the account's payload carried only 7d, so nothing is used in
+# the current window): shown as fresh, not dropped. Still subject to the 5h age
+# limit like any other file.
+qdir
+printf 'WORK w@x -1 -1 12 %s %s\n' "$((now + 300000))" "$((now - 330))" > "$QD/claude-statusline-quota-$UID-WORK"
+printf 'DEV d@x -1 -1 30 %s %s\n' "$((now + 300000))" "$((now - 20000))" > "$QD/claude-statusline-quota-$UID-DEV"
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "an account with no 5h reading shows fresh" "WORK fresh (5m ago)" "$got"
+excludes "a stale account with no 5h reading is still omitted" "DEV" "$got"
+qdir
+qfile WORK w@x 12 $((now + 9000)) $((now - 510))
+printf 'DEV d@x -1 -1 30 %s %s\n' "$((now + 300000))" "$((now - 510))" > "$QD/claude-statusline-quota-$UID-DEV"
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "fresh sits beside a percentage" "WORK 12% (8m ago)  DEV fresh (8m ago)" "$got"
+got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+equals "fresh line is 7-bit under ascii" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
 printf 'garbage\n' > "$QD/claude-statusline-quota-$UID-DEV"
 printf 'WORK w@x abc 1 -1 -1 5\n' > "$QD/claude-statusline-quota-$UID-WORK"
 payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
