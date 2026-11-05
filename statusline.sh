@@ -1422,7 +1422,11 @@ fi
 [ -n "$_cshow" ] && tok_info="${tok_info} ${_ccol}${I_COMPACT}${_ctxt}${_ccol:+${RESET}}"
 
 cost_info="${C_COST}${cost_fmt}${RESET}"
-if [ "$today_micros" -ge 0 ]; then
+# Today's total and $/h are hidden by default: on a subscription the dollars
+# are API-price estimates, and the 5h/7d pace already shows the burn. The
+# ledger above still runs (the compact "~N turns" estimate reads it). Set
+# CLAUDE_STATUSLINE_SHOW_TODAY=1 to show them again.
+if [ "${CLAUDE_STATUSLINE_SHOW_TODAY:-0}" = 1 ] && [ "$today_micros" -ge 0 ]; then
   fmt_usd _usd "$today_micros"
   icon _ic "$C_COST" "$I_TODAY"
   cost_info+=" ${C_SEP}${G_DOT}${RESET} ${_ic}${C_MUTED}today${RESET} ${C_COST}${_usd}${RESET}"
