@@ -60,6 +60,7 @@ fail=0
 # with whatever is installed on the machine running the tests.
 CONFIG_DIR=$(mktemp -d) || exit 1
 FIX=$(mktemp -d) || exit 1
+QROOT=$(mktemp -d) || exit 1
 
 # Removing the fixtures is not enough: the script writes a cache entry per
 # directory it renders, so every run used to leave ~11 orphans behind in /tmp.
@@ -83,7 +84,7 @@ cleanup() {
     wait "$p" 2>/dev/null
     rm -f /tmp/claude-statusline-devcwd-"${UID}"-"$p"
   done
-  rm -rf "$FIX" "$CONFIG_DIR" "$STATE"
+  rm -rf "$FIX" "$CONFIG_DIR" "$STATE" "$QROOT"
   # The variables stay quoted and only the * are bare, so the pattern expands
   # without word-splitting the path. With no match bash passes the pattern
   # through literally and `rm -f` ignores it.
@@ -125,10 +126,30 @@ line2() {
   render "$1" "${2:-}" | sed -n '2p'
 }
 
-# devseg <dir> [extra-json] -- line 3 (the dev servers), colours stripped
+# devseg <dir> [extra-json] -- the dev servers line, colours stripped. It is the
+# last line, after the other accounts line when that is present, so it is
+# picked by its marker: a render with no dev servers gives an empty string,
+# never line 2 or the other accounts line. Pair an excludes on it with a
+# positive check on the same render.
 devseg() {
-  render "$1" "${2:-}" | sed -n '3p'
+  render "$1" "${2:-}" | sed -n '/^▶/p'
 }
+
+# qdir: a fresh state dir for one case. qfile <LABEL> <email> <p5> <at5> <seen>.
+qdir() { QD=$(mktemp -d "$QROOT/q.XXXXXX") || exit 1; export CLAUDE_STATUSLINE_STATE_DIR="$QD"; }
+qfile() { printf '%s %s %s %s -1 -1 %s
+' "$1" "$2" "$3" "$4" "$5" > "$QD/claude-statusline-quota-$UID-$1"; }
+# rl5 <percent> <seconds until reset>
+rl5() { printf '"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s}}' "$1" "$((now + $2))"; }
+# render_acct <dir> <config dir> <extra-json> -- as the CLAUDE router would run it
+render_acct() {
+  local payload
+  payload=$(jq -nc --arg d "$1" --argjson x "{$3}"     '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:40}} * $x')
+  printf '%s' "$payload" | ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$2" "$RUN_BASH" "$SCRIPT" | strip_ansi
+}
+n_lines() { printf '%s
+' "$1" | wc -l | tr -d ' '; }
+
 
 ok()   { pass=$((pass + 1)); printf 'ok    %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf 'FAIL  %s\n' "$1"; }
@@ -1068,6 +1089,15 @@ else
   got=$(devseg "$FIX/devproj" "$dev_proj_slash")
   contains "a trailing slash on project_dir still matches" "localhost:$P_ROOT" "$got"
 
+  # With the other accounts line present the dev servers move to line 4.
+  qdir
+  qfile WORK w@x 12 $((now + 9000)) $((now - 510))
+  got=$(render "$FIX/devproj" "$dev_proj_slash,$(rl5 72 7500)")
+  contains "other accounts line is line 3" "other accounts: WORK" "$(printf '%s\n' "$got" | sed -n 3p)"
+  contains "dev servers move to line 4" "localhost:$P_ROOT" "$(printf '%s\n' "$got" | sed -n 4p)"
+  contains "devseg still finds the dev line" "localhost:$P_ROOT" "$(devseg "$FIX/devproj" "$dev_proj_slash,$(rl5 72 7500)")"
+  export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
   # Without project_dir the cwd is the project: from apps/ only apps/web counts.
   got=$(devseg "$FIX/devproj/apps" "")
   contains "without project_dir the cwd is used" "localhost:$P_SUB" "$got"
@@ -1137,8 +1167,10 @@ else
 
   # A stopped server disappears on the next scan.
   kill "$PID_OTHER" 2>/dev/null; wait "$PID_OTHER" 2>/dev/null
-  got=$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
+  got=$(render "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")
   excludes "a stopped server is no longer shown" "localhost:$P_OTHER" "$got"
+  contains "a stopped server: the render itself is intact" "[M]" "$got"
+  equals "a stopped server leaves no dev line" "" "$(devseg "$FIX/otherproj" "\"workspace\":{\"project_dir\":\"$FIX/otherproj\"}")"
 
   err=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
     | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 > /dev/null)
@@ -1373,6 +1405,84 @@ equals "an unusable state dir: no stderr" "" "$err"
 got=$(rnd s11 1 60000)
 excludes "an unusable state dir shows no today" "today" "$got"
 contains "an unusable state dir keeps the session cost" "\$1.00" "$got"
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
+# ---------------------------------------------------------------------------
+echo "-- other accounts --"
+now=$(date +%s)
+qdir
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+got=$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")
+contains "own quota file written" "PERSONAL - 20 $((now + 9000)) -1 -1 " "$got"
+
+qdir
+qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "other accounts listed" "⇆ other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+excludes "current account not listed" "PERSONAL" "$got"
+got=$(render "$FIX/plain" "$(rl5 20 9000)")
+equals "calm session has no line 3" "2" "$(n_lines "$got")"
+
+# ascii: line 3 stays 7-bit
+got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "ascii other accounts line" "other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+equals "ascii other accounts line is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+
+# reset, stale, corrupt
+qdir
+qfile WORK w@x 50 $((now - 60)) $((now - 600))
+qfile DEV d@x 40 $((now + 9000)) $((now - 20000))
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+contains "a window past its reset shows reset" "WORK reset" "$got"
+excludes "a file older than 5h is omitted" "DEV" "$got"
+printf 'garbage\n' > "$QD/claude-statusline-quota-$UID-DEV"
+printf 'WORK w@x abc 1 -1 -1 5\n' > "$QD/claude-statusline-quota-$UID-WORK"
+payload=$(jq -nc --arg d "$FIX/plain" --argjson x "{$(rl5 72 7500)}" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{}} * $x')
+err=$(printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" 2>&1 >/dev/null)
+equals "corrupt quota files: no stderr" "" "$err"
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+equals "no qualifying account: no line 3" "2" "$(n_lines "$got")"
+excludes "a corrupt file is not listed" "DEV" "$got"
+printf 'WORK w@x 08 -1 -1 -1 %s\n' "$now" > "$QD/claude-statusline-quota-$UID-WORK"
+got=$(render "$FIX/plain" "$(rl5 72 7500)")
+equals "a leading-zero field is skipped, not octal" "2" "$(n_lines "$got")"
+
+# only the current account's own file: no line 3, and the red-quota line count holds
+qdir
+got=$(render "$FIX/plain" "$(rl5 95 7500)")
+equals "own file only: two lines" "2" "$(n_lines "$got")"
+
+# write gating: unchanged and fresh keeps the file, unchanged and old refreshes seen
+qdir
+printf 'PERSONAL - 20 %s -1 -1 %s\n' "$((now + 9000))" "$((now - 10))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+equals "an unchanged fresh file is not rewritten" "PERSONAL - 20 $((now + 9000)) -1 -1 $((now - 10))" "$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")"
+printf 'PERSONAL - 20 %s -1 -1 %s\n' "$((now + 9000))" "$((now - 100))" > "$QD/claude-statusline-quota-$UID-PERSONAL"
+render "$FIX/plain" "$(rl5 20 9000)" >/dev/null
+got=$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")
+excludes "a file a minute old is refreshed" "$((now - 100))" "$got"
+render "$FIX/plain" "$(rl5 25 9000)" >/dev/null
+contains "a changed value is rewritten" "PERSONAL - 25 " "$(cat "$QD/claude-statusline-quota-$UID-PERSONAL")"
+equals "no temp files are left behind" "1" "$(ls "$QD" | wc -l | tr -d ' ')"
+
+# the CLAUDE router: the email picks the file, and no file is named CLAUDE
+RCFG=$(mktemp -d "$QROOT/cfg.XXXXXX")
+printf '{"oauthAccount":{"emailAddress":"w@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile PERSONAL p@x 30 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "CLAUDE session lists the other two" "other accounts: PERSONAL 30% (8m ago)  DEV 3% (2h ago)" "$(printf '%s\n' "$got" | sed -n 3p)"
+excludes "CLAUDE session skips its matched account" "WORK 12" "$got"
+contains "CLAUDE session writes the matched file" "WORK w@x 72 " "$(cat "$QD/claude-statusline-quota-$UID-WORK")"
+equals "CLAUDE session never writes a CLAUDE file" "" "$(ls "$QD" | sed -n '/CLAUDE/p')"
+
+printf '{"oauthAccount":{"emailAddress":"other@x"}}' > "$RCFG/.claude.json"
+qdir
+qfile PERSONAL p@x 30 $((now + 9000)) $((now - 510)); qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile DEV d@x 3 $((now + 9000)) $((now - 7500))
+got=$(render_acct "$FIX/plain" "$RCFG" "$(rl5 72 7500)")
+contains "unmatched CLAUDE session lists every account" "other accounts: PERSONAL 30% (8m ago)  WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
+contains "unmatched CLAUDE session leaves WORK untouched" "WORK w@x 12 " "$(cat "$QD/claude-statusline-quota-$UID-WORK")"
+equals "unmatched CLAUDE session writes no new file" "3" "$(ls "$QD" | wc -l | tr -d ' ')"
 export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
 
 echo

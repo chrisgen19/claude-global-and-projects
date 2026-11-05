@@ -1039,7 +1039,11 @@ fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)
 }
 
 rl_parts=()
-if [ "$rl_5h" -ge 0 ]; then fmt_rl _rl5 "5h" "$rl_5h" "$rl_5h_at" 18000; rl_parts+=("$_rl5"); fi
+_sev5=0
+if [ "$rl_5h" -ge 0 ]; then
+  fmt_rl _rl5 "5h" "$rl_5h" "$rl_5h_at" 18000; rl_parts+=("$_rl5")
+  _sev5=$RL_LAST_SEV
+fi
 if [ "$rl_7d" -ge 0 ]; then fmt_rl _rl7 "7d" "$rl_7d" "$rl_7d_at" 604800; rl_parts+=("$_rl7"); fi
 
 # Spend limit: only sent behind a Claude apps gateway that sets one, so on a
@@ -1061,6 +1065,99 @@ if [ "$sl_pct" -ge 0 ]; then
   fi
   rl_parts+=("$_rls")
 fi
+# -- Quota files and the other accounts line --
+# Each account leaves its last 5h and 7d usage in one small file, so a session
+# nearing its limit can show what the other accounts have left:
+#   $STATE_DIR/claude-statusline-quota-${UID}-<LABEL>
+#   label email p5 at5 p7 at7 seen      (missing values -1, empty email -)
+# The files of the other accounts are untrusted input: every field is checked
+# as a plain integer (or token) before it reaches arithmetic or the screen,
+# and a bad file is skipped without a word.
+QL=(PERSONAL WORK DEV)
+QOK=(0 0 0); QE=("" "" ""); QP5=("" "" ""); QA5=("" "" ""); QP7=("" "" ""); QA7=("" "" ""); QS=("" "" "")
+
+# quota_int <value>: -1, 0, or digits with no leading zero (so no octal trap).
+quota_int() {
+  case "$1" in -1|0) return 0 ;; ''|0*|*[!0-9]*) return 1 ;; esac
+  [ "${#1}" -le 10 ]
+}
+
+# quota_read <index>: loads one label's file into the Q* arrays; QOK is 1 only
+# when every field is valid. Builtin read, so no fork.
+quota_read() {
+  local _f="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$1]}" _l="" _e="" _a="" _b="" _c="" _d="" _s="" _x=""
+  QOK[$1]=0
+  [ -f "$_f" ] || return 0
+  { IFS=' ' read -r _l _e _a _b _c _d _s _x; } 2>/dev/null < "$_f"
+  [ "$_l" = "${QL[$1]}" ] && [ -z "$_x" ] || return 0
+  case "$_e" in ''|*[!A-Za-z0-9@._+-]*) return 0 ;; esac
+  quota_int "$_a" && quota_int "$_b" && quota_int "$_c" && quota_int "$_d" && quota_int "$_s" || return 0
+  QE[$1]=$_e; QP5[$1]=$_a; QA5[$1]=$_b; QP7[$1]=$_c; QA7[$1]=$_d; QS[$1]=$_s; QOK[$1]=1
+}
+
+# The email as written to and compared against the files: never a space.
+_q_email="${claude_email//[!A-Za-z0-9@._+-]/-}"
+[ -n "$_q_email" ] || _q_email="-"
+
+# Which file is this session's: its own label when that is one of the three,
+# else (the router's CLAUDE) the label whose file holds this session's email,
+# else none, so no file is ever named after an override value.
+_q_self=-1; _q_all=0
+for _i in 0 1 2; do [ "${QL[$_i]}" = "$ACCOUNT_NAME" ] && _q_self=$_i; done
+[ "$_sev5" -ge 1 ] && _q_all=1
+[ "$_q_self" -lt 0 ] && [ -n "$claude_email" ] && _q_all=1
+if [ "$_q_all" = 1 ]; then
+  for _i in 0 1 2; do quota_read "$_i"; done
+elif [ "$_q_self" -ge 0 ]; then
+  quota_read "$_q_self"
+fi
+if [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ]; then
+  for _i in 0 1 2; do
+    if [ "${QOK[$_i]}" = 1 ] && [ "${QE[$_i]}" = "$_q_email" ]; then _q_self=$_i; break; fi
+  done
+fi
+
+# Write only when a value changed or the stored time is a minute old, so a
+# render where nothing changed adds no fork. Own temp file plus mv.
+if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
+  _q_new="$_q_email $rl_5h $rl_5h_at $rl_7d $rl_7d_at"
+  _q_old="${QE[$_q_self]} ${QP5[$_q_self]} ${QA5[$_q_self]} ${QP7[$_q_self]} ${QA7[$_q_self]}"
+  if [ "${QOK[$_q_self]}" != 1 ] || [ "$_q_new" != "$_q_old" ] || [ $(( now - QS[_q_self] )) -ge 60 ]; then
+    _q_file="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$_q_self]}"
+    { printf '%s %s %s\n' "${QL[$_q_self]}" "$_q_new" "$now" > "$_q_file.$$"; } 2>/dev/null \
+      && mv -f "$_q_file.$$" "$_q_file" 2>/dev/null || rm -f "$_q_file.$$" 2>/dev/null
+  fi
+fi
+
+# The line itself: only when this session's 5h is warn or crit. This session's
+# own account is skipped (an unmatched CLAUDE session skips any file with its
+# email), and so is anything missing, corrupt, or older than five hours.
+other_info=""
+if [ "$_sev5" -ge 1 ]; then
+  for _i in 0 1 2; do
+    [ "${QOK[$_i]}" = 1 ] || continue
+    [ "$_i" = "$_q_self" ] && continue
+    [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ] && [ "${QE[$_i]}" = "$_q_email" ] && continue
+    [ "${QP5[$_i]}" -ge 0 ] || continue
+    _age=$(( now - QS[_i] )); [ "$_age" -lt 0 ] && _age=0
+    [ "$_age" -gt 18000 ] && continue
+    account_color _qc "${QL[$_i]}"
+    if [ "${QA5[$_i]}" -ge 0 ] && [ "${QA5[$_i]}" -le "$now" ]; then
+      _qv="${C_OK}reset${RESET}"
+    else
+      _qpc=$C_OK
+      if [ "${QP5[$_i]}" -ge 90 ]; then _qpc=$C_CRIT; elif [ "${QP5[$_i]}" -ge 70 ]; then _qpc=$C_WARN; fi
+      _qv="${_qpc}${QP5[$_i]}%${RESET}"
+    fi
+    if [ "$_age" -ge 3600 ]; then _qa="$(( _age / 3600 ))h ago"; else _qa="$(( _age / 60 ))m ago"; fi
+    other_info+="${other_info:+  }${BOLD}${_qc}${QL[$_i]}${RESET} ${_qv} ${C_MUTED}(${_qa})${RESET}"
+  done
+  if [ -n "$other_info" ]; then
+    icon _sw_ic "$C_MUTED" "$I_SWITCH"
+    other_info="${_sw_ic}${C_MUTED}other accounts:${RESET} ${other_info}"
+  fi
+fi
+
 rl_info=""
 if [ ${#rl_parts[@]} -gt 0 ]; then
   icon _ic "$C_QUOTA" "$I_QUOTA"
@@ -1373,5 +1470,8 @@ icon _cost_ic "$C_COST" "$I_COST"
 icon _time_ic "$C_TIMING" "$I_TIME"
 printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${_cost_ic}${cost_info}${SEP}${_time_ic}${C_TIMING}${time_fmt}${C_TIMING:+${RESET}}${lines_info}"
 
-# -- LINE 3: Dev servers running in the project, only when there are any --
+# -- LINE 3: other accounts' 5h usage, only when this session is near its limit --
+if [ -n "$other_info" ]; then printf '\n%s' "$other_info"; fi
+
+# -- LINE 3 or 4: Dev servers running in the project, only when there are any --
 if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi
