@@ -1271,6 +1271,39 @@ printf '0 0 0\nc %s 0\n' "$((now - 1800))" > "$DAY/s9"
 # 6 dollars in half an hour: about 12/h, over the 10/h warn line
 contains "over 10/h is yellow" "${YELLOW}∂ \$1" "$(rndraw s9 6 60000)"
 
+# Thinning: 30 cost increases in quick succession after a sample 50 minutes
+# old keep the file at 3 samples (the old start, one kept, one overwritten),
+# and $/h still runs from the old start: $5 over 3000s is $6.00/h. The script
+# reads the clock up to a few seconds after the seed, so 5.80 to 6.00 passes;
+# a rate from a recent sample would be hidden or far higher.
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 0 0\nc %s 0\n' "$((now - 3000))" > "$DAY/s12"
+i=1
+while [ "$i" -le 29 ]; do
+  rnd s12 "0.$((i / 10))$((i % 10))" 60000 >/dev/null
+  i=$((i + 1))
+done
+got=$(rnd s12 5 60000)
+equals "quick increases keep the samples bounded" "3" "$(grep -c '^c ' "$DAY/s12")"
+equals "thinning keeps the oldest sample" "c $((now - 3000)) 0" "$(sed -n 2p "$DAY/s12")"
+r=${got##*∂ \$}; r=${r%%/h*}; r=${r/./}
+if [[ "$r" =~ ^[0-9]+$ ]] && [ "$((10#$r))" -ge 580 ] && [ "$((10#$r))" -le 600 ]; then
+  ok "after thinning \$/h runs from the oldest sample"
+else
+  bad "after thinning \$/h runs from the oldest sample"
+  printf '        want about $6.00/h\n        got: %s\n' "$got"
+fi
+# A drop is never overwritten: it starts a new run
+newledger
+mkdir -p "$DAY"
+now=$(date +%s)
+printf '0 2000000 0\nc %s 1000000\nc %s 2000000\n' "$((now - 30))" "$((now - 20))" > "$DAY/s13"
+rnd s13 0.5 60000 >/dev/null
+rnd s13 0.75 60000 >/dev/null
+equals "a drop sample is kept as a run start" "c 500000" "$(sed -n 4p "$DAY/s13" | cut -d' ' -f1,3)"
+
 # A render where nothing changed leaves the file alone (same inode)
 newledger
 rnd s10 1 60000 >/dev/null

@@ -1212,7 +1212,20 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
       _lg_total=$cost_micros; _ledger_dirty=1
     fi
     if [ -n "$_ledger_dirty" ]; then
-      _lg_c+=("$now $cost_micros")
+      # Thinning, so a busy session's file (read on every render) stays near
+      # 60 samples an hour: the newest sample is overwritten instead of
+      # appended to while the one before it is under 120s old. Then any two
+      # samples one apart are at least 120s apart. Never when the cost dropped
+      # or the newest sample starts a run (it is below the one before), so the
+      # start of a measured span never moves.
+      _n=${#_lg_c[@]}
+      _thin=""
+      if [ "$_n" -ge 2 ]; then
+        _l=${_lg_c[_n - 1]}; _p=${_lg_c[_n - 2]}
+        [ "${_p% *}" -gt $(( now - 120 )) ] && [ "${_l#* }" -ge "${_p#* }" ] \
+          && [ "$cost_micros" -ge "${_l#* }" ] && _thin=1
+      fi
+      if [ -n "$_thin" ]; then _lg_c[_n - 1]="$now $cost_micros"; else _lg_c+=("$now $cost_micros"); fi
       _kept=(); _body="$_lg_base $_lg_total $_lg_banked"
       for _s in "${_lg_c[@]}"; do
         [ "${_s% *}" -lt $(( now - 3600 )) ] && continue
