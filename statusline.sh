@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Comprehensive developer statusline for Claude Code
-# Line 1: Account | Git user (Claude) | Model + flags + mode | Version | Session id + name | Dir | Git branch/sync/status | Worktree | PR | Dev servers
-# Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache expiry + hit rate | Cost | Duration | Lines
-#
+# Line 1: Account | Git user (Claude) | Model + flags, style, vim, agent, mode | Version | Session id + name | Dir | Git | Worktree | PR
+# Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache | Cost, today, $/h | Duration | Lines
+# Line 3: other accounts (only when this 5h is warn or crit). Dev servers come last: line 3, or line 4 after that one.
 # Setup: Copy to each account's config directory and set the account label:
 #   for a in personal work dev; do cp statusline.sh ~/.claude-$a/statusline.sh; done
 #   Labels: PERSONAL (sky)  WORK (yellow)  DEV (green)
@@ -83,7 +83,6 @@ GREEN=$C_OK
 YELLOW=$C_WARN
 RED=$C_CRIT
 CYAN=$C_VCS
-MAGENTA=$C_SESS
 DIM=$'\033[2m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
@@ -844,7 +843,8 @@ if [ -n "$_dev_list" ]; then
       _dev_txt+="${_dev_txt:+ }${_dl}"
     done
     [ ${#_dev_ports[@]} -gt 3 ] && _dev_txt+=" ${DIM}+$(( ${#_dev_ports[@]} - 3 ))${RESET}"
-    dev_info="${GREEN}▶${RESET} ${_dev_txt}"
+    icon _dev_ic "$GREEN" "$I_DEV"
+    dev_info="${_dev_ic}${_dev_txt}"
   fi
 fi
 
@@ -1028,7 +1028,8 @@ fmt_rl() {  # $1=outvar  $2=label  $3=percent  $4=resets_at epoch (-1 if absent)
     elif [ "$_delta" -lt 0 ]; then _pace=" ${C_OK}${G_DOWN}$(( -_delta ))%${RESET}"
     else                           _pace=" ${C_MUTED}${G_EVEN}0%${RESET}"
     fi
-    if [ "$_proj" -gt 100 ]; then
+    # At 100% or more the run-out is already now or past: no ETA to show.
+    if [ "$_proj" -gt 100 ] && [ "$3" -lt 100 ]; then
       fmt_clock _clk $(( now - _el + _el * 100 / $3 ))
       _eta=" ${_pc}${I_ETA}out ${_clk}${RESET}"
     fi
@@ -1087,7 +1088,7 @@ quota_int() {
 quota_read() {
   local _f="$STATE_DIR/claude-statusline-quota-${UID}-${QL[$1]}" _l="" _e="" _a="" _b="" _c="" _d="" _s="" _x=""
   QOK[$1]=0
-  [ -f "$_f" ] || return 0
+  [ -f "$_f" ] && [ -O "$_f" ] || return 0
   { IFS=' ' read -r _l _e _a _b _c _d _s _x; } 2>/dev/null < "$_f"
   [ "$_l" = "${QL[$1]}" ] && [ -z "$_x" ] || return 0
   case "$_e" in ''|*[!A-Za-z0-9@._+-]*) return 0 ;; esac
@@ -1130,7 +1131,8 @@ if [ "$_q_self" -ge 0 ] && { [ "$rl_5h" -ge 0 ] || [ "$rl_7d" -ge 0 ]; }; then
 fi
 
 # The line itself: only when this session's 5h is warn or crit. This session's
-# own account is skipped, as is any file holding this session's email, and so is anything missing, corrupt, or older than five hours.
+# own account is skipped, as is any file holding this session's email, and so
+# is anything missing, corrupt, or older than five hours.
 other_info=""
 if [ "$_sev5" -ge 1 ]; then
   for _i in 0 1 2; do
@@ -1292,7 +1294,9 @@ if [ -n "$sid" ] && [ -n "$today" ] && [ "$now" -gt 0 ]; then
     if [ -n "$_new_day" ]; then
       _old=()
       for _f in "$_ledger"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
-        [ -d "$_f" ] && [ "$_f" != "$_day" ] && _old+=("$_f")
+        # Strictly older than today only, compared as numbers (no locale collation).
+        _n="${_f##*/}"; _n="${_n//-/}"
+        [ -d "$_f" ] && [ "$(( 10#$_n ))" -lt "$(( 10#${today//-/} ))" ] && _old+=("$_f")
       done
       [ "${#_old[@]}" -gt 0 ] && rm -rf "${_old[@]}" 2>/dev/null
     fi
@@ -1455,8 +1459,8 @@ fi
 account_color _acct_col "$ACCOUNT_NAME"
 account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 
-# -- LINE 1: Account | Git user (Claude account) | Model + flags + mode | Version | Session id | Dir | Git | PR --
-# Dev servers get line 3: at the end of line 1 a narrow terminal cut them off.
+# -- LINE 1: Account | Git user (Claude account) | Model + flags, style, vim, agent, mode | Version | Session id + name | Dir | Git | Worktree | PR --
+# Dev servers get the last line: at the end of line 1 a narrow terminal cut them off.
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
 # Dividers come only from the segments that are present (git, worktree and PR

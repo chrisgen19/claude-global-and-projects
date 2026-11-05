@@ -703,6 +703,11 @@ contains "cache about to expire is yellow" "${DIM}cache${RST} ${YELLOW}" "$got"
 got=$(line2 "$FIX/plain" "\"prompt_cache\":{\"warm\":true,\"caching_observed\":true,\"ttl\":\"5m\",\"expires_at\":$((now - 10))}")
 contains "an expiry already passed reads cold" "cache cold" "$got"
 
+# At 100% or more there is no run-out ahead: an ETA would land in the past.
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"five_hour\":{\"used_percentage\":100,\"resets_at\":$((now + 14400))}}")
+contains "5h at 100% still shows the window" "5h 100%" "$got"
+excludes "5h at 100% shows no ETA" "out " "$got"
+
 # ---------------------------------------------------------------------------
 echo "-- spend limit --"
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":104,\"resets_at\":$((now + 1728000)),\"used_usd\":520.4,\"limit_usd\":500,\"period\":\"monthly\"}}")
@@ -717,6 +722,9 @@ contains "spend over the limit is red" "${RED}104%" "$got"
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600)),\"period\":\"weekly\"}}")
 contains "a weekly period grades pace" "spend 50% ⇡8%" "$got"
 contains "a weekly period shows its run-out" "out " "$got"
+got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":120,\"resets_at\":$((now + 345600)),\"period\":\"weekly\"}}")
+contains "a weekly spend at 120% still shows its percent" "spend 120%" "$got"
+excludes "a weekly spend at 120% shows no ETA" "out " "$got"
 # The dollar amounts arrive up to five minutes after the percentage.
 got=$(line2 "$FIX/plain" "\"rate_limits\":{\"spend_limit\":{\"used_percentage\":50,\"resets_at\":$((now + 345600))}}")
 contains "spend without dollars still shows its percent" "spend 50%" "$got"
@@ -1107,6 +1115,12 @@ else
   contains "each session sees its own project's server" "localhost:$P_OTHER" "$got"
   excludes "and not the servers of another project" "localhost:$P_ROOT" "$got"
 
+  # ascii: the dev line leads with > and the whole render stays 7-bit.
+  got=$(STATUSLINE_GLYPHS=ascii render "$FIX/devproj" "$dev_proj")
+  contains "ascii dev servers line leads with >" "> localhost:" "$(printf '%s' "$got" | strip_links)"
+  excludes "ascii dev servers line has no triangle" "▶" "$got"
+  equals "ascii dev servers render is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+
   # A home-directory session is not a project: everything under ~ would match.
   got=$(printf '%s' "$(jq -nc --arg d "$FIX/devproj" '{workspace:{current_dir:$d,project_dir:$d},model:{display_name:"M"}}')" \
     | HOME="$FIX/devproj" CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi)
@@ -1318,6 +1332,16 @@ mkdir -p "$L/claude-statusline-cost-${UID}/2000-01-01" "$L/claude-statusline-cos
 rnd s5 1 60000 >/dev/null
 equals "an old date folder is removed" "no" "$([ -e "$L/claude-statusline-cost-${UID}/2000-01-01" ] && echo yes || echo no)"
 equals "a non-date folder is left alone" "yes" "$([ -d "$L/claude-statusline-cost-${UID}/keep" ] && echo yes || echo no)"
+
+# Only folders older than today go: a newer one (another session whose clock or
+# TZ is ahead, or a render that read the clock before midnight) must survive.
+newledger
+LD="$L/claude-statusline-cost-${UID}"
+mkdir -p "$LD/2000-01-01" "$LD/2999-12-31"
+rnd s5b 1 60000 >/dev/null
+equals "today's folder is kept" "yes" "$([ -d "$DAY" ] && echo yes || echo no)"
+equals "a newer date folder is kept" "yes" "$([ -d "$LD/2999-12-31" ] && echo yes || echo no)"
+equals "an older date folder is still removed" "no" "$([ -e "$LD/2000-01-01" ] && echo yes || echo no)"
 
 # $/h: hidden until the samples cover 2 minutes
 newledger

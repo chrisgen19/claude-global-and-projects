@@ -272,22 +272,22 @@ Credits: layout ideas, icons and the palette come from [CCometixLine](https://gi
 ```bash
 # Personal account
 cp statusline.sh ~/.claude-personal/statusline.sh
-# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR=$'\033[36m' (cyan)
+# Edit ACCOUNT_NAME="PERSONAL" and ACCOUNT_COLOR=$'\033[38;2;137;220;235m' (Catppuccin sky)
 
 # Work account
 cp statusline.sh ~/.claude-work/statusline.sh
-# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR=$'\033[33m' (yellow)
+# Edit ACCOUNT_NAME="WORK" and ACCOUNT_COLOR=$'\033[38;2;249;226;175m' (Catppuccin yellow)
 
 # Dev account
 cp statusline.sh ~/.claude-dev/statusline.sh
-# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[32m' (green)
+# Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[38;2;166;227;161m' (Catppuccin green)
 ```
 
 The `$'...'` quoting is required, not a style choice. The script prints its
 lines with `printf '%s'`, so `ACCOUNT_COLOR` has to hold a real ESC byte
-already. A plain-single-quoted `'\033[36m'` is the eight characters backslash,
-zero, three, three, and so on, and the label renders as the visible text
-`\033[36mPERSONAL`.
+already. A plain-single-quoted `'\033[38;2;137;220;235m'` is literal characters
+(backslash, zero, three, three, and so on), and the label renders as the
+visible text `\033[38;2;137;220;235mPERSONAL`.
 
 Then enable it in each account's `settings.json`:
 ```json
