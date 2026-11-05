@@ -286,5 +286,10 @@
   },
   "env": {
     "PLAYWRIGHT_MCP_HEADLESS": "true"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pup:*)"
+    ]
   }
 }
