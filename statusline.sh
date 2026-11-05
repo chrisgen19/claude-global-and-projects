@@ -5,14 +5,14 @@
 #
 # Setup: Copy to each account's config directory and set the account label:
 #   for a in personal work dev; do cp statusline.sh ~/.claude-$a/statusline.sh; done
-#   Labels: PERSONAL (cyan)  WORK (yellow)  DEV (green)
+#   Labels: PERSONAL (sky)  WORK (yellow)  DEV (green)
 # Then edit the ACCOUNT_NAME and ACCOUNT_COLOR variables below per account.
 
 input=$(cat)
 
 # ── CONFIG (edit per account) ────────────────────────────────────────
 ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"
-ACCOUNT_COLOR=$'\033[36m'   # Cyan PERSONAL, $'\033[33m' Yellow WORK, $'\033[32m' Green DEV
+ACCOUNT_COLOR=$'\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161
 # ─────────────────────────────────────────────────────────────────────
 # Those two assignments must stay on lines 14 and 15: CI diffs each account
 # copy against this file with `sed '14,15d'` on both, so a header edit that
@@ -20,27 +20,131 @@ ACCOUNT_COLOR=$'\033[36m'   # Cyan PERSONAL, $'\033[33m' Yellow WORK, $'\033[32m
 
 # A caller (e.g. the ~/.claude router) can override the label when the session
 # is not running under one of the named account dirs, so the line never claims
-# to be an account it is not.
+# to be an account it is not. The colour is picked by account_color below.
+LABEL_OVERRIDDEN=""
 if [ -n "$ACCOUNT_LABEL_OVERRIDE" ]; then
   ACCOUNT_NAME="$ACCOUNT_LABEL_OVERRIDE"
-  ACCOUNT_COLOR=$'\033[37m'  # neutral white — not one of the account colours
+  LABEL_OVERRIDDEN=1
 fi
 
-# -- ANSI colors --
+# -- Palette and glyph tier (environment, set per machine) --
+# STATUSLINE_PALETTE=catppuccin|ansi, default catppuccin (24-bit). ansi keeps
+# the 8-colour codes for a terminal without true colour. There is no automatic
+# detection: whether Claude Code passes COLORTERM to this command is unverified
+# and a wrong guess would silently drop the palette. Unknown values fall back
+# to catppuccin, like an empty one.
+# STATUSLINE_GLYPHS=nerd|unicode|ascii, default nerd. Unknown falls back to nerd.
+case "$STATUSLINE_PALETTE" in
+  ansi) PALETTE=ansi ;;
+  *)    PALETTE=catppuccin ;;
+esac
+case "$STATUSLINE_GLYPHS" in
+  unicode) GLYPHS=unicode ;;
+  ascii)   GLYPHS=ascii ;;
+  *)       GLYPHS=nerd ;;
+esac
+
+# Per-session and per-account state files (quota, cost ledger) live here so a
+# test run can point them at a throwaway directory. Trailing slashes trimmed so
+# "$STATE_DIR/name" never doubles one.
+STATE_DIR="${CLAUDE_STATUSLINE_STATE_DIR:-/tmp}"
+while [ "${#STATE_DIR}" -gt 1 ] && [ "${STATE_DIR%/}" != "$STATE_DIR" ]; do STATE_DIR="${STATE_DIR%/}"; done
+
+# -- Colours --
 # ANSI-C quoting ($'...') puts the real ESC byte in the variable at assignment
 # time, so the final lines print with `printf '%s'`. With `%b` instead, printf
 # expands backslash escapes in *every* interpolated value, including the cwd,
 # the branch name and the git email: a directory named `bad\tdir` rendered a
 # literal tab, and a `\n` or `\e` in a path broke the layout or injected
 # arbitrary escape codes. Keep these as $'...' and never print them with %b.
-CYAN=$'\033[36m'
-GREEN=$'\033[32m'
-YELLOW=$'\033[33m'
-RED=$'\033[31m'
-MAGENTA=$'\033[35m'
+#
+# Catppuccin Mocha, from CCometixLine's catppuccin-mocha palette. Under ansi
+# the category colours that had no colour before stay empty (plain text), and
+# the ones that did keep today's code.
+if [ "$PALETTE" = "ansi" ]; then
+  C_OK=$'\033[32m';     C_WARN=$'\033[33m';  C_CRIT=$'\033[31m'
+  C_ACCENT=$'\033[36m'; C_MUTED=$'\033[2m';  C_SEP=$'\033[2m'
+  C_TEXT="";            C_IDENT="";          C_WORKSP=""
+  C_VCS=$'\033[36m';    C_CTX="";             C_QUOTA=""
+  C_COST=$'\033[33m';   C_CACHE="";           C_SESS=$'\033[35m'
+  C_TIMING=""
+else
+  C_OK=$'\033[38;2;166;227;161m';    C_WARN=$'\033[38;2;249;226;175m'
+  C_CRIT=$'\033[38;2;243;139;168m';  C_ACCENT=$'\033[38;2;137;180;250m'
+  C_MUTED=$'\033[38;2;108;112;134m'; C_SEP=$'\033[38;2;127;132;156m'
+  C_TEXT=$'\033[38;2;205;214;244m';  C_IDENT=$'\033[38;2;180;190;254m'
+  C_WORKSP=$'\033[38;2;148;226;213m'; C_VCS=$'\033[38;2;116;199;236m'
+  C_CTX=$'\033[38;2;203;166;247m';   C_QUOTA=$'\033[38;2;250;179;135m'
+  C_COST=$'\033[38;2;249;226;175m';  C_CACHE=$'\033[38;2;137;220;235m'
+  C_SESS=$'\033[38;2;245;194;231m';  C_TIMING=$'\033[38;2;242;205;205m'
+fi
+# The names the rest of the script already uses stay as aliases.
+GREEN=$C_OK
+YELLOW=$C_WARN
+RED=$C_CRIT
+CYAN=$C_VCS
+MAGENTA=$C_SESS
 DIM=$'\033[2m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
+
+# account_color <outvar> <LABEL>: the label colour under the active palette.
+# Under catppuccin the current account uses ACCOUNT_COLOR (line 15) and the
+# other named accounts their own colour, so a later "other accounts" line can
+# colour each one; anything else (the router's CLAUDE) is plain text. Under
+# ansi, line 15 is ignored and the 8-colour code comes from the label alone.
+account_color() {
+  local _c
+  if [ "$PALETTE" = "ansi" ]; then
+    case "$2" in
+      WORK) _c=$'\033[33m' ;; PERSONAL) _c=$'\033[36m' ;; DEV) _c=$'\033[32m' ;;
+      *)    _c=$'\033[37m' ;;
+    esac
+  elif [ -n "$LABEL_OVERRIDDEN" ] && [ "$2" = "$ACCOUNT_NAME" ]; then
+    _c=$C_TEXT
+  elif [ "$2" = "$ACCOUNT_NAME" ]; then
+    _c=$ACCOUNT_COLOR
+  else
+    case "$2" in
+      WORK) _c=$'\033[38;2;249;226;175m' ;; PERSONAL) _c=$'\033[38;2;137;220;235m' ;;
+      DEV)  _c=$'\033[38;2;166;227;161m' ;; *) _c=$C_TEXT ;;
+    esac
+  fi
+  printf -v "$1" '%s' "$_c"
+}
+
+# -- Icons and glyphs --
+# Each I_* ends in one space, or is empty under ascii, so a segment can write
+# "${I_GIT}${branch}" with no tier check. Nerd Font codepoints as CCometixLine
+# uses them (Nerd Fonts 3.x), written as byte escapes so the file stays 7-bit
+# and bash 3.2 (no \u escapes there) can still build them.
+case "$GLYPHS" in
+  nerd)
+    I_MODEL=$'\xee\xbc\xa3 ';    I_NAME=$'\xef\x80\xab ';     I_DIR=$'\xf3\xb0\x89\x8b '
+    I_GIT=$'\xf3\xb0\x8a\xa2 ';  I_WT=$'\xef\x86\xbb ';       I_PR=$'\xef\x90\x87 '
+    I_STYLE=$'\xf3\xb1\x8b\xb5 '; I_VIM=$'\xee\x98\xab ';     I_AGENT=$'\xef\x80\x87 '
+    I_COMPACT=$'\xef\x81\xa6 '; I_QUOTA=$'\xf3\xb0\x94\xa0 '; I_ETA=$'\xef\x89\x92 '
+    I_COST=$'\xee\xbb\x81 ';    I_TODAY=$'\xef\x81\xb3 ';     I_RATE=$'\xef\x83\xa4 '
+    I_CACHE=$'\xef\x87\x80 ';   I_TIME=$'\xf3\xb1\xa6\xbb ';  I_SWITCH=$'\xef\x83\xac '
+    I_DEV="▶ " ;;
+  unicode)
+    I_MODEL="◆ "; I_NAME="# "; I_DIR="▣ "; I_GIT="⎇ "; I_WT="⑂ "; I_PR="⇄ "
+    I_STYLE="◎ "; I_VIM="v "; I_AGENT="@ "; I_COMPACT="⇲ "; I_QUOTA="◷ "; I_ETA="⇥ "
+    I_COST="$ "; I_TODAY="∑ "; I_RATE="∂ "; I_CACHE="≈ "; I_TIME="◷ "; I_SWITCH="⇆ "
+    I_DEV="▶ " ;;
+  *)
+    I_MODEL=""; I_NAME=""; I_DIR=""; I_GIT=""; I_WT=""; I_PR=""
+    I_STYLE=""; I_VIM=""; I_AGENT=""; I_COMPACT=""; I_QUOTA=""; I_ETA=""
+    I_COST=""; I_TODAY=""; I_RATE=""; I_CACHE=""; I_TIME=""; I_SWITCH=""
+    I_DEV="> " ;;
+esac
+if [ "$GLYPHS" = "ascii" ]; then
+  G_FULL="="; G_EMPTY="-"; G_UP="^"; G_DOWN="v"; G_EVEN="+-"; G_DOT="-"; G_ELLIPSIS="..."
+  SEP="${C_SEP} | ${RESET}"
+else
+  G_FULL="▰"; G_EMPTY="▱"; G_UP="⇡"; G_DOWN="⇣"; G_EVEN="±"; G_DOT="·"; G_ELLIPSIS="…"
+  SEP="${C_SEP} │ ${RESET}"
+fi
 
 # -- Which config dir this session runs under, needed by the jq pass below --
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -758,14 +862,15 @@ if [ "$pct" -ge 85 ] && [ $((cu_input + cu_cache)) -gt 0 ]; then
   tok_info=" ${DIM}(in: ${_tin}, cache: ${_tca})${RESET}"
 fi
 
-BAR_WIDTH=15
+BAR_WIDTH=10
 filled=$((pct * BAR_WIDTH / 100))
 [ "$filled" -gt "$BAR_WIDTH" ] && filled=$BAR_WIDTH
 [ "$filled" -lt 0 ] && filled=0
 empty=$((BAR_WIDTH - filled))
 bar=""
-for ((i=0; i<filled; i++)); do bar+="█"; done
-for ((i=0; i<empty; i++)); do bar+="░"; done
+for ((i=0; i<filled; i++)); do bar+="$G_FULL"; done
+for ((i=0; i<empty; i++)); do bar+="$G_EMPTY"; done
+[ "$GLYPHS" = "ascii" ] && bar="[${bar}]"
 
 # -- Rate limits (Claude.ai Pro/Max only; absent windows are skipped) --
 # The countdown is time-based, so set "refreshInterval": 60 alongside statusLine
@@ -841,7 +946,7 @@ if [ "$sl_pct" -ge 0 ]; then
   rl_parts+=("$_rls")
 fi
 rl_info=""
-[ ${#rl_parts[@]} -gt 0 ] && rl_info=" | ${rl_parts[*]}"
+[ ${#rl_parts[@]} -gt 0 ] && rl_info="${SEP}${rl_parts[*]}"
 
 # -- Prompt cache: when it goes cold, and the session hit rate --
 # A clock time, not a countdown, as claude-hud's promptCacheLine does: the line
@@ -872,7 +977,7 @@ if [ "$cache_observed" = "true" ] && [ "$cache_hit" -ge 0 ]; then
   _hit="${DIM}hit${RESET} ${cache_hit}%"
   cache_info="${cache_info:+${cache_info} }${_hit}"
 fi
-[ -n "$cache_info" ] && cache_info=" | ${cache_info}"
+[ -n "$cache_info" ] && cache_info="${SEP}${cache_info}"
 
 # -- Format cost --
 cost_fmt=$(printf '$%.2f' "$cost")
@@ -894,7 +999,7 @@ fi
 # -- Lines changed --
 lines_info=""
 if [ "$lines_added" -gt 0 ] || [ "$lines_removed" -gt 0 ]; then
-  lines_info=" | ${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
+  lines_info="${SEP}${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
 fi
 
 # -- Version tag --
@@ -916,7 +1021,8 @@ fi
 # UTF-8 locale, so the cut does not split a multibyte character there.
 name_info=""
 if [ -n "$session_name" ]; then
-  [ ${#session_name} -gt 30 ] && session_name="${session_name:0:29}…"
+  # 30 characters in all: 29 plus a one-character ellipsis, 27 plus "...".
+  [ ${#session_name} -gt 30 ] && session_name="${session_name:0:$((30 - ${#G_ELLIPSIS}))}${G_ELLIPSIS}"
   name_info=" ${MAGENTA}${session_name}${RESET}"
 fi
 
@@ -940,16 +1046,17 @@ if [ -n "$claude_email" ]; then
 fi
 
 # -- Account label --
-account_label="${BOLD}${ACCOUNT_COLOR}${ACCOUNT_NAME}${RESET}"
+account_color _acct_col "$ACCOUNT_NAME"
+account_label="${BOLD}${_acct_col}${ACCOUNT_NAME}${RESET}"
 
 # -- LINE 1: Account | Git user (Claude account) | Model + flags + mode | Version | Session id | Dir | Git | PR --
 # Dev servers get line 3: at the end of line 1 a narrow terminal cut them off.
 # %s, never %b: the colours already hold real ESC bytes, and %b would expand
 # backslash escapes inside the cwd, branch name and email too (see ANSI colors).
-printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
+printf '%s\n' "${account_label}  ${gh_prefix}${claude_prefix}  ${C_IDENT}${I_MODEL}${RESET}${BOLD}[${model}]${RESET}${cw_label}${flags_info}${perm_info}${ver_info}${id_info}${name_info}  ${short_dir}${git_info}${wt_info}${pr_info}"
 
 # -- LINE 2: Context bar | Rate limits + pace | Prompt cache | Cost | Duration | Lines --
-printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info} | ${YELLOW}${cost_fmt}${RESET} | ${time_fmt}${lines_info}"
+printf '%s' "${bar_color}${bar}${RESET} ${pct}%${tok_info}${rl_info}${cache_info}${SEP}${YELLOW}${cost_fmt}${RESET}${SEP}${time_fmt}${lines_info}"
 
 # -- LINE 3: Dev servers running in the project, only when there are any --
 if [ -n "$dev_info" ]; then printf '\n%s' "$dev_info"; fi

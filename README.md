@@ -255,11 +255,11 @@ gen() {  # $1=account dir  $2=ACCOUNT_NAME line  $3=ACCOUNT_COLOR line
 }
 
 gen claude-personal 'ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[36m'   # Cyan PERSONAL, \$'\\033[33m' Yellow WORK, \$'\\033[32m' Green DEV"
+  "ACCOUNT_COLOR=\$'\\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161"
 gen claude-work 'ACCOUNT_NAME="WORK"         # or "PERSONAL" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[33m'   # Yellow WORK, \$'\\033[36m' Cyan PERSONAL, \$'\\033[32m' Green DEV"
+  "ACCOUNT_COLOR=\$'\\033[38;2;249;226;175m'   # Catppuccin: WORK 249;226;175, PERSONAL 137;220;235, DEV 166;227;161"
 gen claude-dev 'ACCOUNT_NAME="DEV"          # or "PERSONAL" / "WORK"' \
-  "ACCOUNT_COLOR=\$'\\033[32m'   # Green DEV, \$'\\033[36m' Cyan PERSONAL, \$'\\033[33m' Yellow WORK"
+  "ACCOUNT_COLOR=\$'\\033[38;2;166;227;161m'   # Catppuccin: DEV 166;227;161, PERSONAL 137;220;235, WORK 249;226;175"
 ```
 
 Run it from the repo root: it regenerates the tracked `claude-*/statusline.sh`
@@ -267,9 +267,9 @@ copies, which is what CI diff-checks and what `./install.sh` deploys. Writing
 straight into `~/.claude-*` instead would fix the live files while leaving the
 tracked ones behind, and `./install.sh --check` would then report drift.
 
-The `\$'\\033[36m'` escaping is what produces a literal `$'\033[36m'` in the
+The `\$'\\033[38;2;137;220;235m'` escaping is what produces a literal `$'\033[38;2;137;220;235m'` in the
 generated line, which is what the script needs. Regenerating with plain
-`'\033[36m'` renders the label as visible text instead of colouring it.
+`'\033[38;2;137;220;235m'` renders the label as visible text instead of colouring it.
 
 The `head -13` / `tail -n +16` split assumes the config block sits on lines 14-15. Keep it there when editing the template header, or every regenerated copy loses its label.
 

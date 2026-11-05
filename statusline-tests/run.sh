@@ -45,6 +45,11 @@ RUN_BASH="$BASH"
 # from a previous run looked up dead fixture pids.
 export CLAUDE_STATUSLINE_DEV_MAX_AGE=0
 
+# Existing colour assertions use the 8-colour codes; new sections set their own.
+export STATUSLINE_PALETTE=ansi STATUSLINE_GLYPHS=unicode
+STATE=$(mktemp -d) || exit 1
+export CLAUDE_STATUSLINE_STATE_DIR="$STATE"
+
 pass=0
 fail=0
 
@@ -75,7 +80,7 @@ cleanup() {
     wait "$p" 2>/dev/null
     rm -f /tmp/claude-statusline-devcwd-"${UID}"-"$p"
   done
-  rm -rf "$FIX" "$CONFIG_DIR"
+  rm -rf "$FIX" "$CONFIG_DIR" "$STATE"
   # The variables stay quoted and only the * are bare, so the pattern expands
   # without word-splitting the path. With no match bash passes the pattern
   # through literally and `rm -f` ignores it.
@@ -358,6 +363,24 @@ out=$(printf '%s' \
   "$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')" \
   | ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | strip_ansi | sed -n '1p')
 contains "ACCOUNT_LABEL_OVERRIDE wins over the built-in label" "CLAUDE" "$out"
+
+# The label colour follows the palette: 24-bit Catppuccin by default, the
+# 8-colour codes under ansi. Line 15 only decides the current account's colour
+# under catppuccin; the override label is neutral text in both palettes.
+for spec in "personal:PERSONAL:137;220;235:36" "work:WORK:249;226;175:33" "dev:DEV:166;227;161:32"; do
+  IFS=: read -r acct label rgb ansi <<EOF_SPEC
+$spec
+EOF_SPEC
+  copy="$REPO_ROOT/claude-$acct/statusline.sh"
+  payload=$(jq -nc --arg d "$FIX/plain" '{workspace:{current_dir:$d},model:{display_name:"M"},cost:{},context_window:{used_percentage:1}}')
+  out=$(printf '%s' "$payload" | STATUSLINE_PALETTE=catppuccin CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$copy" | sed -n '1p')
+  contains "claude-$acct label is 24-bit under catppuccin" "${ESC}[38;2;${rgb}m${label}" "$out"
+  out=$(printf '%s' "$payload" | STATUSLINE_PALETTE=ansi CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$copy" | sed -n '1p')
+  contains "claude-$acct label is 8-colour under ansi" "${ESC}[${ansi}m${label}" "$out"
+done
+out=$(printf '%s' "$payload" \
+  | STATUSLINE_PALETTE=catppuccin ACCOUNT_LABEL_OVERRIDE=CLAUDE CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | sed -n '1p')
+contains "override label is neutral text under catppuccin" "${ESC}[38;2;205;214;244mCLAUDE" "$out"
 
 # ---------------------------------------------------------------------------
 echo "-- the Claude account email --"
@@ -1010,6 +1033,20 @@ err=$(printf '%s' "$full" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT
 equals "no stderr: every new segment at once" "" "$err"
 equals "every new segment at once is still two lines" \
   "1" "$(printf '%s' "$full" | CLAUDE_CONFIG_DIR="$CONFIG_DIR" "$RUN_BASH" "$SCRIPT" | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------------------
+echo "-- palette and glyphs --"
+got=$(STATUSLINE_PALETTE= STATUSLINE_GLYPHS= raw "$FIX/plain")
+contains "default palette is catppuccin (ok green)" "${ESC}[38;2;166;227;161m" "$got"
+contains "default glyphs are nerd (model icon)" $'\xee\xbc\xa3' "$got"
+contains "unicode tier divider" " │ " "$(render "$FIX/plain" | sed -n 2p)"
+contains "unicode bar glyphs" "▰▰▰▰▱▱▱▱▱▱ 40%" "$(line2 "$FIX/plain")"
+got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain")
+contains "ascii bar" "[====------] 40%" "$got"
+excludes "ascii prints no box divider" "│" "$got"
+equals "ascii output is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+contains "unknown glyph tier falls back to nerd" $'\xee\xbc\xa3' "$(STATUSLINE_GLYPHS=bogus raw "$FIX/plain")"
+contains "ansi palette keeps 8-colour green" "${ESC}[32m" "$(raw "$FIX/plain")"
 
 echo
 echo "$pass passed, $fail failed"
