@@ -303,6 +303,29 @@ Then enable it in each account's `settings.json`:
 
 `refreshInterval` re-runs the script every 60 seconds so the rate limit countdowns stay honest while the session sits idle. Without it the status line only redraws when an assistant message arrives, and the countdown freezes. It runs locally and costs no tokens.
 
+#### Terminal setup
+
+Two terminal settings decide whether this looks right. Both live in the terminal's own config on each machine, not in this repo.
+
+- **A Nerd Font**, for the default icons. Without one every icon renders as `?` or a box. Either install one (FiraCode Nerd Font is what these machines use) or set `STATUSLINE_GLYPHS=unicode` in the `statusLine` command.
+- **App-set tab titles allowed.** Claude Code puts the session name in the tab title (`✳ <session name>`, a spinner while it works, renamed with `/rename`), which is why line 1 does not show it. The terminal has to let applications change the title.
+
+**Windows Terminal (WSL).** In Settings, open the Ubuntu profile (or edit `settings.json` under `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\`) and set:
+
+```json
+"font": { "face": "FiraCode Nerd Font" },
+"suppressApplicationTitle": false
+```
+
+The second line matters even though `settings.json` may not mention the setting at all: WSL installs a profile fragment (`%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\Microsoft.WSL\{<profile guid>}.json`) that sets `"suppressApplicationTitle": true`, so every tab just says `Ubuntu`. A value in `settings.json` overrides the fragment. Do not edit the fragment itself, as WSL rewrites it. The font family name is the one Windows lists (`FiraCode Nerd Font`), not the file name; a per-user font install works.
+
+**iTerm2 (macOS).** In Settings → Profiles:
+
+- **Text**: pick a Nerd Font as the font, or tick "Use a different font for non-ASCII text" and pick it there. To install one with Homebrew: `brew install --cask font-fira-code-nerd-font`.
+- **General → Title**: keep "Applications in terminal may change the title" ticked (the default).
+
+[iTerm2 tab status](#iterm2-tab-status) and the Windows Terminal hook only set tab colours and progress, never the title, so they do not compete with Claude Code's.
+
 #### Keeping the three copies in sync
 
 All three deployed scripts are identical except lines 14-15. Regenerate them from the root `statusline.sh` rather than hand-editing each, or they silently drift:
