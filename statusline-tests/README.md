@@ -37,6 +37,33 @@ Two things worth knowing before editing:
 `CLAUDE_CONFIG_DIR` is pointed at an empty directory so the `(account)` suffix
 does not vary with whatever is installed on the machine running the tests.
 
+The suite exports its own defaults for the whole run, so the developer's shell
+cannot change what is asserted:
+
+- `STATUSLINE_PALETTE=ansi` and `STATUSLINE_GLYPHS=unicode`: the older tests
+  assert on 8-colour codes and plain symbols. Sections that test the other
+  palette or tiers set them for that one render.
+- `CLAUDE_STATUSLINE_STATE_DIR` is a `mktemp -d` directory, removed on exit, so
+  cost files, quota files and context samples never touch the real `/tmp` ones.
+  Sections that need an empty or special state dir (`qdir`, `newledger`) point
+  it at their own and restore it afterwards.
+- `DISABLE_COMPACT`, `DISABLE_AUTO_COMPACT`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
+  and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are unset.
+
+The `-- performance --` section renders one warm payload (git cache hot, cost
+and quota unchanged) 20 times and asserts the fastest is under
+`STATUSLINE_PERF_BUDGET_MS` (default 15). The render uses `HOME` as the
+session directory, which skips the dev server scan: the suite runs that scan on
+every render (see below), which is a cold cost and not what the guard is for.
+It needs `EPOCHREALTIME` (bash 5) and prints `SKIP` under bash 3.2. The same
+section checks that an unchanged render rewrites neither the cost file nor the
+quota file. That compares inodes after every render with `ls -i`, not mtime
+(which can tie within a second) and not once at the end (a freed inode number
+is handed straight to the next temp file, so two rewrites can swap between two
+numbers and look unchanged). The budget is a wall-time guard measured on a
+shared runner: if CI is flaky on it, look at what the script forks before
+raising the number.
+
 The dev server tests start real listeners: `node` servers on OS-assigned (and
 two fixed, 20000-20999) ports, each in a fixture directory, plus one `perl`
 socket server to stand for a listener that is not a dev runtime. (A renamed
@@ -110,3 +137,12 @@ Node 24 build reports as its process name, which the first version matched on
 and missed. Not trimming a trailing slash from `project_dir` survives,
 and should: the resolved-path comparison strips it anyway, so the trim only
 saves a subshell.
+
+For the performance section: making the quota file rewrite on every render
+(`if true ||` in front of the changed-or-old test) is caught by the inode
+check and by the 15ms budget, and passes the single before/after comparison it
+replaced, which is why the check runs after every render. The sections for the
+palette, glyph tiers, line 1 extras, cost today, tokens to compact and other
+accounts were each written test first (red, then green); no per-mutation list
+was recorded for them, so rerun the mutation check above on any of them before
+trusting a change there.
