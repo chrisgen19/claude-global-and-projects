@@ -18,6 +18,13 @@
 # partially - which is how the default ~/.claude profile ended up untracked,
 # with an empty CLAUDE.md and one of eleven skills - so prefer this.
 #
+# A deploy sets a brand-new profile up completely: settings, status line,
+# skills, a CLAUDE.md symlinked to the one real file, and, when the profile has
+# no plugins at all, the marketplaces and the enabled plugin set. That last
+# step is the only one that touches the network; INSTALL_SKIP_PLUGINS=1 turns
+# it off. It never changes plugin versions in a profile that already has them:
+# that is claude-update-plugins' job.
+#
 # Requires bash 3.2 (macOS stock), jq and diff. macOS/Linux only: the Windows
 # profile in windows/ is copied by hand, see the README.
 set -uo pipefail
@@ -70,7 +77,9 @@ MODE="install"
 case "${1:-}" in
   --check) MODE="check" ;;
   --pull) MODE="pull" ;;
-  --help | -h) sed -n '2,22p' "$0" | sed 's/^#//;s/^ //'; exit 0 ;;
+  # Prints the header block, ending at the first line that is not a comment,
+  # so adding a paragraph up there never truncates the help again.
+  --help | -h) awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^#/, ""); sub(/^ /, ""); print }' "$0"; exit 0 ;;
   "") ;;
   *) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
 esac
@@ -142,6 +151,78 @@ uninstalled_plugins() { # live_dir
   jq -r --argjson inst "$installed" '
     [(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key
      | select(any($inst.plugins[.][]?; .scope == "user") | not)] | sort[]' "$1/settings.json"
+}
+
+# 0 when the profile has no user-scope plugin at all, i.e. it has never been
+# bootstrapped. A profile with some of them installed is left alone: those are
+# its own choices, and --check already lists whatever is still missing.
+profile_has_no_plugins() { # live_dir
+  local f="$1/plugins/installed_plugins.json"
+  [ -f "$f" ] || return 0
+  ! jq -e 'any(.plugins[]?[]?; .scope == "user")' "$f" > /dev/null 2>&1
+}
+
+# Every marketplace a profile needs, one per line. claude-plugins-official is
+# not in the tracked extraKnownMarketplaces (it is a built-in, registered in
+# plugins/known_marketplaces.json), yet nothing resolves a <name>@claude-plugins-official
+# plugin until it is added, which is the step most easily missed by hand.
+marketplace_repos() { # settings_file
+  jq -r '["anthropics/claude-plugins-official"]
+         + [(.extraKnownMarketplaces // {})[] | .source.repo // empty]
+         | unique[]' "$1"
+}
+
+# `claude plugin marketplace add` writes the marketplace into the live
+# settings.json. For claude-plugins-official that is a key the tracked file
+# does not carry, so leaving it behind would make every later --check report
+# drift on a profile this script had just set up correctly.
+strip_official_marketplace() { # live_settings
+  local tmp
+  [ -f "$1" ] || return 0
+  jq -e '.extraKnownMarketplaces["claude-plugins-official"]' "$1" > /dev/null 2>&1 || return 0
+  tmp="$1.marketplace.$$"
+  if jq 'del(.extraKnownMarketplaces["claude-plugins-official"])' "$1" > "$tmp"; then
+    mv "$tmp" "$1" || return 1
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+
+# Register the marketplaces, then install every enabled plugin. Output is
+# swallowed: the deploy prints one line per profile, and CI fails the step on
+# anything at all on stderr. A failure here is reported but never fatal, since
+# it is usually the network; --check lists exactly what is still missing.
+bootstrap_plugins() { # live_dir
+  local repo p failed="" count=0
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    CLAUDE_CONFIG_DIR="$1" claude plugin marketplace add "$repo" > /dev/null 2>&1 \
+      || failed="$failed $repo"
+  done <<< "$(marketplace_repos "$1/settings.json")"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if CLAUDE_CONFIG_DIR="$1" claude plugin install "$p" > /dev/null 2>&1; then
+      count=$((count + 1))
+    else
+      failed="$failed $p"
+    fi
+  done <<< "$(uninstalled_plugins "$1")"
+  strip_official_marketplace "$1/settings.json" \
+    || note "plugins  WARNING could not remove claude-plugins-official from settings.json"
+  if [ -n "$failed" ]; then
+    note "plugins  installed $count, failed:$failed"
+  else
+    note "plugins  installed $count, marketplaces registered"
+  fi
+}
+
+# 0 when this profile's CLAUDE.md should be a symlink to the one real file.
+claude_md_linked() { # live_dir
+  local want="${1##*/}" a
+  for a in $CLAUDE_MD_LINKED; do
+    [ "$a" = "$want" ] && return 0
+  done
+  return 1
 }
 
 # Project templates whose skills get copied into real projects, and where those
@@ -370,9 +451,24 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
     fi
 
     # --- CLAUDE.md ---
+    # One real file, every other profile a symlink to it, so an edit reaches
+    # all of them at once and a new profile needs no follow-up. A real copy
+    # found where a link belongs is backed up first: it may hold a live edit
+    # that was never copied back into the repo.
     if [ "$MODE" = "install" ]; then
-      cp CLAUDE.md "$live_dir/CLAUDE.md" || die "cannot write $live_dir/CLAUDE.md"
-      note "CLAUDE.md"
+      if claude_md_linked "$live_dir" && [ "$live_dir/CLAUDE.md" != "$CLAUDE_MD_REAL" ]; then
+        if [ ! -f "$CLAUDE_MD_REAL" ]; then
+          mkdir -p "${CLAUDE_MD_REAL%/*}" || die "cannot create ${CLAUDE_MD_REAL%/*}"
+          cp CLAUDE.md "$CLAUDE_MD_REAL" || die "cannot write $CLAUDE_MD_REAL"
+        fi
+        if [ ! -L "$live_dir/CLAUDE.md" ]; then backup "$live_dir/CLAUDE.md"; fi
+        ln -sfn "$CLAUDE_MD_REAL" "$live_dir/CLAUDE.md" \
+          || die "cannot link $live_dir/CLAUDE.md"
+        note "CLAUDE.md  -> ${CLAUDE_MD_REAL/#$HOME/$TILDE}"
+      else
+        cp CLAUDE.md "$live_dir/CLAUDE.md" || die "cannot write $live_dir/CLAUDE.md"
+        note "CLAUDE.md"
+      fi
     elif ! diff -q CLAUDE.md "$live_dir/CLAUDE.md" > /dev/null; then
       differ "CLAUDE.md"
     else
@@ -403,12 +499,36 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
       note "skills  ok"
     fi
 
-    # --- plugins: check only, a deploy does not install them ---
+    # --- plugins ---
+    # A deploy never touches plugin *versions*: those live in the profile, not
+    # here, and `claude-update-plugins` owns them. It does bootstrap a profile
+    # that has none, because registering the marketplaces and installing the
+    # enabled set by hand is the step most easily missed when adding an account.
     # Skipped without the claude CLI, which is also what keeps CI's scratch
-    # HOME (no plugins installed) checking clean.
-    if [ "$MODE" = "check" ]; then
+    # HOME (no plugins installed) from reaching the network or flagging every
+    # enabled plugin as missing.
+    if [ "$MODE" = "install" ]; then
       if ! command -v claude > /dev/null; then
         note "plugins  claude CLI not found, skipped"
+      elif [ ! -f "$live_dir/settings.json" ]; then
+        note "plugins  live settings.json missing, skipped"
+      elif [ "${INSTALL_SKIP_PLUGINS:-0}" = 1 ]; then
+        note "plugins  INSTALL_SKIP_PLUGINS=1, skipped"
+      elif ! profile_has_no_plugins "$live_dir"; then
+        note "plugins  already set up, versions left to claude-update-plugins"
+      else
+        note "plugins  none installed, bootstrapping (this hits the network)"
+        bootstrap_plugins "$live_dir"
+      fi
+    elif [ "$MODE" = "check" ]; then
+      if ! command -v claude > /dev/null; then
+        note "plugins  claude CLI not found, skipped"
+      elif [ "${INSTALL_SKIP_PLUGINS:-0}" = 1 ]; then
+        # The flag means "plugins are not this run's business", so it has to
+        # cover the check too: a deploy that skipped the bootstrap would
+        # otherwise be followed by a --check reporting every enabled plugin as
+        # missing, which is how CI would break the day a runner ships the CLI.
+        note "plugins  INSTALL_SKIP_PLUGINS=1, skipped"
       elif [ ! -f "$live_dir/settings.json" ]; then
         note "plugins  live settings.json missing, skipped"
       elif ! unplugged=$(uninstalled_plugins "$live_dir"); then
@@ -428,9 +548,11 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
 done <<< "$PROFILES"
 
 # --- CLAUDE.md links: check only, and never drift ---
-# Linking the other profiles' CLAUDE.md to one real file is optional (see the
-# README's Global config), so an own copy is listed rather than counted. -ef
-# compares the files the paths resolve to, so a relative link also reads as linked.
+# A deploy now creates these links, so an own copy here means the profile has
+# not been deployed since. It is still listed rather than counted as drift: the
+# content check above already flags a copy whose text differs from the repo,
+# and a deliberately unlinked profile is not broken, only unusual. -ef compares
+# the files the paths resolve to, so a relative link also reads as linked.
 if [ "$MODE" = "check" ]; then
   echo "CLAUDE.md links  (info only, not drift)"
   if [ ! -f "$CLAUDE_MD_REAL" ]; then
