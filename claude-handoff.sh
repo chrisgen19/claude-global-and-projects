@@ -10,7 +10,7 @@
 #                                                 copy the transcript so `claude-<account> --resume <id>` opens it
 #
 # <id> is a session id or any unique prefix of one (the status line shows the
-# first 8 characters as id:xxxxxxxx). ACCOUNT is dev, work, personal or default
+# first 8 characters as id:xxxxxxxx). ACCOUNT is dev, work, personal, yosh or default
 # (~/.claude). A copied session exists in two accounts: the newest copy is used
 # unless --from names the account to read.
 #
@@ -22,7 +22,7 @@
 # the target account's projects dir and never touches the original.
 set -uo pipefail
 
-ACCOUNTS="default dev work personal"
+ACCOUNTS="default dev work personal yosh"
 
 die() { printf 'claude-handoff: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -30,7 +30,7 @@ usage() { sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'; }
 account_dir() { # account -> config dir
   case "$1" in
     default) printf '%s\n' "$HOME/.claude" ;;
-    dev|work|personal) printf '%s\n' "$HOME/.claude-$1" ;;
+    dev|work|personal|yosh) printf '%s\n' "$HOME/.claude-$1" ;;
     *) return 1 ;;
   esac
 }
@@ -232,7 +232,7 @@ main() {
     brief) [ -n "$id" ] || die "brief needs a session id"; cmd_brief "$id" "$count" "$from" ;;
     copy)
       [ -n "$id" ] || die "copy needs a session id"
-      [ -n "$to" ] || die "copy needs --to dev|work|personal|default"
+      [ -n "$to" ] || die "copy needs --to dev|work|personal|yosh|default"
       cmd_copy "$id" "$to" "$force" "$from"
       ;;
     ''|-h|--help|help) usage ;;

@@ -5,7 +5,7 @@
 #
 # install.sh deploys it as ~/.local/bin/claude-update-plugins.
 #
-# Usage: claude-update-plugins                # claude-dev, claude-personal, claude-work
+# Usage: claude-update-plugins                # claude-dev, claude-personal, claude-work, claude-yosh
 #        claude-update-plugins claude-work    # only these profiles (dir names under $HOME)
 #
 # Project-scope installs are left alone: update those with /plugin inside the project.
@@ -19,7 +19,7 @@ set -uo pipefail
 if [[ $# -gt 0 ]]; then
   profiles="$*"
 else
-  profiles="claude-dev claude-personal claude-work"
+  profiles="claude-dev claude-personal claude-work claude-yosh"
 fi
 
 failed=""
