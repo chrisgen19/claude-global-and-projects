@@ -133,10 +133,16 @@ jobs:
       # enabled plugin as not installed in the empty HOME. config.toml is
       # restored by hand (README "Codex config") rather than deployed, so do
       # that first; the deploy then appends the hook trust tables to it.
+      #
+      # INSTALL_SKIP_PLUGINS keeps this hermetic rather than relying on the
+      # runner having no claude CLI: the plugin bootstrap would otherwise clone
+      # seven marketplaces and install the enabled set for all five profiles
+      # the moment a runner image starts shipping one.
       - name: install.sh deploys and checks clean with BSD tools
         run: |
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           export HOME="$RUNNER_TEMP/home"
+          export INSTALL_SKIP_PLUGINS=1
           mkdir -p "$HOME/.codex" "$HOME/.gemini/antigravity-cli"
           cp codex/config.toml "$HOME/.codex/config.toml"
           awk --version
