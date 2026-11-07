@@ -197,22 +197,35 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 
 **yosh sessions cannot be resumed.** With `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, Claude Code saves no transcript, says so at startup ("Transcript saving is off") and `--resume` / `--continue` find nothing. Finish a piece of work in the session that started it.
 
-These settings only stop new writes. They do not delete what an already-used profile holds: earlier prompts stay in `history.jsonl` (Claude Code prunes its entries only in HIPAA mode, not by `cleanupPeriodDays`), and earlier transcripts stay in `projects/`. Run this once after deploying, with every yosh session closed and from another account's terminal, since a session that started before the settings keeps writing:
+These settings only stop new writes. They do not delete what an already-used profile holds: earlier prompts stay in `history.jsonl` (Claude Code prunes its entries only in HIPAA mode, not by `cleanupPeriodDays`), and earlier transcripts stay in `projects/`. Run this once after deploying, from another account's terminal. Step 0 runs while yosh sessions are still open; close every yosh session before step 1, since a session that started before the settings keeps writing:
 
 ```bash
+# 0. While yosh sessions are still open: save their session ids. A session
+#    started with transcripts off leaves no .jsonl to read its id from; its
+#    only record is sessions/<pid>.json, which may not outlive the session.
+find ~/.claude-yosh/sessions -maxdepth 1 -name '*.json' -exec jq -r '.sessionId // empty' {} \; \
+  >> ~/yosh-session-ids.txt
+
+# Now close every yosh session.
+
 # 1. Each session's scratchpad and task output live under the shared temp dir,
-#    which claude purge does not touch. Remove yosh's by session id, read from
-#    the transcript names, so this must run before purge deletes them.
-find ~/.claude-yosh/projects -mindepth 2 -maxdepth 2 -name '*.jsonl' -exec basename {} .jsonl \; |
+#    which claude purge does not touch. Remove yosh's by session id: from the
+#    transcript names (so this must run before purge deletes them), the
+#    registration files, and the ids saved in step 0.
+{ find ~/.claude-yosh/projects -mindepth 2 -maxdepth 2 -name '*.jsonl' -exec basename {} .jsonl \;
+  find ~/.claude-yosh/sessions -maxdepth 1 -name '*.json' -exec jq -r '.sessionId // empty' {} \;
+  [ -f ~/yosh-session-ids.txt ] && cat ~/yosh-session-ids.txt; } |
+  grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' | sort -u |
   while read -r sid; do
     find "/tmp/claude-$(id -u)" -mindepth 2 -maxdepth 2 -type d -name "$sid" -exec rm -rf {} +
   done
+rm -f ~/yosh-session-ids.txt
 
 # 2. Transcripts, prompt history, file history and the project entries in .claude.json.
 CLAUDE_CONFIG_DIR=~/.claude-yosh claude purge --all --dry-run   # review the list, then rerun without --dry-run
 ```
 
-Step 1 uses `find` rather than globs on purpose: it works the same in zsh (where an unmatched glob is an error) and bash, never expands to `*`, and only removes a temp dir whose name is exactly a yosh session id, so the other accounts' sessions in the same temp dir are left alone. Two things `claude purge` leaves on purpose: `backups/` keeps up to 5 old `.claude.json` snapshots that may still hold project entries, and they rotate out on their own; `shell-snapshots/` holds the shell environment, not conversation. All of this deletes data on this computer only.
+Step 1 uses `find` rather than globs on purpose: it works the same in zsh (where an unmatched glob is an error) and bash, never expands to `*`, and only removes a temp dir whose name is exactly a yosh session id, so the other accounts' sessions in the same temp dir are left alone. The `grep` keeps only UUID-shaped ids, so an empty or malformed line can never become a `find -name` pattern. Two things `claude purge` leaves on purpose: `backups/` keeps up to 5 old `.claude.json` snapshots that may still hold project entries, and they rotate out on their own; `shell-snapshots/` holds the shell environment, not conversation. All of this deletes data on this computer only.
 
 > **Note:** `code-work` / `code-personal` / `code-dev` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
