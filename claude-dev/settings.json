@@ -349,5 +349,19 @@
   "tui": "fullscreen",
   "theme": "dark",
   "terminalProgressBarEnabled": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "deniedMcpServers": [
+    {
+      "serverName": "plugin:design:figma"
+    },
+    {
+      "serverName": "plugin:design:atlassian"
+    },
+    {
+      "serverName": "plugin:design:google calendar"
+    },
+    {
+      "serverName": "plugin:design:gmail"
+    }
+  ]
 }
