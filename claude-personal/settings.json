@@ -361,6 +361,9 @@
     },
     {
       "serverName": "plugin:design:gmail"
+    },
+    {
+      "serverName": "claude.ai Atlassian"
     }
   ]
 }
