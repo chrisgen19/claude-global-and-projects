@@ -1301,9 +1301,11 @@ Each project directory (`wp-projects/`, `nextjs-projects/`) has its own `CLAUDE.
 A project gets the template by copying it in, so its copy stops tracking this repo.
 `./install.sh --check` ends with a **project templates** section listing every copy of a
 template skill (`nextjs`, `wordpress`) it finds under `~/projects` and `~/Sites`
-(override with `PROJECT_DIRS="dir1 dir2"`), each as `current`, `behind` (a copy of an
-older template commit, with how many template changes since) or `differs` (edited in the
-project). It is information only and never counts as drift: a project adapts the template
+(override with `PROJECT_DIRS="dir1 dir2"`), each as `current`, `current + project override`
+(the current template with lines added in the project, such as a note that it uses
+`next-auth`, and nothing removed or changed), `behind` (a copy of an older template
+commit, with how many template changes since) or `differs` (edited in the project). It is
+information only and never counts as drift: a project adapts the template
 to its own stack, so read the template's changes before copying it over. For example, a
 project on `next-auth` should not take the Better Auth patterns.
 
