@@ -173,12 +173,35 @@ tree_blobs() { # commit dir
     | awk -F '\t' -v n=$((${#2} + 2)) '{ split($1, m, " "); print substr($2, n), m[3] }' | LC_ALL=C sort
 }
 
-# Where a project's copy of a template skill stands: current, a copy of an
-# older committed template (newest match wins), or edited in the project.
+# True when the project copy holds the same files as the template and every
+# difference is lines the project added (a project override), none removed or
+# changed. diff output is captured first: piping it into grep -q under
+# pipefail can fail on SIGPIPE and flip the result.
+only_added_lines() { # template skill dir, project copy
+  local files f out
+  files=$(cd "$1" && find . -type f ! -name .DS_Store | LC_ALL=C sort)
+  [ "$files" = "$(cd "$2" && find . -type f ! -name .DS_Store | LC_ALL=C sort)" ] || return 1
+  while IFS= read -r f; do
+    out=$(diff -- "$1/$f" "$2/$f")
+    # diff exits 0 (same) or 1 (different); 2 means it could not compare
+    # (unreadable or vanished file), which must never pass as an override.
+    [ $? -le 1 ] || return 1
+    # Only "NaM" add headers, "> " lines and the no-final-newline marker may
+    # remain; anything else is a removal, a change or a binary difference. The
+    # marker can only refer to the project file here: the template's last line
+    # would appear as a "<" line, which is already rejected.
+    [ -z "$(printf '%s\n' "$out" | grep -vE '^(>( .*)?|[0-9]+a[0-9]+(,[0-9]+)?|\\ No newline at end of file)$')" ] || return 1
+  done <<< "$files"
+}
+
+# Where a project's copy of a template skill stands: current, current with
+# lines added by the project, a copy of an older committed template (newest
+# match wins), or edited in the project.
 template_status() { # template skill dir, project copy
   local copy commit since
   copy=$(dir_blobs "$2")
   if [ "$copy" = "$(dir_blobs "$1")" ]; then echo "current"; return; fi
+  if only_added_lines "$1" "$2"; then echo "current + project override"; return; fi
   for commit in $(git rev-list HEAD -- "$1"); do
     if [ "$copy" = "$(tree_blobs "$commit" "$1")" ]; then
       since=$(git rev-list --count "$commit..HEAD" -- "$1")
