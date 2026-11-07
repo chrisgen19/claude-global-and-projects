@@ -347,6 +347,7 @@
     }
   },
   "tui": "fullscreen",
+  "theme": "dark",
   "terminalProgressBarEnabled": true,
   "agentPushNotifEnabled": true,
   "deniedMcpServers": [
