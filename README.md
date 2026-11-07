@@ -144,7 +144,7 @@ I use four separate Claude accounts (personal, work, dev, and yosh) with isolate
 function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
 function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
-function claude-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" claude "$@"; }
+function claude-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude "$@"; }
 
 # Opt out of the superpowers plugin's version ping (brainstorming visual companion logo)
 export SUPERPOWERS_DISABLE_TELEMETRY=1
@@ -153,7 +153,7 @@ export SUPERPOWERS_DISABLE_TELEMETRY=1
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
 function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
-function code-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" code "$@"; }
+function code-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 code "$@"; }
 ```
 
 Or append the file directly:
@@ -185,6 +185,17 @@ Each account has its own `CLAUDE.md` and `skills/` directory:
 - `~/.claude-yosh/CLAUDE.md` + `~/.claude-yosh/skills/*`
 
 The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy to edit. See [Global config](#global-config).
+
+**yosh keeps no conversation data.** It is a shared work account, so nothing from its sessions should persist beyond what Claude Code needs to run:
+
+| What | Where it is set |
+|------|-----------------|
+| Auto memory off (no reads or writes to the memory directory) | `autoMemoryEnabled: false` in `claude-yosh/settings.json`, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on `claude-yosh` / `code-yosh`, which wins over any settings file |
+| Background memory consolidation off | `autoDreamEnabled: false` |
+| Prompt history (`history.jsonl`, the Up arrow) not written | `env.CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1"` |
+| Session transcripts under `projects/` deleted after 1 day | `cleanupPeriodDays: 1` |
+
+Transcripts cannot be switched off for interactive sessions: `--no-session-persistence` only works with `--print`, and `cleanupPeriodDays` rejects 0, so 1 day is the minimum. `/resume` and `--continue` therefore only reach sessions from the last day on this account.
 
 > **Note:** `code-work` / `code-personal` / `code-dev` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
