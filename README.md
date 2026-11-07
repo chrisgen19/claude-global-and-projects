@@ -1012,10 +1012,30 @@ They are easy to run partially — which is exactly how the default `~/.claude` 
 ended up untracked, with an empty `CLAUDE.md` and one of the eleven skills.
 
 ```bash
-./install.sh            # deploy repo -> ~/.claude, ~/.claude-{dev,personal,work}, ~/.local/bin
+./install.sh            # deploy repo -> ~/.claude, ~/.claude-{dev,personal,work,yosh}, ~/.local/bin
 ./install.sh --check    # report where the live profiles differ; exit 1 on drift
 ./install.sh --pull     # copy live settings back into the repo (machine-local keys stripped)
+
+INSTALL_SKIP_PLUGINS=1 ./install.sh   # deploy without the plugin bootstrap (offline, or in a hurry)
 ```
+
+**A deploy sets a brand-new profile up completely**, which is the point of adding one
+being a single command: settings, status line, skills, a `CLAUDE.md` symlinked to the one
+real file, and, when the profile has no plugins at all, the marketplaces plus the whole
+`enabledPlugins` set. Adding an account is then `PROFILES` and `CLAUDE_MD_LINKED` in
+`install.sh`, a tracked `settings.json`, a generated `statusline.sh`, and a deploy.
+
+Two things about the plugin step. It is the only part that touches the network, and it is
+slow: roughly a minute per profile, and on a machine where no profile has plugins yet it
+runs for all of them, so use `INSTALL_SKIP_PLUGINS=1` when that is not what you want. And
+it only ever bootstraps: a profile that already has any user-scope plugin is left alone,
+because versions belong to the profile and are
+[`claude-update-plugins`](#plugin-updates-update-pluginssh)' job, not a deploy's. It
+registers `anthropics/claude-plugins-official` explicitly, since that marketplace is a
+built-in and is deliberately absent from the tracked `extraKnownMarketplaces`; `claude
+plugin marketplace add` writes it into the live `settings.json`, so the deploy removes it
+again afterwards, or every later `--check` would report drift on a profile it had just set
+up correctly.
 
 **Direction matters.** Deploying a stale repo silently reverts real live state — a plugin
 enabled since the last commit, an effort level raised in `/config`, a pinned model. Always
@@ -1033,7 +1053,9 @@ the agy plugin and status line. It also lists every plugin a profile's live
 `settings.json` enables that has no user-scope install: enabling a plugin there does not
 install it, so after a deploy that adds one, run
 `CLAUDE_CONFIG_DIR=~/.claude-<profile> claude plugin install <plugin>` for each one it
-lists. That part is skipped when the `claude` CLI is not on `PATH`. It also compares
+lists. A deploy installs these for a profile that has none at all, but not for one that is
+partly set up, so this is how a newly enabled plugin surfaces. That part is skipped when
+the `claude` CLI is not on `PATH`. It also compares
 `codex/config.toml` with `~/.codex/config.toml`, see [Codex config](#codex-config-codex). The herdr hook is herdr's own file and a herdr update
 rewrites it live: when `--check` flags it, copy the live file back into
 `claude/hooks/` instead of deploying over it. Settings are
@@ -1275,16 +1297,14 @@ cp claude-yosh/settings.json     ~/.claude-yosh/settings.json
 ```
 
 ### Global config
-The root `CLAUDE.md` contains shared preferences. Copy it to every account directory:
-```bash
-cp CLAUDE.md ~/.claude/CLAUDE.md
-cp CLAUDE.md ~/.claude-personal/CLAUDE.md
-cp CLAUDE.md ~/.claude-work/CLAUDE.md
-cp CLAUDE.md ~/.claude-dev/CLAUDE.md
-cp CLAUDE.md ~/.claude-yosh/CLAUDE.md
-```
+The root `CLAUDE.md` contains shared preferences. There is **one real file**,
+`~/.claude-personal/CLAUDE.md`, and every other profile holds a symlink to it, so an edit
+reaches every account at once. `./install.sh` sets this up: the profiles listed in
+`CLAUDE_MD_LINKED` get the link, and a real copy found where a link belongs is saved as
+`CLAUDE.md.bak-<timestamp>` first, since it may hold a live edit that was never copied
+back here.
 
-Or keep one live copy and symlink the rest to it, so an edit reaches every account at once. On WSL the real file is `~/.claude-personal/CLAUDE.md`:
+The manual equivalent:
 ```bash
 cp CLAUDE.md ~/.claude-personal/CLAUDE.md
 for a in .claude .claude-work .claude-dev .claude-yosh; do
@@ -1293,7 +1313,10 @@ done
 ls -l ~/.claude*/CLAUDE.md   # four should show -> ~/.claude-personal/CLAUDE.md
 ```
 
-`./install.sh --check` reports each of the four in a **CLAUDE.md links** section: `-> ~/.claude-personal/CLAUDE.md` when linked, `own copy, not linked`, `links elsewhere: <target>` or `missing`. It is information only and never counts as drift, since linking is optional. The content check above it still flags a `CLAUDE.md` that differs from the repo.
+To give one account its own `CLAUDE.md` instead, take it out of `CLAUDE_MD_LINKED`;
+otherwise the next deploy replaces the copy with a link again (after backing it up).
+
+`./install.sh --check` reports each of the four in a **CLAUDE.md links** section: `-> ~/.claude-personal/CLAUDE.md` when linked, `own copy, not linked`, `links elsewhere: <target>` or `missing`. It is information only and never counts as drift: a deploy creates these links, so an own copy means the profile has not been deployed since, and the content check above it already flags a copy whose text differs from the repo.
 
 `install.sh` and `--check` work with the symlinks: `cp` writes through a link to the real file. Edit the real file, not a link: `sed -i` (without `--follow-symlinks`) and editors that save by replacing the file turn a link back into a regular copy, and that account silently stops getting updates. Live edits to `CLAUDE.md` still have to be copied back into the repo by hand, since `--pull` only handles `settings.json`.
 
