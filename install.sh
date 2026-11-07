@@ -183,6 +183,9 @@ only_added_lines() { # template skill dir, project copy
   [ "$files" = "$(cd "$2" && find . -type f ! -name .DS_Store | LC_ALL=C sort)" ] || return 1
   while IFS= read -r f; do
     out=$(diff -- "$1/$f" "$2/$f")
+    # diff exits 0 (same) or 1 (different); 2 means it could not compare
+    # (unreadable or vanished file), which must never pass as an override.
+    [ $? -le 1 ] || return 1
     # Only "NaM" add headers, "> " lines and the no-final-newline marker may
     # remain; anything else is a removal, a change or a binary difference. The
     # marker can only refer to the project file here: the template's last line
