@@ -1,7 +1,8 @@
 {
   "env": {
     "SUPERPOWERS_DISABLE_TELEMETRY": "1",
-    "PLAYWRIGHT_MCP_HEADLESS": "true"
+    "PLAYWRIGHT_MCP_HEADLESS": "true",
+    "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1"
   },
   "attribution": {
     "commit": "",
@@ -366,5 +367,8 @@
     {
       "serverName": "claude.ai Atlassian"
     }
-  ]
+  ],
+  "autoMemoryEnabled": false,
+  "autoDreamEnabled": false,
+  "cleanupPeriodDays": 1
 }

@@ -5,7 +5,7 @@
 function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
 function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
-function claude-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" claude "$@"; }
+function claude-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude "$@"; }
 
 # Opt out of the superpowers plugin's version ping (brainstorming visual companion logo)
 export SUPERPOWERS_DISABLE_TELEMETRY=1
@@ -14,7 +14,7 @@ export SUPERPOWERS_DISABLE_TELEMETRY=1
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
 function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
-function code-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" code "$@"; }
+function code-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 code "$@"; }
 
 # Restore terminal modes after TUIs: claude, like codex and agy, can exit
 # without turning off kitty keyboard protocol and mouse tracking, which leaves
