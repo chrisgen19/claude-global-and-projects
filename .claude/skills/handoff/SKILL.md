@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Pick up a Claude Code session that ran in another account (dev, work, personal), for example after that account hit its usage limit, and continue what it left. Use when the user asks to continue, pick up or carry over another session or account's work, gives a session id like `fff7b432`, or types `/handoff`.
+description: Pick up a Claude Code session that ran in another account (dev, work, personal, yosh), for example after that account hit its usage limit, and continue what it left. Use when the user asks to continue, pick up or carry over another session or account's work, gives a session id like `fff7b432`, or types `/handoff`.
 ---
 
 You are continuing work another Claude Code session started, usually in a different account. Use the `claude-handoff` command (deployed to `~/.local/bin` by `install.sh`). If it is missing, tell the user to run `./install.sh` from the `claude-global-and-projects` repo, and stop.
@@ -29,7 +29,7 @@ You are continuing work another Claude Code session started, usually in a differ
 If the user needs the old session's whole context, not a summary, tell them to run:
 
 ```bash
-claude-handoff copy <id> --to <this account>   # dev, work, personal or default
+claude-handoff copy <id> --to <this account>   # dev, work, personal, yosh or default
 claude-<account> --resume <full id>            # from the session's directory
 claude --resume <full id>                      # instead, for the default account
 ```

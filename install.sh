@@ -29,12 +29,13 @@ cd "$REPO_ROOT" || exit 1
 PROFILES="claude:$HOME/.claude:statusline-command.sh:all
 claude-dev:$HOME/.claude-dev:statusline.sh:all
 claude-personal:$HOME/.claude-personal:statusline.sh:all
-claude-work:$HOME/.claude-work:statusline.sh:no-nextjs"
+claude-work:$HOME/.claude-work:statusline.sh:no-nextjs
+claude-yosh:$HOME/.claude-yosh:statusline.sh:all"
 
 # The one real CLAUDE.md, and the profiles whose CLAUDE.md can link to it
 # (README, Global config). Directory names under $HOME, space-separated.
 CLAUDE_MD_REAL="$HOME/.claude-personal/CLAUDE.md"
-CLAUDE_MD_LINKED=".claude .claude-work .claude-dev"
+CLAUDE_MD_LINKED=".claude .claude-work .claude-dev .claude-yosh"
 
 # repo file : live file. Shared by every profile. The tab-status scripts each exit
 # on the wrong terminal; the Prisma guard is inert without its local hosts file;

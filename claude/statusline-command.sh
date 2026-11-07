@@ -13,7 +13,7 @@ account="${config_dir##*/.claude-}"
 # nothing below — fall through to the unlabelled default rather than
 # mislabelling the session as another account.
 case "$account" in
-  personal|work|dev)
+  personal|work|dev|yosh)
     script="$HOME/.claude-$account/statusline.sh"
     [ -f "$script" ] && exec bash "$script"
     ;;

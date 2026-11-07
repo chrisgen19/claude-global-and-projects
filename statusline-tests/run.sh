@@ -367,10 +367,12 @@ equals "ordinary render is exactly two lines" \
 
 # ---------------------------------------------------------------------------
 echo "-- account copies --"
-# The three copies differ from the template only on lines 14 and 15, which CI
+# The copies differ from the template only on lines 14 and 15, which CI
 # diff-checks. That proves they are in sync, not that the config block in each
-# one is valid shell: a broken quote there would still pass the diff.
-for acct in personal work dev; do
+# one is valid shell: a broken quote there would still pass the diff, because
+# the diff deletes those two lines first. Every copy belongs in this loop, or
+# its config block is the one thing about it that nothing checks.
+for acct in personal work dev yosh; do
   copy="$REPO_ROOT/claude-$acct/statusline.sh"
   if [ ! -f "$copy" ]; then
     bad "claude-$acct/statusline.sh exists"
@@ -393,7 +395,8 @@ contains "ACCOUNT_LABEL_OVERRIDE wins over the built-in label" "CLAUDE" "$out"
 # The label colour follows the palette: 24-bit Catppuccin by default, the
 # 8-colour codes under ansi. Line 15 only decides the current account's colour
 # under catppuccin; the override label is neutral text in both palettes.
-for spec in "personal:PERSONAL:137;220;235:36" "work:WORK:249;226;175:33" "dev:DEV:166;227;161:32"; do
+for spec in "personal:PERSONAL:137;220;235:36" "work:WORK:249;226;175:33" "dev:DEV:166;227;161:32" \
+            "yosh:YOSH:203;166;247:35"; do
   IFS=: read -r acct label rgb ansi <<EOF_SPEC
 $spec
 EOF_SPEC
@@ -1521,6 +1524,13 @@ equals "calm session has no line 3" "2" "$(n_lines "$got")"
 got=$(STATUSLINE_GLYPHS=ascii render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
 contains "ascii other accounts line" "other accounts: WORK 12% (8m ago)  DEV 3% (2h ago)" "$got"
 equals "ascii other accounts line is 7-bit" "" "$(printf '%s' "$got" | LC_ALL=C tr -d '\000-\177')"
+
+# The fourth account reads from the same quota files as the other three, so a
+# label added to QL without widening the Q* arrays would silently drop it here.
+qdir
+qfile WORK w@x 12 $((now + 9000)) $((now - 510)); qfile YOSH y@x 7 $((now + 9000)) $((now - 510))
+got=$(render "$FIX/plain" "$(rl5 72 7500)" | sed -n 3p)
+contains "yosh is listed among the other accounts" "WORK 12% (8m ago)  YOSH 7% (8m ago)" "$got"
 
 # reset, stale, corrupt
 qdir

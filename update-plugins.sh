@@ -5,7 +5,7 @@
 #
 # install.sh deploys it as ~/.local/bin/claude-update-plugins.
 #
-# Usage: claude-update-plugins                # claude-dev, claude-personal, claude-work
+# Usage: claude-update-plugins                # claude-dev, claude-personal, claude-work, claude-yosh
 #        claude-update-plugins claude-work    # only these profiles (dir names under $HOME)
 #
 # Project-scope installs are left alone: update those with /plugin inside the project.
@@ -16,10 +16,16 @@
 # Requires claude, jq and bash 3.2+ (macOS stock bash is fine).
 set -uo pipefail
 
+# A profile named on the command line must exist: asking to update it and
+# silently doing nothing would be worse than an error. The default list is the
+# full set of accounts, and not every machine has all of them, so an absent one
+# there is skipped without failing the run.
 if [[ $# -gt 0 ]]; then
   profiles="$*"
+  named=1
 else
-  profiles="claude-dev claude-personal claude-work"
+  profiles="claude-dev claude-personal claude-work claude-yosh"
+  named=0
 fi
 
 failed=""
@@ -27,7 +33,7 @@ for profile in $profiles; do
   dir="$HOME/.$profile"
   if [[ ! -d $dir ]]; then
     echo "skip $profile: $dir does not exist" >&2
-    failed+=" $profile"
+    if [[ $named = 1 ]]; then failed+=" $profile"; fi
     continue
   fi
   echo "===== $profile"

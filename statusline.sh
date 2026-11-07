@@ -4,15 +4,15 @@
 # Line 2: Context bar + tokens at 85% | Rate limits + spend limit + pace | Prompt cache | Cost, today, $/h | Duration | Lines
 # Line 3: other accounts (only when this 5h is warn or crit). Dev servers come last: line 3, or line 4 after that one.
 # Setup: Copy to each account's config directory and set the account label:
-#   for a in personal work dev; do cp statusline.sh ~/.claude-$a/statusline.sh; done
-#   Labels: PERSONAL (sky)  WORK (yellow)  DEV (green)
+#   for a in personal work dev yosh; do cp statusline.sh ~/.claude-$a/statusline.sh; done
+#   Labels: PERSONAL (sky)  WORK (yellow)  DEV (green)  YOSH (mauve)
 # Then edit the ACCOUNT_NAME and ACCOUNT_COLOR variables below per account.
 
 input=$(cat)
 
 # ── CONFIG (edit per account) ────────────────────────────────────────
-ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"
-ACCOUNT_COLOR=$'\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161
+ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV" / "YOSH"
+ACCOUNT_COLOR=$'\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161, YOSH 203;166;247
 # ─────────────────────────────────────────────────────────────────────
 # Those two assignments must stay on lines 14 and 15: CI diffs each account
 # copy against this file with `sed '14,15d'` on both, so a header edit that
@@ -101,6 +101,7 @@ account_color() {
   if [ "$PALETTE" = "ansi" ]; then
     case "$2" in
       WORK) _c=$'\033[33m' ;; PERSONAL) _c=$'\033[36m' ;; DEV) _c=$'\033[32m' ;;
+      YOSH) _c=$'\033[35m' ;;
       *)    _c=$'\033[37m' ;;
     esac
   elif [ -n "$LABEL_OVERRIDDEN" ] && [ "$2" = "$ACCOUNT_NAME" ]; then
@@ -110,7 +111,8 @@ account_color() {
   else
     case "$2" in
       WORK) _c=$'\033[38;2;249;226;175m' ;; PERSONAL) _c=$'\033[38;2;137;220;235m' ;;
-      DEV)  _c=$'\033[38;2;166;227;161m' ;; *) _c=$C_TEXT ;;
+      DEV)  _c=$'\033[38;2;166;227;161m' ;; YOSH) _c=$'\033[38;2;203;166;247m' ;;
+      *) _c=$C_TEXT ;;
     esac
   fi
   printf -v "$1" '%s' "$_c"
@@ -1087,8 +1089,14 @@ fi
 # The files of the other accounts are untrusted input: every field is checked
 # as a plain integer (or token) before it reaches arithmetic or the screen,
 # and a bad file is skipped without a word.
-QL=(PERSONAL WORK DEV)
-QOK=(0 0 0); QE=("" "" ""); QP5=("" "" ""); QA5=("" "" ""); QP7=("" "" ""); QA7=("" "" ""); QS=("" "" "")
+# QL is the only list of accounts: the Q* arrays below are sized from it and
+# every loop walks "${!QL[@]}", so adding a label here is the whole change.
+# Hardcoded index lists are what dropped a fourth account from line 3 before.
+QL=(PERSONAL WORK DEV YOSH)
+QOK=(); QE=(); QP5=(); QA5=(); QP7=(); QA7=(); QS=()
+for _i in "${!QL[@]}"; do
+  QOK[$_i]=0; QE[$_i]=""; QP5[$_i]=""; QA5[$_i]=""; QP7[$_i]=""; QA7[$_i]=""; QS[$_i]=""
+done
 
 # quota_int <value>: -1, 0, or digits with no leading zero (so no octal trap).
 quota_int() {
@@ -1117,16 +1125,16 @@ _q_email="${claude_email//[!A-Za-z0-9@._+-]/-}"
 # else (the router's CLAUDE) the label whose file holds this session's email,
 # else none, so no file is ever named after an override value.
 _q_self=-1; _q_all=0
-for _i in 0 1 2; do [ "${QL[$_i]}" = "$ACCOUNT_NAME" ] && _q_self=$_i; done
+for _i in "${!QL[@]}"; do [ "${QL[$_i]}" = "$ACCOUNT_NAME" ] && _q_self=$_i; done
 [ "$_sev5" -ge 1 ] && _q_all=1
 [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ] && _q_all=1
 if [ "$_q_all" = 1 ]; then
-  for _i in 0 1 2; do quota_read "$_i"; done
+  for _i in "${!QL[@]}"; do quota_read "$_i"; done
 elif [ "$_q_self" -ge 0 ]; then
   quota_read "$_q_self"
 fi
 if [ "$_q_self" -lt 0 ] && [ -n "$claude_email" ]; then
-  for _i in 0 1 2; do
+  for _i in "${!QL[@]}"; do
     if [ "${QOK[$_i]}" = 1 ] && [ "${QE[$_i]}" = "$_q_email" ]; then _q_self=$_i; break; fi
   done
 fi
@@ -1161,7 +1169,7 @@ fi
 # is anything missing, corrupt, or older than five hours.
 other_info=""
 if [ "$_sev5" -ge 1 ]; then
-  for _i in 0 1 2; do
+  for _i in "${!QL[@]}"; do
     [ "${QOK[$_i]}" = 1 ] || continue
     [ "$_i" = "$_q_self" ] && continue
     # Same login as this session (whatever the label): the same quota, never offered.

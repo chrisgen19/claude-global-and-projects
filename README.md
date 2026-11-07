@@ -38,6 +38,9 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── claude-dev/                            # Deployed copy of ~/.claude-dev
 │   ├── statusline.sh                      #   DEV variant (green label)
 │   └── settings.json                      #   sanitized — see note below
+├── claude-yosh/                           # Deployed copy of ~/.claude-yosh
+│   ├── statusline.sh                      #   YOSH variant (mauve label)
+│   └── settings.json                      #   sanitized — see note below
 ├── codex/
 │   ├── config.toml                        # Codex CLI config + TUI status line
 │   ├── hooks.json                         # Codex tab-status and next-steps hooks (deployed by install.sh)
@@ -111,7 +114,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 - **`/mcp-builder`** — Guide to building MCP servers that expose an external API as well-designed tools, in Python (FastMCP) or Node/TypeScript (MCP SDK)
 
-> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
+> `nextjs-conventions` is installed on the default, personal, dev and yosh accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -134,13 +137,14 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 
 ### Multi-account setup
 
-I use three separate Claude accounts (personal, work, and dev) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
+I use four separate Claude accounts (personal, work, dev, and yosh) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
 
 ```bash
 # Claude CLI accounts
 function claude-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" claude "$@"; }
 function claude-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }
 function claude-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" claude "$@"; }
+function claude-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" claude "$@"; }
 
 # Opt out of the superpowers plugin's version ping (brainstorming visual companion logo)
 export SUPERPOWERS_DISABLE_TELEMETRY=1
@@ -149,6 +153,7 @@ export SUPERPOWERS_DISABLE_TELEMETRY=1
 function code-personal { CLAUDE_CONFIG_DIR="$HOME/.claude-personal" code "$@"; }
 function code-work { CLAUDE_CONFIG_DIR="$HOME/.claude-work" code "$@"; }
 function code-dev { CLAUDE_CONFIG_DIR="$HOME/.claude-dev" code "$@"; }
+function code-yosh { CLAUDE_CONFIG_DIR="$HOME/.claude-yosh" code "$@"; }
 ```
 
 Or append the file directly:
@@ -167,14 +172,17 @@ The file also adds the `_reset_tui_modes` precmd hook described under [Always us
 | `claude-work` | Opens Claude CLI with `~/.claude-work/` config |
 | `claude-personal` | Opens Claude CLI with `~/.claude-personal/` config |
 | `claude-dev` | Opens Claude CLI with `~/.claude-dev/` config |
+| `claude-yosh` | Opens Claude CLI with `~/.claude-yosh/` config |
 | `code-work .` | Opens VS Code with work Claude account |
 | `code-personal .` | Opens VS Code with personal Claude account |
 | `code-dev .` | Opens VS Code with dev Claude account |
+| `code-yosh .` | Opens VS Code with yosh Claude account |
 
 Each account has its own `CLAUDE.md` and `skills/` directory:
 - `~/.claude-work/CLAUDE.md` + `~/.claude-work/skills/*`
 - `~/.claude-personal/CLAUDE.md` + `~/.claude-personal/skills/*`
 - `~/.claude-dev/CLAUDE.md` + `~/.claude-dev/skills/*`
+- `~/.claude-yosh/CLAUDE.md` + `~/.claude-yosh/skills/*`
 
 The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy to edit. See [Global config](#global-config).
 
@@ -205,7 +213,7 @@ Each group has an icon, and the folder, git, worktree and PR groups are separate
 
 **Pace and run-out time.** Pace is how far the window's used percentage is ahead of or behind the clock: `⇡34%` means 34 points more used than time elapsed, `⇣6%` means 6 points behind, `±0%` is on pace. When the current average rate would hit 100% before the window resets, `⇥ out 14:20` shows the local clock time it runs out (with the weekday, `out Thu 14:20`, when that is more than 24h away). It is coloured by the same severity as the segment: red above 100% projected or from 90% used, yellow from 70% used or 90% projected. Together they are the cue to switch accounts. Pace and the run-out time stay silent below 10% used, where a projection is noise, and the run-out time is hidden when the projection stays at or below 100%. The weekly and daily spend limits get the same treatment; a monthly one does not. The prompt cache shows the clock time it goes cold rather than a countdown, because the line is not redrawn between turns, exactly when the cache drains.
 
-**Cost and today.** `$ $9.84` is this session's `cost.total_cost_usd`. `today` and `$/h` are hidden by default, since on a subscription they are not a bill and the 5h/7d pace already shows the burn; set `CLAUDE_STATUSLINE_SHOW_TODAY=1` to show them (`$ $9.84 · ∑ today $46.10 · ∂ $7.90/h`). The ledger below runs either way, because the compact `~N turns` estimate reads it. `∑ today $46.10` adds up every session's spend since local midnight, across all three accounts. On a Pro or Max subscription these figures are API-equivalent cost, what the same tokens would cost at API prices, not a bill. A session that started before midnight counts only what it spent since. After a cost drop (for example `/clear`) the spend so far is banked and counting restarts from zero, so `today` never goes down. `∂ $7.90/h` is the spend rate over the last hour of samples, shown once those cover at least 2 minutes, muted and turning yellow above $10/h. Each session keeps its own small state file (one per session, so concurrent sessions never overwrite each other), and cost samples are thinned to at most one every 2 minutes per session so the render time stays bounded. The state for earlier days is deleted on the first render of a new day. After midnight $/h starts low again, because only today's sessions count.
+**Cost and today.** `$ $9.84` is this session's `cost.total_cost_usd`. `today` and `$/h` are hidden by default, since on a subscription they are not a bill and the 5h/7d pace already shows the burn; set `CLAUDE_STATUSLINE_SHOW_TODAY=1` to show them (`$ $9.84 · ∑ today $46.10 · ∂ $7.90/h`). The ledger below runs either way, because the compact `~N turns` estimate reads it. `∑ today $46.10` adds up every session's spend since local midnight, across all four accounts. On a Pro or Max subscription these figures are API-equivalent cost, what the same tokens would cost at API prices, not a bill. A session that started before midnight counts only what it spent since. After a cost drop (for example `/clear`) the spend so far is banked and counting restarts from zero, so `today` never goes down. `∂ $7.90/h` is the spend rate over the last hour of samples, shown once those cover at least 2 minutes, muted and turning yellow above $10/h. Each session keeps its own small state file (one per session, so concurrent sessions never overwrite each other), and cost samples are thinned to at most one every 2 minutes per session so the render time stays bounded. The state for earlier days is deleted on the first render of a new day. After midnight $/h starts low again, because only today's sessions count.
 
 **Tokens to auto-compact.** From 85% context the line shows `⇲ 26k to compact`, yellow at 20k or less and `compact due` in red at 0, plus `~3 turns` (the left tokens divided by the average growth per turn over recent turns since the context last shrank, needing at least 3 samples). The compact point is the context window minus 20k (output reserve) minus 13k (buffer): 167k on a 200k window and 967k on 1M. It follows [CCometixLine](https://github.com/Haleclipse/CCometixLine)'s reading of Claude Code and **has not been checked against a real auto-compact**: treat the number as an estimate until that is done. The point moves with:
 
@@ -283,6 +291,10 @@ cp statusline.sh ~/.claude-work/statusline.sh
 # Dev account
 cp statusline.sh ~/.claude-dev/statusline.sh
 # Edit ACCOUNT_NAME="DEV" and ACCOUNT_COLOR=$'\033[38;2;166;227;161m' (Catppuccin green)
+
+# Yosh account
+cp statusline.sh ~/.claude-yosh/statusline.sh
+# Edit ACCOUNT_NAME="YOSH" and ACCOUNT_COLOR=$'\033[38;2;203;166;247m' (Catppuccin mauve)
 ```
 
 The `$'...'` quoting is required, not a style choice. The script prints its
@@ -327,21 +339,26 @@ The second line matters even though `settings.json` may not mention the setting 
 
 [iTerm2 tab status](#iterm2-tab-status) and the Windows Terminal hook only set tab colours and progress, never the title, so they do not compete with Claude Code's.
 
-#### Keeping the three copies in sync
+#### Keeping the four copies in sync
 
-All three deployed scripts are identical except lines 14-15. Regenerate them from the root `statusline.sh` rather than hand-editing each, or they silently drift:
+All four deployed scripts are identical except lines 14-15. Regenerate them from the root `statusline.sh` rather than hand-editing each, or they silently drift:
 
 ```bash
 gen() {  # $1=account dir  $2=ACCOUNT_NAME line  $3=ACCOUNT_COLOR line
   { head -13 statusline.sh; printf '%s\n%s\n' "$2" "$3"; tail -n +16 statusline.sh; } > "$1/statusline.sh"
 }
 
-gen claude-personal 'ACCOUNT_NAME="PERSONAL"     # or "WORK" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[38;2;137;220;235m'   # Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161"
-gen claude-work 'ACCOUNT_NAME="WORK"         # or "PERSONAL" / "DEV"' \
-  "ACCOUNT_COLOR=\$'\\033[38;2;249;226;175m'   # Catppuccin: WORK 249;226;175, PERSONAL 137;220;235, DEV 166;227;161"
-gen claude-dev 'ACCOUNT_NAME="DEV"          # or "PERSONAL" / "WORK"' \
-  "ACCOUNT_COLOR=\$'\\033[38;2;166;227;161m'   # Catppuccin: DEV 166;227;161, PERSONAL 137;220;235, WORK 249;226;175"
+CC='# Catppuccin: PERSONAL 137;220;235, WORK 249;226;175, DEV 166;227;161, YOSH 203;166;247'
+AN='# or "PERSONAL" / "WORK" / "DEV" / "YOSH"'
+
+gen claude-personal "ACCOUNT_NAME=\"PERSONAL\"     $AN" \
+  "ACCOUNT_COLOR=\$'\\033[38;2;137;220;235m'   $CC"
+gen claude-work "ACCOUNT_NAME=\"WORK\"         $AN" \
+  "ACCOUNT_COLOR=\$'\\033[38;2;249;226;175m'   $CC"
+gen claude-dev "ACCOUNT_NAME=\"DEV\"          $AN" \
+  "ACCOUNT_COLOR=\$'\\033[38;2;166;227;161m'   $CC"
+gen claude-yosh "ACCOUNT_NAME=\"YOSH\"         $AN" \
+  "ACCOUNT_COLOR=\$'\\033[38;2;203;166;247m'   $CC"
 ```
 
 Run it from the repo root: it regenerates the tracked `claude-*/statusline.sh`
@@ -357,7 +374,7 @@ The `head -13` / `tail -n +16` split assumes the config block sits on lines 14-1
 
 Verify only the config block differs:
 ```bash
-for a in personal work dev; do
+for a in personal work dev yosh; do
   diff <(sed '14,15d' statusline.sh) <(sed '14,15d' ~/.claude-$a/statusline.sh) \
     && echo "$a: in sync"
 done
@@ -416,7 +433,7 @@ Then wire it into each account's `settings.json` (already present in the tracked
 
 > Because `CLAUDE_CONFIG_DIR` replaces the config home outright, the accounts share
 > nothing — hooks added to one do **not** apply to the others. Every account needs its
-> own entry, which is why all three tracked `settings.json` files carry the block.
+> own entry, which is why all four tracked `settings.json` files carry the block.
 
 #### How it works
 
@@ -1040,7 +1057,7 @@ updates every user-scope plugin, in each profile. `install.sh` deploys it to
 `~/.local/bin/claude-update-plugins`:
 
 ```bash
-claude-update-plugins                # claude-dev, claude-personal, claude-work
+claude-update-plugins                # claude-dev, claude-personal, claude-work, claude-yosh
 claude-update-plugins claude-work    # only these profiles
 ```
 
@@ -1236,11 +1253,11 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 ### Account settings
 
-`claude/settings.json`, `claude-personal/settings.json`, `claude-work/settings.json`, and `claude-dev/settings.json` are copies of the live files from each account directory.
+`claude/settings.json`, `claude-personal/settings.json`, `claude-work/settings.json`, `claude-dev/settings.json`, and `claude-yosh/settings.json` are copies of the live files from each account directory.
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no fourth copy of the 951-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no extra copy of the template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
@@ -1254,6 +1271,7 @@ cp claude/settings.json          ~/.claude/settings.json
 cp claude-personal/settings.json ~/.claude-personal/settings.json
 cp claude-work/settings.json     ~/.claude-work/settings.json
 cp claude-dev/settings.json      ~/.claude-dev/settings.json
+cp claude-yosh/settings.json     ~/.claude-yosh/settings.json
 ```
 
 ### Global config
@@ -1263,18 +1281,19 @@ cp CLAUDE.md ~/.claude/CLAUDE.md
 cp CLAUDE.md ~/.claude-personal/CLAUDE.md
 cp CLAUDE.md ~/.claude-work/CLAUDE.md
 cp CLAUDE.md ~/.claude-dev/CLAUDE.md
+cp CLAUDE.md ~/.claude-yosh/CLAUDE.md
 ```
 
 Or keep one live copy and symlink the rest to it, so an edit reaches every account at once. On WSL the real file is `~/.claude-personal/CLAUDE.md`:
 ```bash
 cp CLAUDE.md ~/.claude-personal/CLAUDE.md
-for a in .claude .claude-work .claude-dev; do
+for a in .claude .claude-work .claude-dev .claude-yosh; do
   ln -sfn ~/.claude-personal/CLAUDE.md ~/$a/CLAUDE.md
 done
-ls -l ~/.claude*/CLAUDE.md   # three should show -> ~/.claude-personal/CLAUDE.md
+ls -l ~/.claude*/CLAUDE.md   # four should show -> ~/.claude-personal/CLAUDE.md
 ```
 
-`./install.sh --check` reports each of the three in a **CLAUDE.md links** section: `-> ~/.claude-personal/CLAUDE.md` when linked, `own copy, not linked`, `links elsewhere: <target>` or `missing`. It is information only and never counts as drift, since linking is optional. The content check above it still flags a `CLAUDE.md` that differs from the repo.
+`./install.sh --check` reports each of the four in a **CLAUDE.md links** section: `-> ~/.claude-personal/CLAUDE.md` when linked, `own copy, not linked`, `links elsewhere: <target>` or `missing`. It is information only and never counts as drift, since linking is optional. The content check above it still flags a `CLAUDE.md` that differs from the repo.
 
 `install.sh` and `--check` work with the symlinks: `cp` writes through a link to the real file. Edit the real file, not a link: `sed -i` (without `--follow-symlinks`) and editors that save by replacing the file turn a link back into a regular copy, and that account silently stops getting updates. Live edits to `CLAUDE.md` still have to be copied back into the repo by hand, since `--pull` only handles `settings.json`.
 
@@ -1284,6 +1303,7 @@ Copy skills to every account directory:
 cp -r .claude/skills/* ~/.claude/skills/
 cp -r .claude/skills/* ~/.claude-personal/skills/
 cp -r .claude/skills/* ~/.claude-dev/skills/
+cp -r .claude/skills/* ~/.claude-yosh/skills/
 
 # Work gets everything except nextjs-conventions, which is personal-stack only
 for s in .claude/skills/*/; do

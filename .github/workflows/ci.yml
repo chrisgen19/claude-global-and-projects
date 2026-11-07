@@ -83,13 +83,13 @@ jobs:
           fi
           echo "ok    every ACCOUNT_COLOR literal is ANSI-C quoted"
 
-      # The three account status lines are generated from statusline.sh and
-      # differ only in the config block on lines 14-15. Hand-editing one copy
-      # is the documented way they drift apart, so diff them ignoring it.
+      # The account status lines are generated from statusline.sh and differ
+      # only in the config block on lines 14-15. Hand-editing one copy is the
+      # documented way they drift apart, so diff them ignoring it.
       - name: account status lines match the template
         run: |
           fail=0
-          for a in claude-personal claude-work claude-dev; do
+          for a in claude-personal claude-work claude-dev claude-yosh; do
             if diff <(sed '14,15d' statusline.sh) <(sed '14,15d' "$a/statusline.sh") > /dev/null; then
               echo "ok    $a/statusline.sh"
             else
