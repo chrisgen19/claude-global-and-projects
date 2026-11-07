@@ -183,9 +183,11 @@ only_added_lines() { # template skill dir, project copy
   [ "$files" = "$(cd "$2" && find . -type f ! -name .DS_Store | LC_ALL=C sort)" ] || return 1
   while IFS= read -r f; do
     out=$(diff -- "$1/$f" "$2/$f")
-    # Only "NaM" add headers and "> " lines may remain; anything else is a
-    # removal, a change or a binary difference.
-    [ -z "$(printf '%s\n' "$out" | grep -vE '^(>( .*)?|[0-9]+a[0-9]+(,[0-9]+)?)$')" ] || return 1
+    # Only "NaM" add headers, "> " lines and the no-final-newline marker may
+    # remain; anything else is a removal, a change or a binary difference. The
+    # marker can only refer to the project file here: the template's last line
+    # would appear as a "<" line, which is already rejected.
+    [ -z "$(printf '%s\n' "$out" | grep -vE '^(>( .*)?|[0-9]+a[0-9]+(,[0-9]+)?|\\ No newline at end of file)$')" ] || return 1
   done <<< "$files"
 }
 
