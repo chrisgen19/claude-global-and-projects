@@ -186,7 +186,7 @@ Each account has its own `CLAUDE.md` and `skills/` directory:
 
 The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy to edit. See [Global config](#global-config).
 
-**yosh keeps no conversation data.** It is a shared work account, so nothing from its sessions should persist beyond what Claude Code needs to run:
+**yosh keeps as little conversation data as Claude Code allows.** It is a shared work account, so from these settings on, nothing from its sessions should persist beyond what Claude Code needs to run:
 
 | What | Where it is set |
 |------|-----------------|
@@ -196,6 +196,15 @@ The `CLAUDE.md` paths can be symlinks to a single file so there is only one copy
 | Session transcripts under `projects/` deleted after 1 day | `cleanupPeriodDays: 1` |
 
 Transcripts cannot be switched off for interactive sessions: `--no-session-persistence` only works with `--print`, and `cleanupPeriodDays` rejects 0, so 1 day is the minimum. `/resume` and `--continue` therefore only reach sessions from the last day on this account.
+
+These settings only stop new writes. They do not delete what an already-used profile holds: earlier prompts stay in `history.jsonl` (Claude Code prunes its entries only in HIPAA mode, not by `cleanupPeriodDays`), and transcripts stay until the next cleanup. Run this once after deploying, with every yosh session closed and from another account's terminal, since a running session keeps writing its own history:
+
+```bash
+rm -f ~/.claude-yosh/history.jsonl
+CLAUDE_CONFIG_DIR=~/.claude-yosh claude purge --all --dry-run   # review the list, then rerun without --dry-run
+```
+
+`claude purge` deletes transcripts, tasks, file history and the project entries in `.claude.json`, on this computer only.
 
 > **Note:** `code-work` / `code-personal` / `code-dev` only works when launching VS Code from the terminal. Opening VS Code from Spotlight, Dock, or Finder won't pick up the account.
 
