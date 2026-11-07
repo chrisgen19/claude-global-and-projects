@@ -114,7 +114,7 @@ Cross-project skills that work everywhere — copy to `~/.claude/skills/` for gl
 - **`/wp-backup`** — Backs up a WordPress site: exports the database as SQL and zips the files, for migration or archiving
 - **`/mcp-builder`** — Guide to building MCP servers that expose an external API as well-designed tools, in Python (FastMCP) or Node/TypeScript (MCP SDK)
 
-> `nextjs-conventions` is installed on the default, personal and dev accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
+> `nextjs-conventions` is installed on the default, personal, dev and yosh accounts only; `work` gets the other twelve. The default profile is a catch-all for bare `claude`, VS Code and desktop sessions, so it carries the full set.
 
 ### WordPress (`wp-projects/`)
 Standards for custom theme and plugin development:
@@ -137,7 +137,7 @@ Standards for App Router projects with TypeScript, Tailwind, and Prisma:
 
 ### Multi-account setup
 
-I use three separate Claude accounts (personal, work, and dev) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
+I use four separate Claude accounts (personal, work, dev, and yosh) with isolated config directories. Add the following to your `~/.zshrc` (or copy from `.zshrc-claude`):
 
 ```bash
 # Claude CLI accounts
@@ -1257,7 +1257,7 @@ Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a 
 
 `claude/` is the **default** profile — the one used when `CLAUDE_CONFIG_DIR` is unset, i.e. bare `claude`, VS Code, or the desktop app. It is easy to forget precisely because the `claude-*` shell functions never touch it, but it carries the same hooks and status line as the named accounts and is just as much a part of the setup.
 
-Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no extra copy of the 951-line template to keep in sync.
+Its status line is a 24-line **router** rather than a copy of the template: it reads `CLAUDE_CONFIG_DIR`, delegates to that account's `statusline.sh`, and otherwise renders the shared script under a neutral `CLAUDE` label via `ACCOUNT_LABEL_OVERRIDE`. That way a default session never mislabels itself as an account it is not, and there is no extra copy of the template to keep in sync.
 
 ```bash
 cp claude/statusline-command.sh ~/.claude/statusline-command.sh
@@ -1303,6 +1303,7 @@ Copy skills to every account directory:
 cp -r .claude/skills/* ~/.claude/skills/
 cp -r .claude/skills/* ~/.claude-personal/skills/
 cp -r .claude/skills/* ~/.claude-dev/skills/
+cp -r .claude/skills/* ~/.claude-yosh/skills/
 
 # Work gets everything except nextjs-conventions, which is personal-stack only
 for s in .claude/skills/*/; do

@@ -367,10 +367,12 @@ equals "ordinary render is exactly two lines" \
 
 # ---------------------------------------------------------------------------
 echo "-- account copies --"
-# The three copies differ from the template only on lines 14 and 15, which CI
+# The copies differ from the template only on lines 14 and 15, which CI
 # diff-checks. That proves they are in sync, not that the config block in each
-# one is valid shell: a broken quote there would still pass the diff.
-for acct in personal work dev; do
+# one is valid shell: a broken quote there would still pass the diff, because
+# the diff deletes those two lines first. Every copy belongs in this loop, or
+# its config block is the one thing about it that nothing checks.
+for acct in personal work dev yosh; do
   copy="$REPO_ROOT/claude-$acct/statusline.sh"
   if [ ! -f "$copy" ]; then
     bad "claude-$acct/statusline.sh exists"
