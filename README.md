@@ -952,24 +952,34 @@ characters stripped, tag characters refused) before they reach the screen or the
 
 **Skills and commands.** The side run is also told which skills and commands the session
 can run, in an `<available-skills>` block, so a suggestion can be one of them
-(`/code-review-and-quality Review the changes in...`). The plugin gets that list from
-Claude Code itself (`$.command.list()`); neither CLI exposes one, so it is read off disk
-from the folders each documents, and a suggestion naming anything not found there is
-dropped rather than offered:
+(`$security-and-hardening Parameterize the raw SQL fallback in...`). The plugin gets that
+list from Claude Code itself (`$.command.list()`); neither CLI exposes one, so it is read
+off disk from the folders each documents.
 
-| | Where it looks |
-|---|---|
-| Codex | `$CODEX_HOME/skills/<name>/SKILL.md` and the project's `.codex/skills`. Codex skills *are* slash commands; `user-invocable: false` ones are skipped |
-| agy | under `~/.gemini/config` and each workspace root (`.agents`, `.agent`, `_agents`, `_agent`): `skills/<name>/SKILL.md`, `workflows/*.md` and `plugins/*/skills`, plus `~/.gemini/config/global_workflows` and agy's installed `plugins/*/skills`. agy skills are model-activated, so its workflows are what you type |
+The two CLIs do not run a skill the same way, so each entry is listed already prefixed with
+the character it is typed with, and the side run is told to copy it:
 
-On top of what it finds, a short hand-written list names each CLI's own commands, so those
-are suggested too: `/review`, `/compact`, `/init`, `/diff` and `/status` on Codex, and
-`/review-agent`, `/compact`, `/diff`, `/context` and `/plan` on agy (it has no `/init`, and
-calls Codex's `/status` `/context`). They lead the block, so a large skills folder cannot
-push them out of it. The plugin skips its own builtins because Claude Code lists them
-separately and its fork sees them in the transcript; these side runs start cold and see
-nothing, so they have to be named. Any other built-in command is unknown, and a suggestion
-naming one is dropped. Set `NEXT_STEPS_SKILLS=0` to send no list and do no filtering.
+| | How a skill is typed | Where it looks |
+|---|---|---|
+| Codex | **`$name`**, a mention ("run `/skills` or type `$` to mention a skill"). The slash namespace is its built-in commands only | `$CODEX_HOME/skills`, `$HOME/.agents/skills`, and `.agents/skills` in every folder from the cwd up to the repository root |
+| agy | **`/name`**: it turns every skill *and* workflow into a slash command, and namespaces a plugin's as **`/<plugin>:<skill>`** | `~/.gemini/config` (`skills/`, `workflows/`, `global_workflows/`, `plugins/*/skills`), the two CLI-only roots `~/.gemini/antigravity-cli/skills` and `~/.gemini/skills`, agy's installed `plugins/*/skills`, and each workspace root (`.agents`, `.agent`, `_agents`, `_agent`) from the cwd up to the repository root |
+
+`.codex/skills` is deliberately **not** a Codex root: that path belongs to Codex's importer
+for other agents' layouts, not to its own discovery.
+
+On top of what it finds, a short hand-written list names each CLI's own commands, always
+slash-typed, so those are suggested too: `/review`, `/compact`, `/init`, `/diff` and
+`/status` on Codex, and `/review-agent`, `/compact`, `/diff`, `/context` and `/plan` on agy
+(it has no `/init`, and calls Codex's `/status` `/context` and its `/review`
+`/review-agent`). They lead the block, so a large skills folder cannot push them out of it.
+The plugin skips its own builtins because Claude Code lists them separately and its fork
+sees them in the transcript; these side runs start cold and see nothing, so they have to be
+named.
+
+A suggestion that starts with one of that CLI's command characters is dropped unless the
+whole token was listed, prefix included: on Codex `$review` is a skill and `/review` a
+built-in, and neither stands in for the other. Prose suggestions are never checked, and on
+agy a leading `$` is prose. Set `NEXT_STEPS_SKILLS=0` to send no list and do no filtering.
 
 The two lists are in `next-steps.mjs` (`BUILTIN_COMMANDS`), verified against Codex 0.166
 and agy 1.4.12. If a later release renames one, the cost is a suggestion dropped, never a
