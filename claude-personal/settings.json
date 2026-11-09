@@ -44,6 +44,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook PostToolUse",
+            "async": true
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -102,6 +111,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook Stop",
+            "async": true
           }
         ]
       }
@@ -216,6 +234,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook SessionEnd",
+            "async": true
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -264,6 +291,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook SubagentStop",
+            "async": true
           }
         ]
       }
