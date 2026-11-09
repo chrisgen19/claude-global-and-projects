@@ -332,7 +332,9 @@
     "design@knowledge-work-plugins": true,
     "design-skills@design-skills": true,
     "ui-ux-pro-max@ui-ux-pro-max-skill": true,
-    "remotion@remotion": true
+    "remotion@remotion": true,
+    "mission-control@claude-code-mods": true,
+    "where-am-i@claude-code-mods": true
   },
   "extraKnownMarketplaces": {
     "googlechrome": {
@@ -369,6 +371,12 @@
       "source": {
         "source": "github",
         "repo": "remotion-dev/claude-code-plugin"
+      }
+    },
+    "claude-code-mods": {
+      "source": {
+        "source": "github",
+        "repo": "chrisgen19/claude-code-mods"
       }
     }
   },

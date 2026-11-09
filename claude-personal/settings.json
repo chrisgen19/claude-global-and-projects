@@ -332,7 +332,9 @@
     "ui-ux-pro-max@ui-ux-pro-max-skill": true,
     "remotion@remotion": true,
     "design@knowledge-work-plugins": true,
-    "design-skills@design-skills": true
+    "design-skills@design-skills": true,
+    "mission-control@claude-code-mods": true,
+    "where-am-i@claude-code-mods": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -369,6 +371,12 @@
       "source": {
         "source": "github",
         "repo": "cuellarfr/design-skills"
+      }
+    },
+    "claude-code-mods": {
+      "source": {
+        "source": "github",
+        "repo": "chrisgen19/claude-code-mods"
       }
     }
   },
