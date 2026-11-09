@@ -149,8 +149,8 @@ const truncate = (text, max) => {
 /**
  * A prompt that starts with a slash runs a command, so one naming a command
  * the session does not have is dropped rather than offered. With no list
- * (discovery found nothing, or NEXT_STEPS_SKILLS=0) slash prompts go
- * unchecked, as they do in the plugin.
+ * (NEXT_STEPS_SKILLS=0) slash prompts go unchecked, as they do in the plugin
+ * when Claude Code does not answer with one.
  * @param {string} prompt @param {ReadonlySet<string> | null} known
  */
 const namesKnownCommand = (prompt, known) => {
@@ -209,11 +209,39 @@ const parseSuggestions = (reply, known = null) => {
 //     workflows (plain .md files) and its own skills, under ~/.gemini/config
 //     and the workspace customization folders.
 //
-// Built-in commands (/review, /compact, ...) are left out, as the plugin leaves
-// out `source === 'builtin'`. That also means the model is told about nothing
-// but these, so a slash prompt naming anything else is dropped.
+// On top of those, a short hand-written list of each CLI's own commands. The
+// plugin skips `source === 'builtin'` because Claude Code lists the builtins it
+// knows separately and the fork sees them in the transcript anyway; here the
+// side run starts cold and sees nothing, so a few genuinely useful ones are
+// named explicitly. Everything else is unknown, and a slash prompt naming it is
+// dropped.
 
 /** @typedef {{ name: string, description: string }} Command */
+
+/**
+ * Each CLI's own commands worth suggesting as a next step, with that CLI's
+ * wording. Verified against Codex 0.166 and agy 1.4.12; a name that a later
+ * release drops is a suggestion wasted, never a broken run. agy has no /init
+ * (it writes GEMINI.md and AGENTS.md without one) and calls Codex's /status
+ * /context and its /review /review-agent.
+ * @type {Record<Tool, Command[]>}
+ */
+const BUILTIN_COMMANDS = {
+  codex: [
+    { name: 'review', description: 'review my current changes and find issues' },
+    { name: 'compact', description: 'summarize conversation to prevent hitting the context limit' },
+    { name: 'init', description: 'create an AGENTS.md file with instructions for Codex' },
+    { name: 'diff', description: 'show git diff (including untracked files)' },
+    { name: 'status', description: 'show current session configuration and token usage' },
+  ],
+  agy: [
+    { name: 'review-agent', description: 'review the uncommitted workspace changes and find issues' },
+    { name: 'compact', description: 'summarize the conversation to free up the context window' },
+    { name: 'diff', description: 'show the changes, all of them or per turn' },
+    { name: 'context', description: 'show what is using the context window' },
+    { name: 'plan', description: 'switch to plan mode, where the agent plans before it edits' },
+  ],
+}
 
 // A name a person could type after a slash. Both CLIs document lowercase and
 // hyphens; the dot and colon are allowed too, since agy namespaces some of its
@@ -384,13 +412,15 @@ const agyCommands = cwd => {
  */
 const commandList = (tool, cwd) => {
   if (!SKILLS_ENABLED) return { text: '', known: null }
+  // The CLI's own commands lead, so they are always described rather than
+  // pushed into the names-only tail by a large skills folder.
   /** @type {Command[]} */
-  let commands = []
+  const commands = [...BUILTIN_COMMANDS[tool]]
   try {
-    commands = tool === 'codex' ? codexCommands(cwd) : agyCommands(cwd)
+    commands.push(...(tool === 'codex' ? codexCommands(cwd) : agyCommands(cwd)))
   } catch (error) {
+    // Keep the builtins: they need no disk access and cannot be the cause.
     log(`command discovery failed: ${String(error)}`)
-    return { text: '', known: null }
   }
   /** @type {string[]} */
   const described = []

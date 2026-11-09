@@ -962,9 +962,18 @@ dropped rather than offered:
 | Codex | `$CODEX_HOME/skills/<name>/SKILL.md` and the project's `.codex/skills`. Codex skills *are* slash commands; `user-invocable: false` ones are skipped |
 | agy | under `~/.gemini/config` and each workspace root (`.agents`, `.agent`, `_agents`, `_agent`): `skills/<name>/SKILL.md`, `workflows/*.md` and `plugins/*/skills`, plus `~/.gemini/config/global_workflows` and agy's installed `plugins/*/skills`. agy skills are model-activated, so its workflows are what you type |
 
-Built-in commands (`/review`, `/compact`, ...) are left out, as the plugin leaves out its
-own builtins, so a suggestion naming one is dropped too. Set `NEXT_STEPS_SKILLS=0` to send
-no list and do no filtering.
+On top of what it finds, a short hand-written list names each CLI's own commands, so those
+are suggested too: `/review`, `/compact`, `/init`, `/diff` and `/status` on Codex, and
+`/review-agent`, `/compact`, `/diff`, `/context` and `/plan` on agy (it has no `/init`, and
+calls Codex's `/status` `/context`). They lead the block, so a large skills folder cannot
+push them out of it. The plugin skips its own builtins because Claude Code lists them
+separately and its fork sees them in the transcript; these side runs start cold and see
+nothing, so they have to be named. Any other built-in command is unknown, and a suggestion
+naming one is dropped. Set `NEXT_STEPS_SKILLS=0` to send no list and do no filtering.
+
+The two lists are in `next-steps.mjs` (`BUILTIN_COMMANDS`), verified against Codex 0.166
+and agy 1.4.12. If a later release renames one, the cost is a suggestion dropped, never a
+broken run.
 
 #### Setup
 
