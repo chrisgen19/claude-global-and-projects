@@ -950,6 +950,22 @@ kept) with the same instruction text as the plugin, and a JSON schema for the an
 Suggestions are cleaned like the plugin's (escape sequences, control and invisible
 characters stripped, tag characters refused) before they reach the screen or the prompt.
 
+**Skills and commands.** The side run is also told which skills and commands the session
+can run, in an `<available-skills>` block, so a suggestion can be one of them
+(`/code-review-and-quality Review the changes in...`). The plugin gets that list from
+Claude Code itself (`$.command.list()`); neither CLI exposes one, so it is read off disk
+from the folders each documents, and a suggestion naming anything not found there is
+dropped rather than offered:
+
+| | Where it looks |
+|---|---|
+| Codex | `$CODEX_HOME/skills/<name>/SKILL.md` and the project's `.codex/skills`. Codex skills *are* slash commands; `user-invocable: false` ones are skipped |
+| agy | under `~/.gemini/config` and each workspace root (`.agents`, `.agent`, `_agents`, `_agent`): `skills/<name>/SKILL.md`, `workflows/*.md` and `plugins/*/skills`, plus `~/.gemini/config/global_workflows` and agy's installed `plugins/*/skills`. agy skills are model-activated, so its workflows are what you type |
+
+Built-in commands (`/review`, `/compact`, ...) are left out, as the plugin leaves out its
+own builtins, so a suggestion naming one is dropped too. Set `NEXT_STEPS_SKILLS=0` to send
+no list and do no filtering.
+
 #### Setup
 
 1. `./install.sh` deploys `next-steps` and `next-steps-editor` to `~/.local/bin`, the Codex
@@ -970,6 +986,7 @@ Knobs (environment, read by the hooks and the editor):
 | `NEXT_STEPS_CODEX_EFFORT` | the session's reasoning effort |
 | `NEXT_STEPS_AGY_MODEL` | the session's model; e.g. `gemini-3.8-flash-low` for a cheaper, faster side run |
 | `NEXT_STEPS_MIN_CHARS` | `80`: shorter answers get no suggestions |
+| `NEXT_STEPS_SKILLS` | on; `0` stops the side run being told which skills and commands the session has (and stops the check on its slash suggestions) |
 | `NEXT_STEPS_EDITOR` | set by the launchers from your `VISUAL` / `EDITOR`; else `nano`, else `vi` |
 
 #### herdr and tmux popups (optional)
