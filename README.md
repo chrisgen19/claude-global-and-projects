@@ -21,6 +21,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── claude-handoff.sh                       # list, brief or copy a session to another account (claude-handoff)
 ├── next-steps.mjs                          # suggested next prompts for Codex and agy, picked with ctrl+g or a herdr/tmux popup
 ├── agy/next-steps/                         # agy plugin: the Stop hook for next-steps
+├── mcp-servers.json                        # Shared MCP servers, merged into every profile's .claude.json
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── update-plugins.sh                       # refresh marketplaces + update every plugin in each profile (claude-update-plugins)
 ├── windows/                                # portable subset for a Windows machine
@@ -1138,6 +1139,52 @@ otherwise use it for history search.
   reads the latest.
 - The side runs use your Codex and Google plans. Raise `NEXT_STEPS_MIN_CHARS` to make them
   rarer.
+
+### Shared MCP servers (`mcp-servers.json`)
+
+MCP servers are configured in each profile's `.claude.json`, not `settings.json`,
+so they are not covered by the settings files above. `mcp-servers.json` holds the
+block every account should have, and `install.sh` merges it in:
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--executablePath", "/usr/bin/google-chrome-stable"],
+      "env": {}
+    }
+  }
+}
+```
+
+Add a server by editing this file and deploying. The merge is per server name:
+
+- Tracked servers are written into `.mcpServers`, replacing a live entry of the
+  same name.
+- Servers a profile added for itself (work's `atlassian` and `coolify`, dev's
+  `budget`) are left alone. This file is the shared floor, not the whole set.
+- Every other key in `.claude.json` is untouched. That file also holds the
+  profile's project history, prompt counts and onboarding state, which is why
+  the deploy merges one key rather than copying the file.
+
+Two things to know:
+
+- **Repo -> live only.** `--pull` skips it, because one tracked block is shared
+  by all five profiles and there is no single live file to pull it back from.
+  `--check` reports a tracked server that is missing or differs.
+- **Close the profile's sessions first.** A running `claude` rewrites
+  `.claude.json` from memory and can revert a deploy, the way it does with
+  `.credentials.json`. Re-run the deploy once the sessions are closed.
+
+`--executablePath` is a Linux path. On a Mac, change it to the Chrome there
+(`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`) or drop the two
+arguments and let the server find Chrome itself.
+
+Project-scoped servers stay out of this file: `.claude.json` keys those under
+`projects["<abs path>"].mcpServers`, so they carry a home directory and are
+specific to one machine. dev's `cloudflare` server is one of those.
 
 ### Install and drift check
 
