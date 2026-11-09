@@ -962,10 +962,16 @@ the character it is typed with, and the side run is told to copy it:
 | | How a skill is typed | Where it looks |
 |---|---|---|
 | Codex | **`$name`**, a mention ("run `/skills` or type `$` to mention a skill"). The slash namespace is its built-in commands only | `$CODEX_HOME/skills`, `$HOME/.agents/skills`, and `.agents/skills` in every folder from the cwd up to the repository root |
-| agy | **`/name`**: it turns every skill *and* workflow into a slash command, and namespaces a plugin's as **`/<plugin>:<skill>`** | `~/.gemini/config` (`skills/`, `workflows/`, `global_workflows/`, `plugins/*/skills`), the two CLI-only roots `~/.gemini/antigravity-cli/skills` and `~/.gemini/skills`, agy's installed `plugins/*/skills`, and each workspace root (`.agents`, `.agent`, `_agents`, `_agent`) from the cwd up to the repository root |
+| agy | **`/name`**: it turns every skill *and* workflow into a slash command, and namespaces a plugin's as **`/<plugin>:<skill>`** | `~/.gemini/config` (`skills/`, `workflows/`, `global_workflows/`, `plugins/*/skills`), the two CLI-only roots `~/.gemini/antigravity-cli/skills` and `~/.gemini/skills`, agy's installed `plugins/*/skills`, and the customization folders (`.agents`, `.agent`, `_agents`, `_agent`) in **every** workspace root the session holds, each walked up to its repository root |
 
 `.codex/skills` is deliberately **not** a Codex root: that path belongs to Codex's importer
 for other agents' layouts, not to its own discovery.
+
+An agy session can hold several workspace roots (`--add-dir`, a multi-folder workspace).
+The `Stop` hook carries all of them into the side run, so a skill or workflow from a
+secondary root is suggested like any other; roots that overlap, or walk up into the same
+repository, are scanned once. The state file is still keyed to the first root, since that
+is the directory the `ctrl+g` editor and the popup look it up by.
 
 On top of what it finds, a short hand-written list names each CLI's own commands, always
 slash-typed, so those are suggested too: `/review`, `/compact`, `/init`, `/diff` and

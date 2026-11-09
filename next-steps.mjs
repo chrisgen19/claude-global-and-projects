@@ -443,9 +443,15 @@ const agyRoot = root => [
  * agy turns every skill and workflow into a slash command. agy's own bundled
  * skills (antigravity-cli/builtin) are left out, matching the plugin's
  * `source === 'builtin'` skip.
- * @param {string} cwd @returns {Command[]}
+ * @param {string[]} workspaces every workspace root of the session. An agy
+ *   session can hold several (`--add-dir`, a multi-folder workspace), and each
+ *   brings its own customizations, so all of them are scanned. Roots that
+ *   overlap, or walk up into the same repository, are scanned once.
+ * @returns {Command[]}
  */
-const agyCommands = cwd => {
+const agyCommands = workspaces => {
+  // A bare string would iterate as characters and quietly find nothing.
+  const roots = typeof workspaces === 'string' ? [workspaces] : workspaces
   const found = [
     ...skillsIn(path.join(AGY_CONFIG, 'skills'), '/'),
     ...workflowsIn(path.join(AGY_CONFIG, 'workflows'), '/'),
@@ -457,8 +463,13 @@ const agyCommands = cwd => {
     ...skillsIn(path.join(HOME, '.gemini', 'skills'), '/'),
     ...pluginSkillsIn(path.join(AGY_DIR, 'plugins'), '/'),
   ]
-  for (const dir of upToRepoRoot(realDir(cwd))) {
-    for (const ws of AGY_WORKSPACE_DIRS) found.push(...agyRoot(path.join(dir, ws)))
+  const seen = new Set()
+  for (const workspace of roots) {
+    for (const dir of upToRepoRoot(realDir(workspace))) {
+      if (seen.has(dir)) continue
+      seen.add(dir)
+      for (const ws of AGY_WORKSPACE_DIRS) found.push(...agyRoot(path.join(dir, ws)))
+    }
   }
   return found
 }
@@ -475,16 +486,18 @@ const agyCommands = cwd => {
  * names come from the session itself, but here a folder or file can be called
  * anything, and `/two words` would run `/two` with an argument.
  * @param {Tool} tool @param {string} cwd
+ * @param {string[]} [workspaces] every workspace root of the session, for the
+ *   CLIs that can hold more than one; `cwd` alone when not given
  * @returns {{ text: string, index: CommandIndex | null }}
  */
-const commandList = (tool, cwd) => {
+const commandList = (tool, cwd, workspaces = [cwd]) => {
   if (!SKILLS_ENABLED) return { text: '', index: null }
   // The CLI's own commands lead, so they are always described rather than
   // pushed into the names-only tail by a large skills folder.
   /** @type {Command[]} */
   const commands = [...BUILTIN_COMMANDS[tool]]
   try {
-    commands.push(...(tool === 'codex' ? codexCommands(cwd) : agyCommands(cwd)))
+    commands.push(...(tool === 'codex' ? codexCommands(cwd) : agyCommands(workspaces)))
   } catch (error) {
     // Keep the builtins: they need no disk access and cannot be the cause.
     log(`command discovery failed: ${String(error)}`)
@@ -799,7 +812,11 @@ const agyStop = () => {
   const e = readStdinJson()
   process.stdout.write('{}\n')
   if (process.env.NEXT_STEPS_CHILD) return
-  const workspaces = Array.isArray(e.workspacePaths) ? e.workspacePaths : []
+  // Every root the session holds, for discovery; the first also keys the state,
+  // which the editor and the popup look up by the directory they run in.
+  const workspaces = (Array.isArray(e.workspacePaths) ? e.workspacePaths : [])
+    .map(entry => str(entry))
+    .filter(entry => entry !== '')
   const cwd = str(workspaces[0])
   const transcriptPath = str(e.transcriptPath)
   if (cwd === '') return
@@ -810,7 +827,14 @@ const agyStop = () => {
   const job = path.join(STATE_DIR, `agy-job-${process.pid}-${Date.now()}.json`)
   const model = AGY_MODEL || str(e.modelName)
   // childEnv() drops the herdr variables, so the job carries the notice target.
-  const task = { cwd, transcriptPath, conversationId: str(e.conversationId), model, notice: noticeTarget() }
+  const task = {
+    cwd,
+    workspaces,
+    transcriptPath,
+    conversationId: str(e.conversationId),
+    model,
+    notice: noticeTarget(),
+  }
   fs.writeFileSync(job, JSON.stringify(task))
   spawn(process.execPath, [SELF, 'agy-generate', job], {
     detached: true,
@@ -861,13 +885,17 @@ const agyGenerate = job => {
   } finally {
     fs.rmSync(job, { force: true })
   }
+  // A job written by an older build carries no workspaces: fall back to cwd.
   const { cwd, transcriptPath, conversationId, model = '', notice = {} } = task
+  const workspaces = Array.isArray(task.workspaces) && task.workspaces.length > 0
+    ? task.workspaces
+    : [cwd]
   const turn = readAgyTranscript(transcriptPath)
   const base = { conversationId, transcriptPath, userCount: turn.userCount, model, items: [] }
   if (turn.answer.trim().length < MIN_CHARS) return writeState('agy', cwd, { ...base, status: 'skipped' })
 
   writeState('agy', cwd, { ...base, status: 'pending' })
-  const commands = commandList('agy', cwd)
+  const commands = commandList('agy', cwd, workspaces)
   const request = suggestionPrompt('Antigravity', turn.userText, turn.answer, commands.text)
   const items = runAgy(request, model, commands.index)
   const now = readState('agy', cwd)
