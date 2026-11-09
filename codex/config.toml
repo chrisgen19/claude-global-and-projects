@@ -51,7 +51,8 @@ url = "https://mcp.atlassian.com/v1/mcp/authv2"
 [mcp_servers.openaiDeveloperDocs]
 url = "https://developers.openai.com/mcp"
 
-# Needs the shadcn CLI on PATH: `npm i -g shadcn` (under nvm it is per Node version).
+# Needs the shadcn CLI on PATH: `npm i -g shadcn`. This machine uses the system Node, and
+# ~/.npmrc sets prefix=~/.local, so it installs to ~/.local/bin/shadcn for every shell.
 [mcp_servers.shadcn]
 command = "shadcn"
 args = ["mcp"]
