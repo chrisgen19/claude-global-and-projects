@@ -44,6 +44,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook PostToolUse",
+            "async": true
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -102,6 +111,15 @@
           {
             "type": "command",
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook Stop",
+            "async": true
           }
         ]
       }
@@ -216,6 +234,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook SessionEnd",
+            "async": true
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -266,6 +293,15 @@
             "command": "[ -x ~/.config/iterm2/cc-status ] || exit 0; exec ~/.config/iterm2/cc-status"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook SubagentStop",
+            "async": true
+          }
+        ]
       }
     ]
   },
@@ -296,7 +332,10 @@
     "ui-ux-pro-max@ui-ux-pro-max-skill": true,
     "remotion@remotion": true,
     "design@knowledge-work-plugins": true,
-    "design-skills@design-skills": true
+    "design-skills@design-skills": true,
+    "mission-control@claude-code-mods": true,
+    "where-am-i@claude-code-mods": true,
+    "filetree@claude-code-filetree": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -333,6 +372,18 @@
       "source": {
         "source": "github",
         "repo": "cuellarfr/design-skills"
+      }
+    },
+    "claude-code-mods": {
+      "source": {
+        "source": "github",
+        "repo": "chrisgen19/claude-code-mods"
+      }
+    },
+    "claude-code-filetree": {
+      "source": {
+        "source": "github",
+        "repo": "data-goblin/claude-code-filetree"
       }
     }
   },

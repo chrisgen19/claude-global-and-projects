@@ -789,6 +789,31 @@ Without that file the hook exits immediately and does nothing, so deploying it t
 machine is safe before the hosts are set. `install.sh` deploys it to
 `~/.local/bin/prisma-prod-guard`.
 
+### Token profiler hooks
+
+All four profiles run [claude-profiler](https://github.com/chrisgen19/claude-profiler) on
+`PostToolUse`, `Stop`, `SessionEnd` and `SubagentStop`, all async:
+
+```
+[ -x ~/.local/bin/claude-profiler ] || exit 0; exec ~/.local/bin/claude-profiler hook <Event>
+```
+
+**This repo does not ship the profiler, and `install.sh` does not deploy it.**
+`~/.local/bin/claude-profiler` comes from that repo's own `install.sh`, which symlinks
+`token_profiler.py` there. Until it has run, the guard makes every profiler hook exit
+quietly, so deploying these settings to a new machine is safe but records nothing. To turn
+profiling on:
+
+```bash
+git clone https://github.com/chrisgen19/claude-profiler ~/projects/claude-profiler
+~/projects/claude-profiler/install.sh
+```
+
+The profiler's installer also adds its own hooks to every `~/.claude*/settings.json`. Use a
+version that recognises the `claude-profiler` command above as already installed, or it
+adds a second set of `python3 ~/.claude/hooks/token_profiler.py` hooks and every event is
+recorded twice. If that happens, `./install.sh --check` shows the extra hooks as drift.
+
 ### Worktree dev servers (`wt-dev`)
 
 `wt-dev.sh` runs a dev server for each git worktree of a repo inside one tmux session, so
