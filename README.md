@@ -1111,8 +1111,6 @@ otherwise use it for history search.
   ends a few seconds before the suggestions are ready, so it first shows
   `next steps: ctrl+g` and switches to the labels on your next keystroke. `ctrl+g` always
   reads the latest.
-- **No skills in suggestions yet.** The plugin also lists the session's skills so a
-  suggestion can be `/skill args`; this port does not.
 - The side runs use your Codex and Google plans. Raise `NEXT_STEPS_MIN_CHARS` to make them
   rarer.
 
