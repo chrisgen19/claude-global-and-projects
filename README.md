@@ -961,17 +961,45 @@ the character it is typed with, and the side run is told to copy it:
 
 | | How a skill is typed | Where it looks |
 |---|---|---|
-| Codex | **`$name`**, a mention ("run `/skills` or type `$` to mention a skill"). The slash namespace is its built-in commands only | `$CODEX_HOME/skills`, `$HOME/.agents/skills`, and `.agents/skills` in every folder from the cwd up to the repository root |
+| Codex | **`$name`**, a mention ("run `/skills` or type `$` to mention a skill"). The slash namespace is its built-in commands only | `$CODEX_HOME/skills` including the bundled `skills/.system`, `$HOME/.agents/skills`, `.agents/skills` in every folder from the cwd up to the repository root, and each installed plugin's `skills/` |
 | agy | **`/name`**: it turns every skill *and* workflow into a slash command, and namespaces a plugin's as **`/<plugin>:<skill>`** | `~/.gemini/config` (`skills/`, `workflows/`, `global_workflows/`, `plugins/*/skills`), the two CLI-only roots `~/.gemini/antigravity-cli/skills` and `~/.gemini/skills`, agy's installed `plugins/*/skills`, and the customization folders (`.agents`, `.agent`, `_agents`, `_agent`) in **every** workspace root the session holds, each walked up to its repository root |
 
 `.codex/skills` is deliberately **not** a Codex root: that path belongs to Codex's importer
 for other agents' layouts, not to its own discovery.
+
+Codex's bundled skills (`$review-agent`, `$skill-installer`, ...) are included even though
+the plugin skips `source === 'builtin'`. They are typed exactly like any other mention, so
+leaving them out would not keep them off the screen, it would only drop a real suggestion
+as if it were invented. Codex is not known to qualify a plugin's skill with its plugin
+name, so those are offered plain: the SKILL.md files carry plain names and nothing in the
+CLI documents or shows a `$plugin:skill` form.
+
+**Which plugins count.** Neither cache can be read off disk: both keep removed plugins and
+superseded versions in place, so a directory scan advertises skills the session cannot run.
+Each CLI is asked instead, once per side run:
+
+- `codex plugin list --json` gives the installed version and enabled flag per plugin, which
+  is what resolves `plugins/cache/<marketplace>/<plugin>/<version>/skills`. If the call
+  fails, Codex plugin skills are skipped rather than guessed at.
+- `agy plugin list --json` gives the enabled flag, used to **filter** the global plugin
+  roots. It is not used to enumerate: agy does not list a workspace plugin
+  (`.agents/plugins/<name>`) even when it loads one, verified against agy 1.4.12, so
+  absence there means "not loaded" for a global root and nothing at all for a workspace
+  one. If the call fails, the plugin folders are scanned unfiltered, which cannot tell a
+  disabled plugin from a live one.
+
+Both failures are written to `~/.cache/next-steps/log`.
 
 An agy session can hold several workspace roots (`--add-dir`, a multi-folder workspace).
 The `Stop` hook carries all of them into the side run, so a skill or workflow from a
 secondary root is suggested like any other; roots that overlap, or walk up into the same
 repository, are scanned once. The state file is still keyed to the first root, since that
 is the directory the `ctrl+g` editor and the popup look it up by.
+
+Roots are collected in agy's own precedence order, workspace before global, because a
+workspace skill that overrides a same-named global one is the implementation agy runs, so
+it has to be the one described to the side run. Repeated names keep the first entry, so
+that order is what decides it.
 
 On top of what it finds, a short hand-written list names each CLI's own commands, always
 slash-typed, so those are suggested too: `/review`, `/compact`, `/init`, `/diff` and

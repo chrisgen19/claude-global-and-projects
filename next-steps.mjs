@@ -77,6 +77,8 @@ const CODEX_MODEL = process.env.NEXT_STEPS_CODEX_MODEL || ''
 const CODEX_EFFORT = process.env.NEXT_STEPS_CODEX_EFFORT || ''
 const AGY_MODEL = process.env.NEXT_STEPS_AGY_MODEL || ''
 const RUN_TIMEOUT_MS = 150_000
+// Listing a CLI's own plugins is a quick local call; it must never hold up a turn.
+const LIST_TIMEOUT_MS = 15_000
 // Names the popup key from the README's herdr and tmux bindings.
 const READY_NOTICE = 'next steps ready: alt+n'
 
@@ -388,9 +390,13 @@ const workflowsIn = (root, prefix) => {
  * own `skills/`, so this is one level deeper than a plain skills root, and agy
  * namespaces what it finds there as `<plugin>:<skill>` unless the skill's own
  * name already carries the prefix (which otherwise double-prefixes it).
- * @param {string} root @param {string} prefix @returns {Command[]}
+ * @param {string} root @param {string} prefix
+ * @param {Set<string> | null} [allowed] when given, only these plugins are
+ *   read: the ones the CLI says it has enabled. A folder is just a folder, so
+ *   without it a disabled or leftover plugin cannot be told from a live one.
+ * @returns {Command[]}
  */
-const pluginSkillsIn = (root, prefix) => {
+const pluginSkillsIn = (root, prefix, allowed = null) => {
   /** @type {Command[]} */
   const found = []
   let entries = []
@@ -402,6 +408,7 @@ const pluginSkillsIn = (root, prefix) => {
   for (const entry of entries) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
     const plugin = entry.name
+    if (allowed !== null && !allowed.has(plugin)) continue
     for (const skill of skillsIn(path.join(root, plugin, 'skills'), prefix)) {
       const name = skill.name.startsWith(`${plugin}:`) ? skill.name : `${plugin}:${skill.name}`
       found.push({ ...skill, name })
@@ -411,16 +418,79 @@ const pluginSkillsIn = (root, prefix) => {
 }
 
 /**
+ * A CLI's own `... list --json`, parsed. Which plugins are installed and enabled
+ * cannot be read off disk: both CLIs keep uninstalled and superseded versions in
+ * the same cache, so a directory scan advertises skills the session does not
+ * have. Any failure returns null and the caller falls back or does without.
+ * @param {string} command @param {string[]} args @returns {unknown}
+ */
+const listJson = (command, args) => {
+  const run = spawnSync(command, args, {
+    env: childEnv(),
+    encoding: 'utf8',
+    timeout: LIST_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (run.status !== 0) {
+    log(`${command} ${args.join(' ')} failed (${run.status ?? run.signal}): ${str(run.stderr).slice(-200)}`)
+    return null
+  }
+  try {
+    return JSON.parse(str(run.stdout))
+  } catch (error) {
+    log(`${command} ${args.join(' ')} gave no JSON: ${String(error)}`)
+    return null
+  }
+}
+
+/**
+ * The skills of Codex's installed, enabled plugins. Their files live at
+ * `plugins/cache/<marketplace>/<plugin>/<version>/skills`, and the cache also
+ * holds plugins that were removed and versions that were superseded, so the
+ * version and the enabled flag have to come from Codex itself. Without that
+ * answer the plugins are skipped rather than guessed at.
+ *
+ * Codex is not known to qualify a plugin's skill with its plugin name: the
+ * SKILL.md files carry plain names (`name: figma-use-figjam`) and nothing in the
+ * CLI documents or shows a `$plugin:skill` form, so they are offered plain.
+ * @returns {Command[]}
+ */
+const codexPluginSkills = () => {
+  const listing = listJson('codex', ['plugin', 'list', '--json'])
+  const installed = /** @type {{ installed?: unknown }} */ (listing ?? {}).installed
+  if (!Array.isArray(installed)) return []
+  /** @type {Command[]} */
+  const found = []
+  for (const entry of installed) {
+    const plugin = /** @type {Record<string, unknown>} */ (entry ?? {})
+    if (plugin.installed === false || plugin.enabled === false) continue
+    const [name, marketplace, version] = [plugin.name, plugin.marketplaceName, plugin.version].map(v => str(v))
+    if (name === '' || marketplace === '' || version === '') continue
+    found.push(
+      ...skillsIn(path.join(CODEX_HOME, 'plugins', 'cache', marketplace, name, version, 'skills'), '$'),
+    )
+  }
+  return found
+}
+
+/**
  * Codex skills, typed as `$name` mentions. Its own built-in commands keep the
  * slash namespace and are named in BUILTIN_COMMANDS instead. `.codex/skills` is
  * not one of these: that path belongs to Codex's importer for other agents'
  * layouts, not to its own discovery.
+ *
+ * The bundled skills under `skills/.system` are included even though the plugin
+ * skips `source === 'builtin'`: they are typed exactly like any other mention,
+ * so leaving them out does not keep them off the screen, it only drops a real
+ * suggestion ($review-agent, $skill-installer) as if it were invented.
  * @param {string} cwd @returns {Command[]}
  */
 const codexCommands = cwd => {
   const found = [
     ...skillsIn(path.join(CODEX_HOME, 'skills'), '$'),
+    ...skillsIn(path.join(CODEX_HOME, 'skills', '.system'), '$'),
     ...skillsIn(path.join(HOME, '.agents', 'skills'), '$'),
+    ...codexPluginSkills(),
   ]
   for (const dir of upToRepoRoot(realDir(cwd))) {
     found.push(...skillsIn(path.join(dir, '.agents', 'skills'), '$'))
@@ -429,8 +499,31 @@ const codexCommands = cwd => {
 }
 
 /**
+ * The names of the plugins agy reports as enabled, or null when it could not be
+ * asked. Used to filter, not to enumerate: the listing covers agy's global
+ * plugin roots only. A workspace plugin (`.agents/plugins/<name>`) is absent
+ * from it even when agy loads it -- verified against agy 1.4.12 with a valid
+ * plugin in the cwd -- so absence is evidence of "not loaded" for a global root
+ * and no evidence at all for a workspace one.
+ * @returns {Set<string> | null}
+ */
+const agyEnabledPlugins = () => {
+  const listing = listJson('agy', ['plugin', 'list', '--json'])
+  if (!Array.isArray(listing)) return null
+  const enabled = new Set()
+  for (const entry of listing) {
+    const plugin = /** @type {Record<string, unknown>} */ (entry ?? {})
+    const name = str(plugin.name)
+    if (plugin.enabled === false || name === '') continue
+    enabled.add(name)
+  }
+  return enabled
+}
+
+/**
  * One agy workspace customization root: its skills, its workflows and its
- * plugins' skills, all slash-typed.
+ * plugins' skills. Its plugins are not filtered, since agy's listing does not
+ * cover workspace roots at all.
  * @param {string} root @returns {Command[]}
  */
 const agyRoot = root => [
@@ -443,6 +536,11 @@ const agyRoot = root => [
  * agy turns every skill and workflow into a slash command. agy's own bundled
  * skills (antigravity-cli/builtin) are left out, matching the plugin's
  * `source === 'builtin'` skip.
+ *
+ * Collected in agy's own precedence order, highest first: a workspace skill
+ * overriding a same-named global one is the implementation agy runs, so it has
+ * to be the one described. commandList keeps the first of a repeated token, so
+ * the order here is what decides that.
  * @param {string[]} workspaces every workspace root of the session. An agy
  *   session can hold several (`--add-dir`, a multi-folder workspace), and each
  *   brings its own customizations, so all of them are scanned. Roots that
@@ -452,17 +550,11 @@ const agyRoot = root => [
 const agyCommands = workspaces => {
   // A bare string would iterate as characters and quietly find nothing.
   const roots = typeof workspaces === 'string' ? [workspaces] : workspaces
-  const found = [
-    ...skillsIn(path.join(AGY_CONFIG, 'skills'), '/'),
-    ...workflowsIn(path.join(AGY_CONFIG, 'workflows'), '/'),
-    ...workflowsIn(path.join(AGY_CONFIG, 'global_workflows'), '/'),
-    ...pluginSkillsIn(path.join(AGY_CONFIG, 'plugins'), '/'),
-    // Two roots the CLI loads and the app does not, plus installed plugins,
-    // which live beside agy's own state rather than in a customization root.
-    ...skillsIn(path.join(AGY_DIR, 'skills'), '/'),
-    ...skillsIn(path.join(HOME, '.gemini', 'skills'), '/'),
-    ...pluginSkillsIn(path.join(AGY_DIR, 'plugins'), '/'),
-  ]
+  /** @type {Command[]} */
+  const found = []
+  // Asked once, and only to filter the global plugin roots below.
+  const enabled = agyEnabledPlugins()
+  // 1. Workspace roots, nearest folder first, walking up to the repository root.
   const seen = new Set()
   for (const workspace of roots) {
     for (const dir of upToRepoRoot(realDir(workspace))) {
@@ -471,6 +563,17 @@ const agyCommands = workspaces => {
       for (const ws of AGY_WORKSPACE_DIRS) found.push(...agyRoot(path.join(dir, ws)))
     }
   }
+  // 2. Global discovery, then the two roots the CLI loads and the app does not.
+  found.push(
+    ...skillsIn(path.join(AGY_CONFIG, 'skills'), '/'),
+    ...workflowsIn(path.join(AGY_CONFIG, 'workflows'), '/'),
+    ...workflowsIn(path.join(AGY_CONFIG, 'global_workflows'), '/'),
+    ...skillsIn(path.join(AGY_DIR, 'skills'), '/'),
+    ...skillsIn(path.join(HOME, '.gemini', 'skills'), '/'),
+    // 3. Global plugins, kept only where agy says the plugin is enabled.
+    ...pluginSkillsIn(path.join(AGY_CONFIG, 'plugins'), '/', enabled),
+    ...pluginSkillsIn(path.join(AGY_DIR, 'plugins'), '/', enabled),
+  )
   return found
 }
 
