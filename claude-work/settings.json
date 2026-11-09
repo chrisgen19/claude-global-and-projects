@@ -333,7 +333,8 @@
     "ui-ux-pro-max@ui-ux-pro-max-skill": true,
     "remotion@remotion": true,
     "mission-control@claude-code-mods": true,
-    "where-am-i@claude-code-mods": true
+    "where-am-i@claude-code-mods": true,
+    "filetree@claude-code-filetree": true
   },
   "extraKnownMarketplaces": {
     "claude-community": {
@@ -376,6 +377,12 @@
       "source": {
         "source": "github",
         "repo": "chrisgen19/claude-code-mods"
+      }
+    },
+    "claude-code-filetree": {
+      "source": {
+        "source": "github",
+        "repo": "data-goblin/claude-code-filetree"
       }
     }
   },
