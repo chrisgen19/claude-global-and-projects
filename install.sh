@@ -18,6 +18,10 @@
 # partially - which is how the default ~/.claude profile ended up untracked,
 # with an empty CLAUDE.md and one of eleven skills - so prefer this.
 #
+# The shared MCP servers in mcp-servers.json are merged into each profile's
+# .claude.json by key, never written over it: that file also holds the
+# profile's project history. Repo -> live only, so --pull leaves it alone.
+#
 # A deploy sets a brand-new profile up completely: settings, status line,
 # skills, a CLAUDE.md symlinked to the one real file, and, when the profile has
 # no plugins at all, the marketplaces and the enabled plugin set. That last
@@ -130,6 +134,78 @@ deploy_settings() { # repo_file live_file
   status=$?
   rm -f "$tmp"
   [ "$status" = 0 ] || die "cannot write $2"
+}
+
+# --- shared MCP servers ---
+# Every profile gets the same MCP server block. These live in .claude.json, not
+# settings.json, and that file also holds project history, prompt counts and
+# onboarding state: megabytes of machine-local data that must never be replaced
+# wholesale. A deploy therefore merges the tracked servers into .mcpServers one
+# key at a time and leaves every other key alone. Servers a profile adds for
+# itself (work's atlassian, dev's cloudflare) are kept, so this file is the
+# shared floor, not the whole set.
+#
+# Flows repo -> live only, like the shared scripts. The tracked block is shared
+# by all five profiles, so there is no single live file to --pull it back from:
+# add a server by editing mcp-servers.json, then deploy.
+#
+# A running claude rewrites .claude.json from memory and can revert a deploy,
+# the same way it does with .credentials.json. Deploy with that profile's
+# sessions closed, or re-run once they are.
+MCP_FILE="mcp-servers.json"
+
+# The .claude.json a profile actually reads. The default profile keeps its one
+# at $HOME, from before config directories existed; a CLAUDE_CONFIG_DIR profile
+# keeps its own inside that directory. Writing $HOME/.claude/.claude.json
+# instead would land in a stub nothing reads, and the deploy and --check would
+# then agree with each other about a file the CLI never opens.
+mcp_target() { # live_dir
+  if [ "$1" = "$HOME/.claude" ]; then echo "$HOME/.claude.json"; else echo "$1/.claude.json"; fi
+}
+
+# 0 when the file holds exactly one JSON object. `jq empty` is not enough: it
+# passes on an empty file, which holds zero JSON values, and the merge filter
+# then runs zero times and writes a 0-byte file over the profile's history. A
+# file holding two concatenated objects passes it just as happily and merges
+# into both. -s slurps every value into one array, so the count and the type
+# are checked together.
+mcp_json_ok() { # file
+  jq -e -s 'length == 1 and (.[0] | type == "object")' "$1" > /dev/null 2>&1
+}
+
+# The tracked server block; -S sorts the keys so formatting never reads as drift.
+mcp_tracked() { jq -S '.mcpServers' "$MCP_FILE"; }
+
+# The tracked servers as the live file holds them, narrowed to the tracked
+# names so a profile's own extra servers are not drift. A tracked server that is
+# missing live simply does not appear, which the diff then reports.
+mcp_live() { # live_json
+  jq -S --argjson want "$(mcp_tracked)" \
+    '(.mcpServers // {}) | with_entries(select($want[.key] != null))' "$1"
+}
+
+# Merge the tracked servers into .claude.json, keeping every other key. Staged
+# through a temp file: redirecting onto .claude.json would truncate it before jq
+# ran, and a failure there would cost the profile's whole history.
+deploy_mcp() { # live_json
+  local tmp="$1.mcp.$$"
+  if [ -f "$1" ] && ! mcp_json_ok "$1"; then
+    die "$1 is not a single JSON object - left untouched"
+  fi
+  # umask: .claude.json is 0600, and mv keeps the temp file's mode.
+  if (umask 077; { [ -f "$1" ] && cat "$1" || echo '{}'; } \
+      | jq --argjson add "$(mcp_tracked)" '.mcpServers = ((.mcpServers // {}) + $add)' > "$tmp"); then
+    backup "$1"
+    if [ -f "$1" ]; then
+      cp "$tmp" "$1" || die "cannot write $1"   # onto the existing file, so it keeps its mode
+      rm -f "$tmp"
+    else
+      mv "$tmp" "$1" || die "cannot write $1"
+    fi
+  else
+    rm -f "$tmp"
+    die "cannot merge $MCP_FILE into $1"
+  fi
 }
 
 skills_for() { # skill set -> prints source skill dirs
@@ -438,6 +514,25 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
 
   # Everything below flows repo -> live only, so --pull leaves it alone.
   if [ "$MODE" != "pull" ]; then
+
+    # --- MCP servers in .claude.json ---
+    # One target for both branches, so a deploy can never write somewhere
+    # --check is not looking.
+    mcp_json=$(mcp_target "$live_dir")
+    if [ "$MODE" = "install" ]; then
+      deploy_mcp "$mcp_json"
+      note "${mcp_json/#$HOME/$TILDE} mcpServers  $(mcp_tracked | jq -r 'keys | join(", ")')"
+    elif [ ! -f "$mcp_json" ]; then
+      differ "${mcp_json/#$HOME/$TILDE} missing"
+    elif ! mcp_json_ok "$mcp_json"; then
+      differ "${mcp_json/#$HOME/$TILDE} is not a single JSON object"
+    elif ! diff -q <(mcp_tracked) <(mcp_live "$mcp_json") > /dev/null; then
+      differ "${mcp_json/#$HOME/$TILDE} mcpServers"
+      diff <(mcp_tracked) <(mcp_live "$mcp_json") \
+        | grep -E '^[<>]' | head -6 | sed 's/^/           /'
+    else
+      note "mcpServers  ok"
+    fi
 
     # --- status line ---
     if [ "$MODE" = "install" ]; then

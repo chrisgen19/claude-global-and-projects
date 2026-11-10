@@ -15,7 +15,7 @@ jobs:
       # file, with no error at startup. These are hand-edited, so parse them.
       - name: settings.json parses
         run: |
-          for f in claude*/settings.json windows/settings.json codex/hooks.json agy/next-steps/*.json; do
+          for f in claude*/settings.json windows/settings.json mcp-servers.json codex/hooks.json agy/next-steps/*.json; do
             jq -e . "$f" > /dev/null && echo "ok    $f"
           done
           node --check next-steps.mjs && echo "ok    next-steps.mjs"
@@ -38,7 +38,7 @@ jobs:
       # [hooks.state] tables by absolute path.
       - name: no absolute home paths in tracked settings
         run: |
-          if grep -l '/Users/\|/home/' claude*/settings.json windows/settings.json codex/*; then
+          if grep -l '/Users/\|/home/' claude*/settings.json windows/settings.json mcp-servers.json codex/*; then
             echo "FAIL  absolute home path in tracked settings"; exit 1
           fi
           echo "ok    all paths tilde-relative"
