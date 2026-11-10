@@ -772,7 +772,10 @@ while IFS= read -r codex_dir; do
       if [ "$codex_pulled" -eq 1 ]; then
         note "hooks.json, hook trust  pulled from the first account's home, skipped"
       elif [ ! -f "$CODEX_HOOKS" ]; then
-        note "hooks.json  live file missing, skipped"
+        # Still the source: a later home must not quietly become the one the
+        # tracked copies come from. Point CODEX_HOME at another home to pull it.
+        codex_pulled=1
+        note "hooks.json  live file missing, skipped (--pull reads this home only)"
       else
         jq -e . "$CODEX_HOOKS" > /dev/null || die "$CODEX_HOOKS is not valid JSON - tracked copy left untouched"
         cp "$CODEX_HOOKS" codex/hooks.json || die "cannot write codex/hooks.json"

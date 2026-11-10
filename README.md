@@ -1332,6 +1332,17 @@ MCP definitions are copied, but OAuth credentials are not; environment-token MCP
 servers still use the terminal's environment. This is account separation on one
 computer, not an operating-system security boundary.
 
+Codex does not create a missing `CODEX_HOME` (0.167.0 warns and carries on with
+no home), so set the home up before the first login:
+
+```bash
+mkdir -p ~/.codex-yosh
+{ printf '%s\n' 'cli_auth_credentials_store = "file"'; cat codex/config.toml; } > ~/.codex-yosh/config.toml
+chmod 600 ~/.codex-yosh/config.toml
+ln -s ~/.codex/skills ~/.codex-yosh/skills
+./install.sh            # hooks.json and hook trust into every home in the list
+```
+
 After reloading the shell, run `codex-yosh login` and select the second account
 in the browser. Then launch `codex` or `codex-yosh` in separate tabs. Plugins and
 MCP services that require account authentication must be connected separately.
@@ -1487,7 +1498,7 @@ group of `UserPromptSubmit` and `Stop`.
 - **`--check`** reports a hook whose trust is missing or stale.
 - **`--pull`** copies `hooks.json` back from the first home in the list and regenerates the trust list from that home's live config, ignoring entries left behind by removed hooks. Later homes are skipped: one tracked copy serves every account.
 
-After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
+After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. `--pull` reads the first home in the list, so when the hooks were trusted in another account, pull from that one: `CODEX_HOME="$HOME/.codex-yosh" ./install.sh --pull`. Pulling from the wrong home records its stale hashes, and a later deploy then cannot seed the new trust. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
 
 Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a fresh `CODEX_HOME` at a different path, the app-server `hooks/list` call reports all 14 hooks as `trusted`.
 
