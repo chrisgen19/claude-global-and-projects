@@ -441,7 +441,7 @@ codex_installed_plugins() {
   fi
   rm -f "$err"
   printf '%s' "$out" | jq -e '(.available | length) > 0' > /dev/null || return 1
-  printf '%s' "$out" | jq -r '.installed[]? | "\(.name)@\(.marketplaceName)"' | sort
+  printf '%s' "$out" | jq -r '.installed[]? | "\(.name)@\(.marketplaceName)"' | LC_ALL=C sort
 }
 
 # 0 when this home has a login. Without one the catalog call above comes back
@@ -454,6 +454,11 @@ codex_installed_plugins() {
 # PATH-alias warning it can print would trip CI's "nothing on stderr" check.
 codex_logged_in() { CODEX_HOME="$CODEX_DIR" codex login status > /dev/null 2>&1; }
 
+# Both sides of the comm below, and the order --pull writes, are sorted under
+# LC_ALL=C: this repo is deployed from a Mac as well as WSL, and a locale that
+# collates punctuation differently would reorder the tracked file on one machine
+# and make CI's sorted check disagree with whichever one wrote it.
+
 # printf for a list that may be empty: a bare printf '%s\n' "" emits one blank
 # line, which comm would read as an entry and --pull would write to the file.
 codex_lines() { [ -n "$1" ] || return 0; printf '%s\n' "$1"; }
@@ -463,7 +468,7 @@ codex_lines() { [ -n "$1" ] || return 0; printf '%s\n' "$1"; }
 # not an untracked home, so grep finding nothing is not a failure here.
 codex_tracked_plugins() { # plugin file
   [ -f "$1" ] || return 1
-  grep -v -e '^#' -e '^[[:space:]]*$' "$1" | sort || true
+  grep -v -e '^#' -e '^[[:space:]]*$' "$1" | LC_ALL=C sort || true
 }
 
 # Codex writes these itself (new-model announcement counters, a one-time

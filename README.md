@@ -1361,7 +1361,8 @@ directory under `plugins/cache/` reads as `installed` for one login and
 `not installed` for another. There is therefore one tracked list per home,
 named after it: `codex/plugins-codex.txt` for `~/.codex` and
 `codex/plugins-codex-yosh.txt` for `~/.codex-yosh`. One
-`<plugin>@<marketplace>` per line, sorted, comments allowed.
+`<plugin>@<marketplace>` per line, sorted under `LC_ALL=C` so the order is the
+same whichever machine ran `--pull`, comments allowed.
 
 `install.sh` wires them in the same three directions as everything else:
 
@@ -1370,8 +1371,10 @@ named after it: `codex/plugins-codex.txt` for `~/.codex` and
 - **`--pull`** writes each home's current set to its own file. Unlike `hooks.json` and the trust list, which are shared and come from the first home only, every home pulls its own plugin list.
 
 The listing needs the network and that account's login, and `install.sh` refuses
-to guess when it cannot get one: no `auth.json` in the home prints
-`no login in this home`, and a catalog that comes back empty or errors prints
+to guess when it cannot get one: a home where `codex login status` reports no
+login prints `no login in this home` (asking Codex, not looking for `auth.json`,
+since a home can keep its credentials in the keyring instead), and a catalog
+that comes back empty or errors prints
 `WARNING marketplace listing unavailable`. Neither counts as drift - treating an
 unreachable catalog as "nothing installed" would drift every tracked plugin on a
 laptop in a tunnel. `INSTALL_SKIP_PLUGINS=1` skips this work in all three modes,
