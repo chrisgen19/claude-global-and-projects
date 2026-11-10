@@ -125,8 +125,9 @@ jobs:
       - name: statusline behaviour tests under bash 3.2
         run: /bin/bash ./statusline-tests/run.sh
 
-      # Deploy into a scratch HOME (with ~/.codex and agy's directory, so the
-      # hook trust is seeded and the agy plugin and status line are set too),
+      # Deploy into a scratch HOME (with both Codex homes and agy's directory,
+      # so the hook trust is seeded in each account and the agy plugin and
+      # status line are set too),
       # then --check must find no drift. awk reports errors without failing the
       # script, so anything on stderr fails the step as well. The runner has no
       # claude CLI, so the plugin check skips itself instead of flagging every
@@ -143,8 +144,9 @@ jobs:
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           export HOME="$RUNNER_TEMP/home"
           export INSTALL_SKIP_PLUGINS=1
-          mkdir -p "$HOME/.codex" "$HOME/.gemini/antigravity-cli"
+          mkdir -p "$HOME/.codex" "$HOME/.codex-yosh" "$HOME/.gemini/antigravity-cli"
           cp codex/config.toml "$HOME/.codex/config.toml"
+          cp codex/config.toml "$HOME/.codex-yosh/config.toml"
           awk --version
           err="$RUNNER_TEMP/stderr.txt"
           fail=0
