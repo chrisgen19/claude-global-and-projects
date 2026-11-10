@@ -1373,9 +1373,9 @@ same whichever machine ran `--pull`, comments allowed.
 The listing needs the network and that account's login, and `install.sh` refuses
 to guess when it cannot get one: a home where `codex login status` reports no
 login prints `no login in this home` (asking Codex, not looking for `auth.json`,
-since a home can keep its credentials in the keyring instead), and a catalog
-that comes back empty or errors prints
-`WARNING marketplace listing unavailable`. Neither counts as drift - treating an
+since a home can keep its credentials in the keyring instead), and a listing that
+errors or comes back with nothing at all, neither installed nor available,
+prints `WARNING marketplace listing unavailable`. Neither counts as drift - treating an
 unreachable catalog as "nothing installed" would drift every tracked plugin on a
 laptop in a tunnel. `INSTALL_SKIP_PLUGINS=1` skips this work in all three modes,
 as it does for the Claude profiles, and a machine without the `codex` CLI is

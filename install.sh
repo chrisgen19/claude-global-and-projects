@@ -428,10 +428,13 @@ CODEX_PLUGIN_HEADER="# Codex plugins installed in this account's home, written b
 # when the listing cannot be trusted, which it reports in three different ways:
 # a non-zero exit, "failed to list remote marketplace plugins" on stderr with
 # exit 0 (the installed set then collapses to the local marketplaces), or - with
-# no login or no network - exit 0 and a silently empty catalog. An empty
-# `available` is the tell for that last one: a reachable catalog lists hundreds
-# of plugins whether or not any are installed. Reporting an empty set as "no
-# plugins installed" would drift every tracked plugin on a laptop in a tunnel.
+# no login or no network - exit 0 and a silently empty listing. The tell for
+# that last one is both arrays being empty: `--available` holds the uninstalled
+# plugins only (11k of them against the remote marketplace, and none of them
+# also in `.installed`), so an account that has installed everything its
+# catalogs offer answers with an empty `available` and a full `installed`, which
+# is a good listing. Reporting an empty listing as "no plugins installed" would
+# drift every tracked plugin on a laptop in a tunnel.
 codex_installed_plugins() {
   local out err rc
   err="$(mktemp)" || return 1
@@ -440,7 +443,7 @@ codex_installed_plugins() {
     rm -f "$err"; return 1
   fi
   rm -f "$err"
-  printf '%s' "$out" | jq -e '(.available | length) > 0' > /dev/null || return 1
+  printf '%s' "$out" | jq -e '((.installed | length) + (.available | length)) > 0' > /dev/null || return 1
   printf '%s' "$out" | jq -r '.installed[]? | "\(.name)@\(.marketplaceName)"' | LC_ALL=C sort
 }
 
