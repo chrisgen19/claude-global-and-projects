@@ -1496,7 +1496,7 @@ group of `UserPromptSubmit` and `Stop`.
 
 - **deploy** copies `codex/hooks.json` to each home in `CODEX_PROFILES` (`~/.codex` and `~/.codex-yosh`, or just `$CODEX_HOME` when it is set) and adds or corrects each hook's `trusted_hash` in that home's `config.toml`, backing it up first and keeping other keys such as an `enabled = false` set in `/hooks`. A home that does not exist is skipped, so a machine with only the default account is unaffected.
 - **`--check`** reports a hook whose trust is missing or stale.
-- **`--pull`** copies `hooks.json` back from the first home in the list and regenerates the trust list from that home's live config, ignoring entries left behind by removed hooks. Later homes are skipped: one tracked copy serves every account.
+- **`--pull`** copies `hooks.json` back from the first home in the list and regenerates the trust list from that home's live config, ignoring entries left behind by removed hooks. Later homes are skipped even when the first home is absent or has no `hooks.json`: one tracked copy serves every account, so nothing else may silently become its source. `CODEX_HOME` chooses a different home.
 
 After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. `--pull` reads the first home in the list, so when the hooks were trusted in another account, pull from that one: `CODEX_HOME="$HOME/.codex-yosh" ./install.sh --pull`. Pulling from the wrong home records its stale hashes, and a later deploy then cannot seed the new trust. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
 

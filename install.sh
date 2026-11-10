@@ -721,6 +721,10 @@ while IFS= read -r codex_dir; do
   echo "codex  ->  ${CODEX_DIR/#$HOME/$TILDE}"
   if [ ! -d "$CODEX_DIR" ]; then
     note "not installed, skipped"
+    # An absent home does not promote the next one to the --pull source: the
+    # tracked copies are shared, so they come from the first home in the list
+    # and from no other. CODEX_HOME picks a different one.
+    [ "$MODE" = pull ] && codex_pulled=1
     echo
     continue
   fi
@@ -770,12 +774,10 @@ while IFS= read -r codex_dir; do
       ;;
     pull)
       if [ "$codex_pulled" -eq 1 ]; then
-        note "hooks.json, hook trust  pulled from the first account's home, skipped"
+        note "hooks.json, hook trust  --pull reads the first home only, skipped"
       elif [ ! -f "$CODEX_HOOKS" ]; then
-        # Still the source: a later home must not quietly become the one the
-        # tracked copies come from. Point CODEX_HOME at another home to pull it.
         codex_pulled=1
-        note "hooks.json  live file missing, skipped (--pull reads this home only)"
+        note "hooks.json  live file missing, nothing pulled"
       else
         jq -e . "$CODEX_HOOKS" > /dev/null || die "$CODEX_HOOKS is not valid JSON - tracked copy left untouched"
         cp "$CODEX_HOOKS" codex/hooks.json || die "cannot write codex/hooks.json"
