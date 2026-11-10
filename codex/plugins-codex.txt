@@ -1,0 +1,15 @@
+# Codex plugins installed in this account's home, written by ./install.sh --pull.
+# One <plugin>@<marketplace> per line. A deploy installs what is missing here
+# and never removes anything: uninstall with codex plugin remove.
+app-6938a94a61d881918ef32cb999ff937c@openai-curated-remote
+app-69ef18c674308191a2f952431f91ea61@openai-curated-remote
+app-6a3293e129088191abf0875820e839da@openai-curated-remote
+atlassian-rovo@openai-curated-remote
+figma@openai-curated-remote
+github@openai-curated-remote
+openai-templates@openai-curated-remote
+pages@openai-curated-remote
+plugin-management@openai-curated-remote
+product-design@openai-curated-remote
+sites@openai-curated-remote
+work-pets@openai-curated-remote

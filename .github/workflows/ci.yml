@@ -98,6 +98,26 @@ jobs:
           done
           exit $fail
 
+      # These are written by --pull and compared with `comm`, which needs both
+      # sides sorted. A hand-added line in the wrong place would silently read
+      # as drift in one direction and a missing plugin in the other.
+      - name: tracked Codex plugin lists are sorted, unique and well formed
+        run: |
+          fail=0
+          for f in codex/plugins-*.txt; do
+            body=$(grep -v -e '^#' -e '^[[:space:]]*$' "$f")
+            if [ "$body" != "$(printf '%s\n' "$body" | sort)" ]; then
+              echo "FAIL  $f is not sorted"; fail=1
+            elif [ "$(printf '%s\n' "$body" | sort -u | wc -l)" != "$(printf '%s\n' "$body" | wc -l)" ]; then
+              echo "FAIL  $f has duplicate entries"; fail=1
+            elif printf '%s\n' "$body" | grep -qv '^[A-Za-z0-9._-]\+@[A-Za-z0-9._-]\+$'; then
+              echo "FAIL  $f has a line that is not <plugin>@<marketplace>"; fail=1
+            else
+              echo "ok    $f"
+            fi
+          done
+          exit $fail
+
       - name: install.sh --help works
         run: ./install.sh --help
 
