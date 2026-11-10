@@ -446,11 +446,24 @@ codex_installed_plugins() {
 
 # 0 when this home has a login. Without one the catalog call above comes back
 # empty, so say so plainly instead of calling it an unavailable marketplace.
-codex_logged_in() { [ -f "$CODEX_DIR/auth.json" ]; }
+# Codex is asked rather than the filesystem: with cli_auth_credentials_store
+# set to "keyring" (or "auto" picking it, as on the Mac) a home is fully
+# authenticated with no auth.json in it, and testing for that file would skip
+# plugin work on every such machine. `codex login status` exits 0 logged in,
+# 1 not, wherever the credentials live. Its output is a boolean to us, and the
+# PATH-alias warning it can print would trip CI's "nothing on stderr" check.
+codex_logged_in() { CODEX_HOME="$CODEX_DIR" codex login status > /dev/null 2>&1; }
 
+# printf for a list that may be empty: a bare printf '%s\n' "" emits one blank
+# line, which comm would read as an entry and --pull would write to the file.
+codex_lines() { [ -n "$1" ] || return 0; printf '%s\n' "$1"; }
+
+# The tracked entries, sorted. Returns 1 only when the file does not exist: a
+# header-only file is a real, empty plugin set (an account with none installed),
+# not an untracked home, so grep finding nothing is not a failure here.
 codex_tracked_plugins() { # plugin file
   [ -f "$1" ] || return 1
-  grep -v -e '^#' -e '^[[:space:]]*$' "$1" | sort
+  grep -v -e '^#' -e '^[[:space:]]*$' "$1" | sort || true
 }
 
 # Codex writes these itself (new-model announcement counters, a one-time
@@ -800,7 +813,7 @@ while IFS= read -r codex_dir; do
       elif ! installed=$(codex_installed_plugins); then
         note "plugins  WARNING marketplace listing unavailable, skipped"
       else
-        missing=$(comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$installed"))
+        missing=$(comm -23 <(codex_lines "$tracked") <(codex_lines "$installed"))
         if [ -z "$missing" ]; then
           note "plugins  ok"
         else
@@ -859,8 +872,8 @@ while IFS= read -r codex_dir; do
         # a failed catalog call would otherwise report every plugin as missing.
         note "plugins  WARNING marketplace listing unavailable, skipped"
       else
-        missing=$(comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$installed"))
-        extra=$(comm -13 <(printf '%s\n' "$tracked") <(printf '%s\n' "$installed"))
+        missing=$(comm -23 <(codex_lines "$tracked") <(codex_lines "$installed"))
+        extra=$(comm -13 <(codex_lines "$tracked") <(codex_lines "$installed"))
         if [ -n "$missing" ]; then
           differ "codex plugins tracked but not installed:"
           printf '%s\n' "$missing" | sed 's/^/           /'
@@ -912,12 +925,12 @@ while IFS= read -r codex_dir; do
         note "plugins  WARNING marketplace listing unavailable, $CODEX_PLUGIN_FILE left untouched"
       else
         tmp="$CODEX_PLUGIN_FILE.pull.$$"
-        if { printf '%s\n' "$CODEX_PLUGIN_HEADER"; printf '%s\n' "$installed"; } > "$tmp"; then
+        if { printf '%s\n' "$CODEX_PLUGIN_HEADER"; codex_lines "$installed"; } > "$tmp"; then
           mv "$tmp" "$CODEX_PLUGIN_FILE" || die "cannot write $CODEX_PLUGIN_FILE"
         else
           rm -f "$tmp"; die "could not write $CODEX_PLUGIN_FILE"
         fi
-        count=$(printf '%s\n' "$installed" | grep -c . || true)
+        count=$(codex_lines "$installed" | grep -c . || true)
         note "plugins  <- live ($count installed) -> $CODEX_PLUGIN_FILE"
       fi
       ;;
