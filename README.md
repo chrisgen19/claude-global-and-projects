@@ -1309,6 +1309,48 @@ the tab script cannot.
 
 ### Codex config (`codex/`)
 
+#### Separate Codex accounts
+
+Like the `claude-*` launchers, `codex-yosh` sets an account-specific config home
+and calls the existing launcher: `CODEX_HOME="$HOME/.codex-yosh" codex "$@"`.
+Bare `codex` continues to use `~/.codex`. The shell function is also in
+`.zshrc-codex`; copy it into `~/.zshrc` when restoring this setup.
+
+Each home keeps its own `config.toml`, authentication, sessions, history, memory
+and plugin installation state. Yosh starts with the tracked `codex/config.toml`
+and `codex/hooks.json`, plus `cli_auth_credentials_store = "file"` at the top
+of its config so its login stays in its own `auth.json`. Hook trust entries use
+the Yosh home's absolute `hooks.json` path, which `install.sh` re-keys per home:
+`./install.sh` walks its `CODEX_PROFILES` list (`~/.codex`, then `~/.codex-yosh`),
+so one run deploys hooks and trust to both and `--check` reports both. Setting
+`CODEX_HOME` narrows a run to that one home; `--pull` reads only the first home,
+since the tracked copies are shared. `cli_auth_credentials_store` is treated as
+account-local, so `--check` does not read it as config drift.
+Its `skills` directory links to `~/.codex/skills`, so skill updates are shared.
+The hook commands use the same scripts in `~/.local/bin` as the default account.
+MCP definitions are copied, but OAuth credentials are not; environment-token MCP
+servers still use the terminal's environment. This is account separation on one
+computer, not an operating-system security boundary.
+
+Codex does not create a missing `CODEX_HOME` (0.167.0 warns and carries on with
+no home), so set the home up before the first login:
+
+```bash
+mkdir -p ~/.codex-yosh
+{ printf '%s\n' 'cli_auth_credentials_store = "file"'; cat codex/config.toml; } > ~/.codex-yosh/config.toml
+chmod 600 ~/.codex-yosh/config.toml
+ln -s ~/.codex/skills ~/.codex-yosh/skills
+./install.sh            # hooks.json and hook trust into every home in the list
+```
+
+After reloading the shell, run `codex-yosh login` and select the second account
+in the browser. Then launch `codex` or `codex-yosh` in separate tabs. Plugins and
+MCP services that require account authentication must be connected separately.
+Never copy `auth.json`, `.credentials.json`, session databases or history between
+the homes when creating an account.
+
+#### Shared defaults
+
 `codex/config.toml` is the Codex CLI counterpart to the Claude status line: model defaults, approval settings, the TUI status line segments, the hooks feature flag, five MCP servers (Atlassian Rovo, the OpenAI developer docs, shadcn, chrome-devtools and the budget tracker) and the enabled plugin.
 
 Auto-review is enabled with these top-level settings:
@@ -1452,11 +1494,11 @@ group of `UserPromptSubmit` and `Stop`.
 
 **Trust is pre-seeded.** Codex skips a hook until it is trusted in `/hooks`, and records that in `config.toml` as `[hooks.state."<abs path>:<event>:<group>:<handler>"]` with a `trusted_hash`. The hash covers the hook definition (event, matcher, command, timeout, async), not the path, so it is the same on every machine. `codex/hooks-trust.txt` keeps the path-free part, and `install.sh` handles the rest:
 
-- **deploy** copies `codex/hooks.json` to `~/.codex/hooks.json` (or `$CODEX_HOME`) and adds or corrects each hook's `trusted_hash` in `config.toml`, backing it up first and keeping other keys such as an `enabled = false` set in `/hooks`. Machines without `~/.codex` are skipped.
+- **deploy** copies `codex/hooks.json` to each home in `CODEX_PROFILES` (`~/.codex` and `~/.codex-yosh`, or just `$CODEX_HOME` when it is set) and adds or corrects each hook's `trusted_hash` in that home's `config.toml`, backing it up first and keeping other keys such as an `enabled = false` set in `/hooks`. A home that does not exist is skipped, so a machine with only the default account is unaffected.
 - **`--check`** reports a hook whose trust is missing or stale.
-- **`--pull`** copies `hooks.json` back and regenerates the trust list from the live config, ignoring entries left behind by removed hooks.
+- **`--pull`** copies `hooks.json` back from the first home in the list and regenerates the trust list from that home's live config, ignoring entries left behind by removed hooks. Later homes are skipped even when the first home is absent or has no `hooks.json`: one tracked copy serves every account, so nothing else may silently become its source. `CODEX_HOME` chooses a different home.
 
-After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
+After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. `--pull` reads the first home in the list, so when the hooks were trusted in another account, pull from that one: `CODEX_HOME="$HOME/.codex-yosh" ./install.sh --pull`. Pulling from the wrong home records its stale hashes, and a later deploy then cannot seed the new trust. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
 
 Verified on Codex 0.160.0 (WSL2, Windows Terminal): after `./install.sh` into a fresh `CODEX_HOME` at a different path, the app-server `hooks/list` call reports all 14 hooks as `trusted`.
 

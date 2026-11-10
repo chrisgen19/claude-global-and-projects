@@ -3,7 +3,7 @@
 # Install this repo's configuration into the live Claude Code profiles, check
 # the live profiles against it, or pull live changes back into the repo.
 #
-#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex hooks, agy plugin
+#   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex* hooks, agy plugin
 #   ./install.sh --check    report where the live profiles differ (exit 1 on drift)
 #   ./install.sh --pull     copy live settings and Codex hooks back (machine-local keys stripped)
 #   ./install.sh --help
@@ -68,10 +68,24 @@ claude/hooks/herdr-agent-state.sh:$HOME/.claude/hooks/herdr-agent-state.sh"
 # records that in config.toml as [hooks.state."<abs path>:<event>:<group>:<n>"].
 # The hash covers the hook definition, not the path, so the tracked list keeps
 # only "<event>:<group>:<n> <hash>" and install.sh re-keys it for this machine.
-CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
-CODEX_HOOKS="$CODEX_DIR/hooks.json"
-CODEX_CONFIG="$CODEX_DIR/config.toml"
-CODEX_TRUST_PREFIX="[hooks.state.\"$CODEX_HOOKS:"
+# One home per Codex account, in deploy order, the way .zshrc-codex sets them:
+# bare `codex` uses ~/.codex, `codex-yosh` sets CODEX_HOME to ~/.codex-yosh.
+# Each home keeps its own login, sessions and trust tables; the hooks and the
+# shared config settings are the same in all of them. Homes that do not exist
+# are skipped, so this list is safe on a machine with only the default account.
+# CODEX_HOME set in the environment narrows the run to that one home.
+CODEX_PROFILES="$HOME/.codex
+$HOME/.codex-yosh"
+[ -n "${CODEX_HOME:-}" ] && CODEX_PROFILES="$CODEX_HOME"
+
+# Point the codex_* helpers below at one home.
+codex_use_dir() {
+  CODEX_DIR="$1"
+  CODEX_HOOKS="$CODEX_DIR/hooks.json"
+  CODEX_CONFIG="$CODEX_DIR/config.toml"
+  CODEX_TRUST_PREFIX="[hooks.state.\"$CODEX_HOOKS:"
+}
+codex_use_dir "${CODEX_PROFILES%%$'\n'*}"
 TRUST_FILE="codex/hooks-trust.txt"
 TRUST_HEADER="# Trust hashes for codex/hooks.json, written by ./install.sh --pull from the
 # live ~/.codex/config.toml. Format: <event>:<group>:<handler> <hash>.
@@ -403,13 +417,18 @@ codex_tracked_trust() { grep -v -e '^#' -e '^[[:space:]]*$' "$TRUST_FILE" | sort
 # Space-separated: a whole "[table]", or "[table]key" for a single key.
 CODEX_MANAGED="[tui.model_availability_nux] [tui]screen_reader_detection_done"
 
+# Keys that belong to one Codex account rather than to the shared config:
+# cli_auth_credentials_store = "file" keeps a second account's login in its own
+# auth.json instead of the shared keyring, so only that home has it.
+CODEX_ACCOUNT_KEYS="cli_auth_credentials_store"
+
 # One sorted "[table] key = value" line per setting, so key order, comments
 # and array layout (Codex writes arrays on one line, the repo spreads them over
 # several) never read as drift. Machine-specific [projects*] and [hooks.state*]
 # tables and the CODEX_MANAGED keys are left out. Full-line comments only:
 # config.toml has no trailing ones.
 codex_shared_config() { # config.toml
-  awk -v managed=" $CODEX_MANAGED " '
+  awk -v managed=" $CODEX_MANAGED $CODEX_ACCOUNT_KEYS " '
     function emit() {
       gsub(/[ \t]+/, " ", val); gsub(/, *\]/, "]", val)
       gsub(/\[ /, "[", val); gsub(/ \]/, "]", val); gsub(/ *, */, ", ", val)
@@ -690,11 +709,25 @@ if [ "$MODE" != "pull" ]; then
   echo
 fi
 
-# --- Codex tab-status hooks: hooks.json both ways, trust seeded on deploy ---
-echo "codex  ->  ${CODEX_DIR/#$HOME/$TILDE}"
-if [ ! -d "$CODEX_DIR" ]; then
-  note "not installed, skipped"
-else
+# --- Codex tab-status hooks: hooks.json both ways, trust seeded per account ---
+# One pass per home in CODEX_PROFILES. The trust hash covers the hook
+# definition, not the path, so every account gets the same tracked hashes,
+# re-keyed to its own hooks.json path. --pull reads one home only: the tracked
+# copies are shared, so the first account's home is the source.
+codex_pulled=0
+while IFS= read -r codex_dir; do
+  [ -n "$codex_dir" ] || continue
+  codex_use_dir "$codex_dir"
+  echo "codex  ->  ${CODEX_DIR/#$HOME/$TILDE}"
+  if [ ! -d "$CODEX_DIR" ]; then
+    note "not installed, skipped"
+    # An absent home does not promote the next one to the --pull source: the
+    # tracked copies are shared, so they come from the first home in the list
+    # and from no other. CODEX_HOME picks a different one.
+    [ "$MODE" = pull ] && codex_pulled=1
+    echo
+    continue
+  fi
   case "$MODE" in
     install)
       if diff -q codex/hooks.json "$CODEX_HOOKS" > /dev/null 2>&1; then
@@ -740,8 +773,11 @@ else
       fi
       ;;
     pull)
-      if [ ! -f "$CODEX_HOOKS" ]; then
-        note "hooks.json  live file missing, skipped"
+      if [ "$codex_pulled" -eq 1 ]; then
+        note "hooks.json, hook trust  --pull reads the first home only, skipped"
+      elif [ ! -f "$CODEX_HOOKS" ]; then
+        codex_pulled=1
+        note "hooks.json  live file missing, nothing pulled"
       else
         jq -e . "$CODEX_HOOKS" > /dev/null || die "$CODEX_HOOKS is not valid JSON - tracked copy left untouched"
         cp "$CODEX_HOOKS" codex/hooks.json || die "cannot write codex/hooks.json"
@@ -757,11 +793,12 @@ else
         if [ "$trusted" -lt "$total" ]; then
           note "  trust the rest in codex /hooks, then --pull again"
         fi
+        codex_pulled=1
       fi
       ;;
   esac
-fi
-echo
+  echo
+done <<< "$CODEX_PROFILES"
 
 # --- Antigravity (agy): the next-steps plugin, repo -> live only ---
 # User plugins load from ~/.gemini/config/plugins/. The status line belongs to

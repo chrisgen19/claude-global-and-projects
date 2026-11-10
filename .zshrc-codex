@@ -17,6 +17,9 @@ codex() {
   esac
 }
 
+# Separate login/history; reuse the Codex launcher above for hooks and next-steps.
+function codex-yosh { CODEX_HOME="$HOME/.codex-yosh" codex "$@"; }
+
 # Restore terminal modes after TUIs: codex can exit (e.g. on ctrl+c) without
 # turning off kitty keyboard protocol and mouse tracking, which leaves `9;5u`
 # and `35;142;16M` garbage at the prompt. Turn both off before every prompt.
