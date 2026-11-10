@@ -5,9 +5,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "chrome-devtools-mcp@latest",
-        "--executablePath",
-        "/usr/bin/google-chrome-stable"
+        "chrome-devtools-mcp@latest"
       ],
       "env": {}
     }

@@ -154,6 +154,25 @@ deploy_settings() { # repo_file live_file
 # sessions closed, or re-run once they are.
 MCP_FILE="mcp-servers.json"
 
+# The .claude.json a profile actually reads. The default profile keeps its one
+# at $HOME, from before config directories existed; a CLAUDE_CONFIG_DIR profile
+# keeps its own inside that directory. Writing $HOME/.claude/.claude.json
+# instead would land in a stub nothing reads, and the deploy and --check would
+# then agree with each other about a file the CLI never opens.
+mcp_target() { # live_dir
+  if [ "$1" = "$HOME/.claude" ]; then echo "$HOME/.claude.json"; else echo "$1/.claude.json"; fi
+}
+
+# 0 when the file holds exactly one JSON object. `jq empty` is not enough: it
+# passes on an empty file, which holds zero JSON values, and the merge filter
+# then runs zero times and writes a 0-byte file over the profile's history. A
+# file holding two concatenated objects passes it just as happily and merges
+# into both. -s slurps every value into one array, so the count and the type
+# are checked together.
+mcp_json_ok() { # file
+  jq -e -s 'length == 1 and (.[0] | type == "object")' "$1" > /dev/null 2>&1
+}
+
 # The tracked server block; -S sorts the keys so formatting never reads as drift.
 mcp_tracked() { jq -S '.mcpServers' "$MCP_FILE"; }
 
@@ -170,8 +189,8 @@ mcp_live() { # live_json
 # ran, and a failure there would cost the profile's whole history.
 deploy_mcp() { # live_json
   local tmp="$1.mcp.$$"
-  if [ -f "$1" ] && ! jq empty "$1" > /dev/null 2>&1; then
-    die "$1 is not valid JSON - left untouched"
+  if [ -f "$1" ] && ! mcp_json_ok "$1"; then
+    die "$1 is not a single JSON object - left untouched"
   fi
   # umask: .claude.json is 0600, and mv keeps the temp file's mode.
   if (umask 077; { [ -f "$1" ] && cat "$1" || echo '{}'; } \
@@ -497,16 +516,19 @@ while IFS=: read -r repo_dir live_dir sl_name skillset; do
   if [ "$MODE" != "pull" ]; then
 
     # --- MCP servers in .claude.json ---
+    # One target for both branches, so a deploy can never write somewhere
+    # --check is not looking.
+    mcp_json=$(mcp_target "$live_dir")
     if [ "$MODE" = "install" ]; then
-      deploy_mcp "$live_dir/.claude.json"
-      note ".claude.json mcpServers  $(mcp_tracked | jq -r 'keys | join(", ")')"
-    elif [ ! -f "$live_dir/.claude.json" ]; then
-      differ ".claude.json missing"
-    elif ! jq empty "$live_dir/.claude.json" > /dev/null 2>&1; then
-      differ ".claude.json is not valid JSON"
-    elif ! diff -q <(mcp_tracked) <(mcp_live "$live_dir/.claude.json") > /dev/null; then
-      differ ".claude.json mcpServers"
-      diff <(mcp_tracked) <(mcp_live "$live_dir/.claude.json") \
+      deploy_mcp "$mcp_json"
+      note "${mcp_json/#$HOME/$TILDE} mcpServers  $(mcp_tracked | jq -r 'keys | join(", ")')"
+    elif [ ! -f "$mcp_json" ]; then
+      differ "${mcp_json/#$HOME/$TILDE} missing"
+    elif ! mcp_json_ok "$mcp_json"; then
+      differ "${mcp_json/#$HOME/$TILDE} is not a single JSON object"
+    elif ! diff -q <(mcp_tracked) <(mcp_live "$mcp_json") > /dev/null; then
+      differ "${mcp_json/#$HOME/$TILDE} mcpServers"
+      diff <(mcp_tracked) <(mcp_live "$mcp_json") \
         | grep -E '^[<>]' | head -6 | sed 's/^/           /'
     else
       note "mcpServers  ok"

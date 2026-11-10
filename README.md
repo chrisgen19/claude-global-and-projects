@@ -1152,7 +1152,7 @@ block every account should have, and `install.sh` merges it in:
     "chrome-devtools": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest", "--executablePath", "/usr/bin/google-chrome-stable"],
+      "args": ["-y", "chrome-devtools-mcp@latest"],
       "env": {}
     }
   }
@@ -1178,9 +1178,15 @@ Two things to know:
   `.claude.json` from memory and can revert a deploy, the way it does with
   `.credentials.json`. Re-run the deploy once the sessions are closed.
 
-`--executablePath` is a Linux path. On a Mac, change it to the Chrome there
-(`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`) or drop the two
-arguments and let the server find Chrome itself.
+No `--executablePath`: with none set, chrome-devtools-mcp hands puppeteer
+`channel: 'chrome'` and lets it resolve the system Chrome, which keeps one
+tracked block working on both Linux and macOS. Pinning the Linux path here
+would need a matching path per platform in the deploy and in `--check`.
+
+The default profile's file is `$HOME/.claude.json`, not
+`$HOME/.claude/.claude.json`: it predates config directories. `mcp_target`
+picks the right one, and the deploy and the drift check both go through it so
+they cannot end up looking at different files.
 
 Project-scoped servers stay out of this file: `.claude.json` keys those under
 `projects["<abs path>"].mcpServers`, so they carry a home directory and are
