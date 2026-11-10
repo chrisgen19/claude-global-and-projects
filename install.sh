@@ -5,7 +5,7 @@
 #
 #   ./install.sh            deploy repo -> ~/.claude*, ~/.local/bin, ~/.codex* hooks, agy plugin
 #   ./install.sh --check    report where the live profiles differ (exit 1 on drift)
-#   ./install.sh --pull     copy live settings and Codex hooks back (machine-local keys stripped)
+#   ./install.sh --pull     copy live settings, Codex hooks and plugin lists back (machine-local keys stripped)
 #   ./install.sh --help
 #
 # Direction matters. Deploying a stale repo silently reverts real live state -
@@ -84,6 +84,9 @@ codex_use_dir() {
   CODEX_HOOKS="$CODEX_DIR/hooks.json"
   CODEX_CONFIG="$CODEX_DIR/config.toml"
   CODEX_TRUST_PREFIX="[hooks.state.\"$CODEX_HOOKS:"
+  # One tracked plugin list per account, named after the home: ~/.codex ->
+  # codex/plugins-codex.txt, ~/.codex-yosh -> codex/plugins-codex-yosh.txt.
+  CODEX_PLUGIN_FILE="codex/plugins-$(basename "$CODEX_DIR" | sed 's/^\.//').txt"
 }
 codex_use_dir "${CODEX_PROFILES%%$'\n'*}"
 TRUST_FILE="codex/hooks-trust.txt"
@@ -411,6 +414,65 @@ codex_live_trust() {
 }
 
 codex_tracked_trust() { grep -v -e '^#' -e '^[[:space:]]*$' "$TRUST_FILE" | sort; }
+
+# Which plugins an account has is not local state: `codex plugin list` resolves
+# it per account against the remote marketplace, so the same cache directory
+# reads as installed for one login and "not installed" for another. The tracked
+# list is therefore per home, and reading it needs the network and that
+# account's login.
+CODEX_PLUGIN_HEADER="# Codex plugins installed in this account's home, written by ./install.sh --pull.
+# One <plugin>@<marketplace> per line. A deploy installs what is missing here
+# and never removes anything: uninstall with codex plugin remove."
+
+# "<plugin>@<marketplace>" per installed plugin in this home, sorted. Returns 1
+# when the listing cannot be trusted, which it reports in three different ways:
+# a non-zero exit, "failed to list remote marketplace plugins" on stderr with
+# exit 0 (the installed set then collapses to the local marketplaces), or - with
+# no login or no network - exit 0 and a silently empty listing. The tell for
+# that last one is both arrays being empty: `--available` holds the uninstalled
+# plugins only (11k of them against the remote marketplace, and none of them
+# also in `.installed`), so an account that has installed everything its
+# catalogs offer answers with an empty `available` and a full `installed`, which
+# is a good listing. Reporting an empty listing as "no plugins installed" would
+# drift every tracked plugin on a laptop in a tunnel.
+codex_installed_plugins() {
+  local out err rc
+  err="$(mktemp)" || return 1
+  out=$(CODEX_HOME="$CODEX_DIR" codex plugin list --json --available 2> "$err"); rc=$?
+  if [ "$rc" -ne 0 ] || grep -q 'failed to list remote marketplace plugins' "$err"; then
+    rm -f "$err"; return 1
+  fi
+  rm -f "$err"
+  printf '%s' "$out" | jq -e '((.installed | length) + (.available | length)) > 0' > /dev/null || return 1
+  printf '%s' "$out" | jq -r '.installed[]? | "\(.name)@\(.marketplaceName)"' | LC_ALL=C sort
+}
+
+# 0 when this home has a login. Without one the catalog call above comes back
+# empty, so say so plainly instead of calling it an unavailable marketplace.
+# Codex is asked rather than the filesystem: with cli_auth_credentials_store
+# set to "keyring" (or "auto" picking it, as on the Mac) a home is fully
+# authenticated with no auth.json in it, and testing for that file would skip
+# plugin work on every such machine. `codex login status` exits 0 logged in,
+# 1 not, wherever the credentials live. Its output is a boolean to us, and the
+# PATH-alias warning it can print would trip CI's "nothing on stderr" check.
+codex_logged_in() { CODEX_HOME="$CODEX_DIR" codex login status > /dev/null 2>&1; }
+
+# Both sides of the comm below, and the order --pull writes, are sorted under
+# LC_ALL=C: this repo is deployed from a Mac as well as WSL, and a locale that
+# collates punctuation differently would reorder the tracked file on one machine
+# and make CI's sorted check disagree with whichever one wrote it.
+
+# printf for a list that may be empty: a bare printf '%s\n' "" emits one blank
+# line, which comm would read as an entry and --pull would write to the file.
+codex_lines() { [ -n "$1" ] || return 0; printf '%s\n' "$1"; }
+
+# The tracked entries, sorted. Returns 1 only when the file does not exist: a
+# header-only file is a real, empty plugin set (an account with none installed),
+# not an untracked home, so grep finding nothing is not a failure here.
+codex_tracked_plugins() { # plugin file
+  [ -f "$1" ] || return 1
+  grep -v -e '^#' -e '^[[:space:]]*$' "$1" | LC_ALL=C sort || true
+}
 
 # Codex writes these itself (new-model announcement counters, a one-time
 # screen reader probe), so they differ per machine and never read as drift.
@@ -745,6 +807,40 @@ while IFS= read -r codex_dir; do
         codex_seed_trust
         note "hook trust  (previous config.toml saved as config.toml.bak-$STAMP)"
       fi
+      # Plugins: install what is missing, never remove. Each add is a network
+      # call under this account's login, and an account may not be entitled to
+      # a plugin another one has, so a failure is reported and never fatal.
+      if ! command -v codex > /dev/null; then
+        note "plugins  codex CLI not found, skipped"
+      elif [ "${INSTALL_SKIP_PLUGINS:-0}" = 1 ]; then
+        note "plugins  INSTALL_SKIP_PLUGINS=1, skipped"
+      elif ! tracked=$(codex_tracked_plugins "$CODEX_PLUGIN_FILE"); then
+        note "plugins  no tracked list ($CODEX_PLUGIN_FILE), --pull to record this account's"
+      elif ! codex_logged_in; then
+        note "plugins  no login in this home, skipped (codex login)"
+      elif ! installed=$(codex_installed_plugins); then
+        note "plugins  WARNING marketplace listing unavailable, skipped"
+      else
+        missing=$(comm -23 <(codex_lines "$tracked") <(codex_lines "$installed"))
+        if [ -z "$missing" ]; then
+          note "plugins  ok"
+        else
+          added=0 failed=""
+          while IFS= read -r plugin; do
+            [ -n "$plugin" ] || continue
+            if CODEX_HOME="$CODEX_DIR" codex plugin add "$plugin" > /dev/null 2>&1; then
+              added=$((added + 1))
+            else
+              failed="$failed $plugin"
+            fi
+          done <<< "$missing"
+          if [ -n "$failed" ]; then
+            note "plugins  installed $added, failed:$failed"
+          else
+            note "plugins  installed $added"
+          fi
+        fi
+      fi
       ;;
     check)
       if [ ! -f "$CODEX_HOOKS" ]; then
@@ -771,6 +867,35 @@ while IFS= read -r codex_dir; do
       else
         note "config.toml  ok"
       fi
+      if ! command -v codex > /dev/null; then
+        note "plugins  codex CLI not found, skipped"
+      elif [ "${INSTALL_SKIP_PLUGINS:-0}" = 1 ]; then
+        note "plugins  INSTALL_SKIP_PLUGINS=1, skipped"
+      elif ! tracked=$(codex_tracked_plugins "$CODEX_PLUGIN_FILE"); then
+        note "plugins  no tracked list ($CODEX_PLUGIN_FILE), --pull to record this account's"
+      elif ! codex_logged_in; then
+        note "plugins  no login in this home, skipped (codex login)"
+      elif ! installed=$(codex_installed_plugins); then
+        # Not drift: the listing needs the network and this account's login, and
+        # a failed catalog call would otherwise report every plugin as missing.
+        note "plugins  WARNING marketplace listing unavailable, skipped"
+      else
+        missing=$(comm -23 <(codex_lines "$tracked") <(codex_lines "$installed"))
+        extra=$(comm -13 <(codex_lines "$tracked") <(codex_lines "$installed"))
+        if [ -n "$missing" ]; then
+          differ "codex plugins tracked but not installed:"
+          printf '%s\n' "$missing" | sed 's/^/           /'
+          note "  fix: ./install.sh, or CODEX_HOME=${CODEX_DIR/#$HOME/$TILDE} codex plugin add <plugin>"
+        else
+          note "plugins  ok"
+        fi
+        # An extra plugin is this account's own choice, not drift: a deploy
+        # never removes one. --pull records it when it should be kept.
+        if [ -n "$extra" ]; then
+          note "plugins installed but not tracked  (info only, --pull to record):"
+          printf '%s\n' "$extra" | sed 's/^/           /'
+        fi
+      fi
       ;;
     pull)
       if [ "$codex_pulled" -eq 1 ]; then
@@ -794,6 +919,27 @@ while IFS= read -r codex_dir; do
           note "  trust the rest in codex /hooks, then --pull again"
         fi
         codex_pulled=1
+      fi
+      # The plugin list is per account, so every home writes its own file: this
+      # is outside the first-home-only rule above, which exists because
+      # hooks.json and the trust list are shared.
+      if ! command -v codex > /dev/null; then
+        note "plugins  codex CLI not found, skipped"
+      elif [ "${INSTALL_SKIP_PLUGINS:-0}" = 1 ]; then
+        note "plugins  INSTALL_SKIP_PLUGINS=1, skipped"
+      elif ! codex_logged_in; then
+        note "plugins  no login in this home, $CODEX_PLUGIN_FILE left untouched"
+      elif ! installed=$(codex_installed_plugins); then
+        note "plugins  WARNING marketplace listing unavailable, $CODEX_PLUGIN_FILE left untouched"
+      else
+        tmp="$CODEX_PLUGIN_FILE.pull.$$"
+        if { printf '%s\n' "$CODEX_PLUGIN_HEADER"; codex_lines "$installed"; } > "$tmp"; then
+          mv "$tmp" "$CODEX_PLUGIN_FILE" || die "cannot write $CODEX_PLUGIN_FILE"
+        else
+          rm -f "$tmp"; die "could not write $CODEX_PLUGIN_FILE"
+        fi
+        count=$(codex_lines "$installed" | grep -c . || true)
+        note "plugins  <- live ($count installed) -> $CODEX_PLUGIN_FILE"
       fi
       ;;
   esac

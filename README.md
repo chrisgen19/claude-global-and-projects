@@ -45,7 +45,9 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── codex/
 │   ├── config.toml                        # Codex CLI config + TUI status line
 │   ├── hooks.json                         # Codex tab-status and next-steps hooks (deployed by install.sh)
-│   └── hooks-trust.txt                    #   their /hooks trust hashes, pre-seeded by install.sh
+│   ├── hooks-trust.txt                    #   their /hooks trust hashes, pre-seeded by install.sh
+│   ├── plugins-codex.txt                  # plugins installed in ~/.codex (per account)
+│   └── plugins-codex-yosh.txt             # plugins installed in ~/.codex-yosh
 ├── .claude/skills/                        # Global skills (cross-project)
 │   ├── pr-description/SKILL.md           # Generate PR descriptions from branch diff
 │   ├── env-check/SKILL.md               # Audit env vars, secrets, and .env config
@@ -1327,6 +1329,8 @@ so one run deploys hooks and trust to both and `--check` reports both. Setting
 since the tracked copies are shared. `cli_auth_credentials_store` is treated as
 account-local, so `--check` does not read it as config drift.
 Its `skills` directory links to `~/.codex/skills`, so skill updates are shared.
+Each account's installed plugins are tracked in their own file, see
+[Installed plugins](#installed-plugins-codexplugins-hometxt).
 The hook commands use the same scripts in `~/.local/bin` as the default account.
 MCP definitions are copied, but OAuth credentials are not; environment-token MCP
 servers still use the terminal's environment. This is account separation on one
@@ -1348,6 +1352,43 @@ in the browser. Then launch `codex` or `codex-yosh` in separate tabs. Plugins an
 MCP services that require account authentication must be connected separately.
 Never copy `auth.json`, `.credentials.json`, session databases or history between
 the homes when creating an account.
+
+#### Installed plugins (`codex/plugins-<home>.txt`)
+
+Which plugins a Codex account has is **not** local state. `codex plugin list`
+resolves it per account against the remote marketplace, so the same cache
+directory under `plugins/cache/` reads as `installed` for one login and
+`not installed` for another. There is therefore one tracked list per home,
+named after it: `codex/plugins-codex.txt` for `~/.codex` and
+`codex/plugins-codex-yosh.txt` for `~/.codex-yosh`. One
+`<plugin>@<marketplace>` per line, sorted under `LC_ALL=C` so the order is the
+same whichever machine ran `--pull`, comments allowed.
+
+`install.sh` wires them in the same three directions as everything else:
+
+- **deploy** installs what the tracked list has and the account lacks, with `codex plugin add`, and **never removes anything**: an extra plugin is that account's own choice, and uninstalling is `codex plugin remove`. Each add is a network call under that account's login, so a failure is reported (`plugins  installed 2, failed: foo@bar`) and never fatal.
+- **`--check`** reports tracked-but-not-installed as drift, and lists installed-but-not-tracked as info only, with the hint to `--pull`.
+- **`--pull`** writes each home's current set to its own file. Unlike `hooks.json` and the trust list, which are shared and come from the first home only, every home pulls its own plugin list.
+
+The listing needs the network and that account's login, and `install.sh` refuses
+to guess when it cannot get one: a home where `codex login status` reports no
+login prints `no login in this home` (asking Codex, not looking for `auth.json`,
+since a home can keep its credentials in the keyring instead), and a listing that
+errors or comes back with nothing at all, neither installed nor available,
+prints `WARNING marketplace listing unavailable`. Neither counts as drift - treating an
+unreachable catalog as "nothing installed" would drift every tracked plugin on a
+laptop in a tunnel. `INSTALL_SKIP_PLUGINS=1` skips this work in all three modes,
+as it does for the Claude profiles, and a machine without the `codex` CLI is
+skipped too.
+
+Two things these lists deliberately do not cover:
+
+- **`superpowers@openai-curated`**, from the local marketplace, never appears in the installed set the CLI reports, so it is tracked the other way: `[plugins."superpowers@openai-curated"] enabled = true` in `codex/config.toml`.
+- **Entitlements.** An account can be refused a plugin another one has: `product-design` installs in `~/.codex` but 404s for the Yosh login, which is why the two tracked lists differ by exactly that line. A deploy will keep reporting it as a failed add for that account, which is the honest answer - remove the line from that home's list if you want the noise gone.
+
+Authorization is separate from installation: connector-backed plugins (`github`,
+`figma`, `atlassian-rovo`) and the `app-*` ones install fine and then ask for
+access per account on first use.
 
 #### Shared defaults
 
@@ -1497,6 +1538,8 @@ group of `UserPromptSubmit` and `Stop`.
 - **deploy** copies `codex/hooks.json` to each home in `CODEX_PROFILES` (`~/.codex` and `~/.codex-yosh`, or just `$CODEX_HOME` when it is set) and adds or corrects each hook's `trusted_hash` in that home's `config.toml`, backing it up first and keeping other keys such as an `enabled = false` set in `/hooks`. A home that does not exist is skipped, so a machine with only the default account is unaffected.
 - **`--check`** reports a hook whose trust is missing or stale.
 - **`--pull`** copies `hooks.json` back from the first home in the list and regenerates the trust list from that home's live config, ignoring entries left behind by removed hooks. Later homes are skipped even when the first home is absent or has no `hooks.json`: one tracked copy serves every account, so nothing else may silently become its source. `CODEX_HOME` chooses a different home.
+
+A `--pull` also rewrites each home's plugin list, so commit those with it.
 
 After editing `hooks.json`: deploy, trust the changed hooks once in `/hooks`, then `./install.sh --pull` and commit both files. `--pull` reads the first home in the list, so when the hooks were trusted in another account, pull from that one: `CODEX_HOME="$HOME/.codex-yosh" ./install.sh --pull`. Pulling from the wrong home records its stale hashes, and a later deploy then cannot seed the new trust. If a Codex upgrade changes how hooks are hashed, this fails safe: `/hooks` shows them as modified and asks again.
 
