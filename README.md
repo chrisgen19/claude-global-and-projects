@@ -24,6 +24,7 @@ Also includes Codex CLI configuration and a zsh launcher that defaults to sandbo
 ├── mcp-servers.json                        # Shared MCP servers, merged into every profile's .claude.json
 ├── install.sh                              # deploy repo -> live profiles, or --check for drift
 ├── update-plugins.sh                       # refresh marketplaces + update every plugin in each profile (claude-update-plugins)
+├── docs/fzf-zoxide.md                      # fzf + zoxide cheat sheet and ~/.zshrc setup (WSL + Mac)
 ├── windows/                                # portable subset for a Windows machine
 │   └── settings.json                       #   no hooks, no bash-dependent status line
 ├── claude/                                 # Deployed copy of ~/.claude (default, no CLAUDE_CONFIG_DIR)
@@ -936,6 +937,16 @@ tmux source-file ~/.tmux.conf
 - **`alt+n`:** opens the next-steps menu in a popup and pastes the pick into the pane, see
   [herdr and tmux popups](#herdr-and-tmux-popups-optional). It needs a `next-steps` with the
   `popup` command; an older one exits with its usage message and the popup closes.
+
+### fzf + zoxide
+
+Fuzzy history, file and folder search ([fzf](https://github.com/junegunn/fzf)) and a `cd`
+that learns where you go ([zoxide](https://github.com/ajeetdsouza/zoxide), replacing the
+oh-my-zsh `z` plugin), with `Ctrl-T` listing files through ripgrep so gitignored files stay
+out. The setup is a few lines in `~/.zshrc`, which this repo does not track or deploy.
+
+See **[docs/fzf-zoxide.md](docs/fzf-zoxide.md)** for the keys, `**` completion, query
+syntax, a test checklist and the WSL and Mac `~/.zshrc` lines. Mac setup steps: #116.
 
 ### next-steps for Codex and agy
 
