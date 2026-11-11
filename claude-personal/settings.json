@@ -416,5 +416,12 @@
     {
       "serverName": "claude.ai Atlassian"
     }
-  ]
+  ],
+  "pluginConfigs": {
+    "filetree@claude-code-filetree": {
+      "options": {
+        "start": "off"
+      }
+    }
+  }
 }

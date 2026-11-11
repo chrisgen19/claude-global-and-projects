@@ -414,5 +414,12 @@
     {
       "serverName": "plugin:design:gmail"
     }
-  ]
+  ],
+  "pluginConfigs": {
+    "filetree@claude-code-filetree": {
+      "options": {
+        "start": "off"
+      }
+    }
+  }
 }
