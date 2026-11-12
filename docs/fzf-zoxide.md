@@ -3,7 +3,7 @@
 Fuzzy search for shell history, files and folders ([fzf](https://github.com/junegunn/fzf)),
 plus a `cd` that learns where you go ([zoxide](https://github.com/ajeetdsouza/zoxide)).
 zoxide replaces the oh-my-zsh `z` plugin. Same setup on WSL and the Mac; only the way fzf
-is loaded differs. Versions in use: fzf 0.75, zoxide 0.10, ripgrep 14.
+is loaded differs. Versions in use: fzf 0.75, zoxide 0.10, ripgrep 14 (WSL) / 15 (Mac).
 
 - [Daily keys](#daily-keys)
 - [zoxide](#zoxide)
@@ -158,16 +158,20 @@ command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
 Then import the old `z` history once: `zoxide import zsh-z --merge` (reads `~/.z`). To
 update fzf later: `cd ~/.fzf && git pull && ./install --key-bindings --completion --no-update-rc`.
 
-### Mac (pending, issue #116)
+### Mac (done 2026-11-12, issue #116)
+
+macOS 27 on Apple Silicon. Everything from Homebrew: fzf 0.75.0, zoxide 0.10.0, ripgrep
+15.2.0 (all in `/opt/homebrew/bin`).
 
 ```bash
 brew install fzf zoxide ripgrep
+whence -p rg   # /opt/homebrew/bin/rg, a real binary rather than Claude Code's built-in one
 ```
 
 `~/.zshrc`:
 
 ```zsh
-plugins=(...)   # remove only "z" from the list
+plugins=(git extract sudo web-search zsh-autosuggestions zsh-syntax-highlighting zsh-completions)   # "z" removed
 
 source $ZSH/oh-my-zsh.sh
 
@@ -176,13 +180,33 @@ source $ZSH/oh-my-zsh.sh
 command -v rg >/dev/null && export FZF_CTRL_T_COMMAND='rg --files --hidden -g "!.git"'
 command -v fzf >/dev/null && source <(fzf --zsh)
 
-# ... end of file:
+# ... end of file, after Powerlevel10k:
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
 # zoxide: smarter cd (z <dir>, zi for fzf picker); keep last
 command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
 ```
 
-Then `zoxide import zsh-z --merge`. Full steps, including the iTerm2 Option key setting:
-issue #116.
+The Mac `~/.zshrc` ends with the p10k source, whose comment says "must be sourced last".
+zoxide still goes below it: `~/.p10k.zsh` only sets prompt options, while zoxide has to
+come after anything that hooks `cd` or the prompt.
+
+Then `zoxide import zsh-z --merge` (83/83 entries from `~/.z`).
+
+iTerm2: `Alt-C` needs the Default profile's Left Option key set to Esc+ (Settings >
+Profiles > Keys). Right Option stays Normal so it still types characters like `ç` and `€`.
+To set it from a shell instead, quit iTerm2 first (a running iTerm2 can write its old
+settings back), then:
+
+```bash
+P=~/Library/Preferences/com.googlecode.iterm2.plist
+cp "$P" "$P.bak-$(date +%Y%m%d)"
+/usr/libexec/PlistBuddy -c 'Set ":New Bookmarks:0:Option Key Sends" 2' "$P"   # 0 Normal, 1 Meta, 2 Esc+
+killall cfprefsd
+```
+
+`New Bookmarks:0` is the first profile; check its `Guid` matches `defaults read
+com.googlecode.iterm2 "Default Bookmark Guid"` if there are several.
 
 ## Troubleshooting
 
@@ -200,4 +224,5 @@ issue #116.
 Restore `~/.zshrc.bak-*`, then remove the tools: `rm -rf ~/.fzf ~/.local/bin/zoxide
 ~/.local/share/zoxide` on WSL, or `brew uninstall fzf zoxide` and
 `rm -rf ~/Library/Application\ Support/zoxide` on the Mac. Keep ripgrep if anything else
-uses it.
+uses it. On the Mac, the iTerm2 Option key change can be undone in Settings > Profiles > Keys,
+or by restoring `~/Library/Preferences/com.googlecode.iterm2.plist.bak-*` with iTerm2 closed.
