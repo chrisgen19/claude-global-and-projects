@@ -7,9 +7,11 @@ app-6a3293e129088191abf0875820e839da@openai-curated-remote
 atlassian-rovo@openai-curated-remote
 figma@openai-curated-remote
 github@openai-curated-remote
+google-drive@openai-curated-remote
 openai-templates@openai-curated-remote
 pages@openai-curated-remote
 plugin-management@openai-curated-remote
 product-design@openai-curated-remote
 sites@openai-curated-remote
+visualize@openai-curated-remote
 work-pets@openai-curated-remote

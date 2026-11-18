@@ -11,4 +11,5 @@ openai-templates@openai-curated-remote
 pages@openai-curated-remote
 plugin-management@openai-curated-remote
 sites@openai-curated-remote
+visualize@openai-curated-remote
 work-pets@openai-curated-remote
