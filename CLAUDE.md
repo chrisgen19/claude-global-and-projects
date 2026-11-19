@@ -47,6 +47,11 @@ Defaults for new code. In an existing project, its style wins.
 - Icons: Lucide React. Animation: Motion (`motion` package) when needed.
 - DB: MySQL (WordPress), PostgreSQL (Next.js). ORM: Prisma (primary), Drizzle as alternative.
 
+## Browser Automation
+- Order: browsermcp first, then claude-in-chrome, then chrome-devtools, then Playwright. Move to the next one only if the tool is missing or its first call fails (extension not connected, no tab), and say in one line which one you switched to and why.
+- browsermcp and claude-in-chrome drive my real Chrome with my profile, so keep to new tabs and don't touch my existing ones.
+- Skip straight to chrome-devtools only for what the others can't do: Lighthouse, performance traces, heap snapshots, device emulation. Close its pages when done.
+
 ## Deployment
 - **Production:** Vercel or Coolify (Next.js), cPanel/VPS (WordPress)
 - **Staging:** Vercel preview deployments or Coolify previews
